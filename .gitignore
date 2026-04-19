@@ -1,0 +1,16 @@
+node_modules
+out
+dist
+include
+
+.pnpm-store
+.DS_Store
+.env
+
+pnpm-publish-summary.json
+
+.turbo
+
+.idea
+.vscode
+.vscode/settings.json
