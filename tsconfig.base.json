@@ -6,6 +6,26 @@
     ],
     "module": "esnext",
     "moduleResolution": "bundler",
+    "paths": {
+      "@rbxts-tailwind/config": [
+        "./packages/config/src/index.ts"
+      ],
+      "@rbxts-tailwind/core": [
+        "./packages/core/src/index.ts"
+      ],
+      "@rbxts-tailwind/compiler": [
+        "./packages/compiler/src/index.ts"
+      ],
+      "@rbxts-tailwind/ir": [
+        "./packages/ir/src/index.ts"
+      ],
+      "@rbxts-tailwind/rbxtsc-host": [
+        "./packages/rbxtsc-host/src/index.ts"
+      ],
+      "@rbxts-tailwind/types": [
+        "./packages/types/src/index.ts"
+      ]
+    },
     "strict": true,
     "declaration": true,
     "declarationMap": true,

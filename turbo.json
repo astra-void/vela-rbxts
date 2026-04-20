@@ -15,14 +15,29 @@
       "persistent": true
     },
     "lint": {
+      "cache":false,
       "dependsOn": [
         "^lint"
+      ],
+      "outputs": []
+    },
+    "lint:fix": {
+      "cache":false,
+      "dependsOn": [
+        "^lint:fix"
       ],
       "outputs": []
     },
     "typecheck": {
       "dependsOn": [
         "^typecheck"
+      ],
+      "outputs": []
+    },
+    "test": {
+      "dependsOn": [
+        "build",
+        "^build"
       ],
       "outputs": []
     },
