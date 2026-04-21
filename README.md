@@ -1,7 +1,12 @@
 # rbxts-tailwind
 
 Base monorepo skeleton for rbxts-tailwind using pnpm workspace + Turborepo.
-This stage only includes shared config and package placeholders.
+This stage includes shared config, package boundaries, and harness apps.
+
+## Apps
+
+- apps/compiler-harness: Compiler-native debug harness that directly exercises @rbxts-tailwind/compiler.
+- apps/rbxts-harness: Minimal real rbxts consumer app harness for validating app-boundary TSX and className usage.
 
 ## Packages
 
