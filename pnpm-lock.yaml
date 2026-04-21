@@ -101,6 +101,15 @@ importers:
         specifier: workspace:*
         version: link:../types
 
+  packages/rbxts-tailwind:
+    dependencies:
+      '@rbxts-tailwind/config':
+        specifier: workspace:*
+        version: link:../config
+      '@rbxts-tailwind/rbxtsc-host':
+        specifier: workspace:*
+        version: link:../rbxtsc-host
+
   packages/rbxtsc-host:
     dependencies:
       '@rbxts-tailwind/compiler':

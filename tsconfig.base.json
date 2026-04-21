@@ -10,6 +10,9 @@
       "@rbxts-tailwind/config": [
         "./packages/config/src/index.ts"
       ],
+      "rbxts-tailwind": [
+        "./packages/rbxts-tailwind/src/index.ts"
+      ],
       "@rbxts-tailwind/core": [
         "./packages/core/src/index.ts"
       ],
