@@ -9,7 +9,6 @@ export const App = () => {
 				Size={new UDim2(0, 320, 0, 108)}
 				className="rounded-md px-4 bg-surface"
 			>
-				<uicorner CornerRadius={new UDim(0, 12)} />
 				<textlabel
 					BackgroundTransparency={1}
 					Size={UDim2.fromScale(1, 1)}
