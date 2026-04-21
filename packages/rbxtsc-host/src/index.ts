@@ -1,6 +1,5 @@
-import { type TransformOptions, transform } from "@rbxts-tailwind/compiler";
+import { transform } from "@rbxts-tailwind/compiler";
 import { defaultConfig, type TailwindConfig } from "@rbxts-tailwind/config";
-import type { TransformResult } from "@rbxts-tailwind/ir";
 
 export type HostTransformRequest = {
 	fileName: string;
@@ -10,17 +9,16 @@ export type HostTransformRequest = {
 
 export type HostTransformResponse = {
 	sourceText: string;
-	diagnostics: TransformResult["diagnostics"];
+	diagnostics: ReturnType<typeof transform>["diagnostics"];
 	changed: boolean;
 };
 
 export function transformSourceForHost(
 	request: HostTransformRequest,
 ): HostTransformResponse {
-	const options: TransformOptions = {
-		config: request.config ?? defaultConfig,
-	};
-	const result = transform(request.sourceText, options);
+	const result = transform(request.sourceText, {
+		configJson: JSON.stringify(request.config ?? defaultConfig),
+	});
 
 	return {
 		sourceText: result.code,
