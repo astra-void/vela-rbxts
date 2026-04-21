@@ -19,7 +19,7 @@
     "types": ["types", "compiler-types"],
     "plugins": [
       {
-        "transform": "@rbxts-tailwind/rbxtsc-host/dist/transformer.js",
+        "transform": "rbxts-tailwind/transformer",
         "type": "program"
       }
     ],

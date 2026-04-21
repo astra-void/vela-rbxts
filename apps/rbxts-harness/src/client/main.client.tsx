@@ -1,3 +1,4 @@
+import type {} from "rbxts-tailwind";
 import React from "@rbxts/react";
 import ReactRoblox from "@rbxts/react-roblox";
 import { Players } from "@rbxts/services";

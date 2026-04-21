@@ -1,22 +1,36 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
+const transformerModule = require("rbxts-tailwind/transformer");
+const transformer =
+	typeof transformerModule === "function"
+		? transformerModule
+		: transformerModule.default;
+
 const appLuauPath = path.join(__dirname, "..", "out", "client", "App.luau");
 const source = fs.readFileSync(appLuauPath, "utf8");
 
 const requiredFragments = [
-	"BackgroundColor3 = theme.colors.surface",
+	"BackgroundColor3 = Color3.fromRGB(40, 48, 66)",
 	'React.createElement("uicorner"',
-	"CornerRadius = theme.radius.md",
+	"CornerRadius = UDim.new(0, 8)",
 	'React.createElement("uipadding"',
-	"PaddingLeft = theme.spacing[4]",
-	"PaddingRight = theme.spacing[4]",
+	"PaddingLeft = UDim.new(0, 12)",
+	"PaddingRight = UDim.new(0, 12)",
 ];
 
 const failures = [];
 
+if (typeof transformer !== "function") {
+	failures.push("rbxts-tailwind/transformer does not export a program transformer");
+}
+
 if (source.includes("className")) {
 	failures.push("emitted Luau still contains className");
+}
+
+if (source.includes("local theme")) {
+	failures.push("emitted Luau still declares a local theme object");
 }
 
 for (const fragment of requiredFragments) {

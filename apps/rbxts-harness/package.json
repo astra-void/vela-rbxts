@@ -3,9 +3,9 @@
 	"version": "0.1.0",
 	"private": true,
 	"scripts": {
-		"prebuild": "pnpm --filter @rbxts-tailwind/rbxtsc-host build",
+		"prebuild": "pnpm --filter rbxts-tailwind build",
 		"build": "rbxtsc -p tsconfig.json",
-		"predev": "pnpm --filter @rbxts-tailwind/rbxtsc-host build",
+		"predev": "pnpm --filter rbxts-tailwind build",
 		"dev": "rbxtsc -w -p tsconfig.json",
 		"test": "pnpm run build && node scripts/verify-rbxtsc-output.cjs",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
@@ -19,8 +19,7 @@
 		"@rbxts/services": "^1.6.0"
 	},
 	"devDependencies": {
-		"@rbxts-tailwind/rbxtsc-host": "workspace:*",
-		"@rbxts-tailwind/types": "workspace:*",
+		"rbxts-tailwind": "workspace:*",
 		"@rbxts/compiler-types": "^3.0.0-types.0",
 		"@rbxts/types": "^1.0.916",
 		"roblox-ts": "^3.0.0",
