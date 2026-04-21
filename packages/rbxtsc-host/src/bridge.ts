@@ -24,8 +24,3 @@ export function createRbxtscTransformerBridge(
 		transformFile,
 	};
 }
-
-// TODO: Attach this bridge to the actual roblox-ts transformer lifecycle once the
-// harness owns a real rbxtsc compile step. The adapter should keep these phases
-// separate: file selection, compiler invocation, diagnostic bridging, and source
-// reinjection back into rbxtsc.

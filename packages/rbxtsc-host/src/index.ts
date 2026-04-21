@@ -12,6 +12,10 @@ export {
 	type TransformSourceForHostOptions,
 	transformSourceForHost,
 } from "./transform.js";
+export {
+	type RbxtscProgramTransformerOptions,
+	default as createRbxtsTailwindProgramTransformer,
+} from "./transformer.js";
 export type {
 	HostCompiler,
 	HostDiagnostic,

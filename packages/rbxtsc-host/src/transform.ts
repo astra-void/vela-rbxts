@@ -1,5 +1,5 @@
 import { transform } from "@rbxts-tailwind/compiler";
-import { defaultConfig, type TailwindConfig } from "@rbxts-tailwind/config";
+import type { TailwindConfig } from "@rbxts-tailwind/config";
 
 import {
 	createHostDiagnostic,
@@ -43,12 +43,13 @@ export function transformSourceForHost(
 	}
 
 	const compiler = options.compiler ?? defaultCompiler;
-	const config = request.config ?? options.config ?? defaultConfig;
+	const config = request.config ?? options.config;
 
 	try {
-		const compilerResult = compiler.transform(request.sourceText, {
-			configJson: JSON.stringify(config),
-		});
+		const compilerResult = compiler.transform(
+			request.sourceText,
+			config === undefined ? undefined : { configJson: JSON.stringify(config) },
+		);
 
 		return {
 			fileName: request.fileName,

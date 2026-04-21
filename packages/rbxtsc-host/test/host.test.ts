@@ -73,12 +73,7 @@ test("calls the compiler and returns transformed host source", () => {
 	const result = transformSourceForHost(sourceFile);
 
 	expect(transform).toHaveBeenCalledTimes(1);
-	expect(transform).toHaveBeenCalledWith(
-		sourceFile.sourceText,
-		expect.objectContaining({
-			configJson: expect.any(String),
-		}),
-	);
+	expect(transform).toHaveBeenCalledWith(sourceFile.sourceText, undefined);
 	expect(result.skipped).toBe(false);
 	expect(result.changed).toBe(true);
 	expect(result.sourceText).toBe(
