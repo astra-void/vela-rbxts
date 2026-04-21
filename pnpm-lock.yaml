@@ -22,23 +22,10 @@ importers:
         version: 4.1.4(vite@8.0.9(esbuild@0.27.7)(tsx@4.21.0))
 
   packages/compiler:
-    dependencies:
+    devDependencies:
       '@rbxts-tailwind/config':
         specifier: workspace:*
         version: link:../config
-      '@rbxts-tailwind/core':
-        specifier: workspace:*
-        version: link:../core
-      '@rbxts-tailwind/ir':
-        specifier: workspace:*
-        version: link:../ir
-      '@rbxts-tailwind/types':
-        specifier: workspace:*
-        version: link:../types
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-    devDependencies:
       '@napi-rs/cli':
         specifier: ^3.6.2
         version: 3.6.2(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)
