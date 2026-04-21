@@ -3,7 +3,7 @@ import { expect, expectTypeOf, test } from "vitest";
 import {
 	implementationKind,
 	transform,
-} from "../index.js";
+} from "@rbxts-tailwind/compiler";
 
 test("transforms frame className literal into props and helper children", () => {
 	const source = '<frame className="rounded-md px-4 bg-surface" />';

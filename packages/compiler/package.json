@@ -1,26 +1,35 @@
 {
   "name": "@rbxts-tailwind/compiler",
   "version": "0.1.0",
-  "main": "./index.js",
-  "types": "./index.d.ts",
+  "type": "commonjs",
+  "main": "./entry.cjs",
+  "types": "./entry.d.ts",
   "exports": {
     ".": {
+      "types": "./entry.d.ts",
+      "import": "./entry.cjs",
+      "require": "./entry.cjs",
+      "default": "./entry.cjs"
+    },
+    "./native": {
       "types": "./index.d.ts",
+      "require": "./index.js",
       "default": "./index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "napi": {
     "binaryName": "compiler",
-		"targets": [
-			"x86_64-apple-darwin",
-			"aarch64-apple-darwin",
-			"x86_64-unknown-linux-gnu",
-			"x86_64-pc-windows-msvc",
-			"x86_64-unknown-linux-musl",
-			"aarch64-unknown-linux-gnu",
-			"aarch64-unknown-linux-musl",
-			"aarch64-pc-windows-msvc"
-		]
+    "targets": [
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-gnu",
+      "aarch64-unknown-linux-musl",
+      "aarch64-pc-windows-msvc"
+    ]
   },
   "scripts": {
     "build": "pnpm run build:native",

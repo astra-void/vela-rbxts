@@ -1,6 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 use swc_core::{
     common::{sync::Lrc, FileName, SourceMap, DUMMY_SP},
@@ -102,6 +103,37 @@ struct ThemeSpacing {
     #[serde(rename = "4", default = "default_spacing_4")]
     four: String,
 }
+
+#[derive(Clone, Deserialize)]
+struct TailwindDefaultsDocument {
+    theme: ThemeDefaultsDocument,
+}
+
+#[derive(Clone, Deserialize)]
+struct ThemeDefaultsDocument {
+    colors: ThemeColorsDefaultsDocument,
+    radius: ThemeRadiusDefaultsDocument,
+    spacing: ThemeSpacingDefaultsDocument,
+}
+
+#[derive(Clone, Deserialize)]
+struct ThemeColorsDefaultsDocument {
+    surface: String,
+}
+
+#[derive(Clone, Deserialize)]
+struct ThemeRadiusDefaultsDocument {
+    md: String,
+}
+
+#[derive(Clone, Deserialize)]
+struct ThemeSpacingDefaultsDocument {
+    #[serde(rename = "4")]
+    four: String,
+}
+
+const DEFAULT_CONFIG_JSON: &str = include_str!("../../config/src/defaults.json");
+static DEFAULT_CONFIG: OnceLock<TailwindConfig> = OnceLock::new();
 
 #[derive(Clone)]
 struct PropEntry {
@@ -437,47 +469,58 @@ fn parse_config(config_json: Option<&str>) -> TailwindConfig {
 }
 
 fn default_config() -> TailwindConfig {
-    TailwindConfig {
-        theme: default_theme(),
-    }
+    default_config_ref().clone()
 }
 
 fn default_theme() -> ThemeConfig {
-    ThemeConfig {
-        colors: default_surface(),
-        radius: default_radius(),
-        spacing: default_spacing(),
-    }
+    default_config_ref().theme.clone()
 }
 
 fn default_surface() -> ThemeColors {
-    ThemeColors {
-        surface: default_surface_value(),
-    }
+    default_config_ref().theme.colors.clone()
 }
 
 fn default_radius() -> ThemeRadius {
-    ThemeRadius {
-        md: default_radius_md(),
-    }
+    default_config_ref().theme.radius.clone()
 }
 
 fn default_spacing() -> ThemeSpacing {
-    ThemeSpacing {
-        four: default_spacing_4(),
-    }
+    default_config_ref().theme.spacing.clone()
 }
 
 fn default_surface_value() -> String {
-    "theme.colors.surface".to_owned()
+    default_config_ref().theme.colors.surface.clone()
 }
 
 fn default_radius_md() -> String {
-    "theme.radius.md".to_owned()
+    default_config_ref().theme.radius.md.clone()
 }
 
 fn default_spacing_4() -> String {
-    "theme.spacing[4]".to_owned()
+    default_config_ref().theme.spacing.four.clone()
+}
+
+fn default_config_ref() -> &'static TailwindConfig {
+    DEFAULT_CONFIG.get_or_init(|| {
+        let document: TailwindDefaultsDocument = serde_json::from_str(DEFAULT_CONFIG_JSON)
+            .expect(
+                "packages/config/src/defaults.json must be valid TailwindConfig-compatible JSON",
+            );
+
+        TailwindConfig {
+            theme: ThemeConfig {
+                colors: ThemeColors {
+                    surface: document.theme.colors.surface,
+                },
+                radius: ThemeRadius {
+                    md: document.theme.radius.md,
+                },
+                spacing: ThemeSpacing {
+                    four: document.theme.spacing.four,
+                },
+            },
+        }
+    })
 }
 
 #[cfg(target_arch = "wasm32")]
