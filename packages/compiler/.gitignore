@@ -1,0 +1,10 @@
+/target
+/.artifacts
+/.npm
+/artifacts
+/npm
+/.native
+/*.node
+/index.js
+/index.d.ts
+/Cargo.lock

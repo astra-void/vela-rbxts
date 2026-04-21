@@ -1,6 +1,9 @@
-import { expect, test } from "vitest";
+import { expect, expectTypeOf, test } from "vitest";
 
-import { transform } from "../dist/index.js";
+import {
+	implementationKind,
+	transform,
+} from "../index.js";
 
 test("transforms frame className literal into props and helper children", () => {
 	const source = '<frame className="rounded-md px-4 bg-surface" />';
@@ -16,4 +19,18 @@ test("transforms frame className literal into props and helper children", () => 
 	expect(result.code).toMatch(
 		/<uipadding\b[^>]*PaddingLeft=\{theme\.spacing\[4\]\}[^>]*PaddingRight=\{theme\.spacing\[4\]\}[^>]*\/>/i,
 	);
+});
+
+test("keeps the public transform options compiler-centric", () => {
+	expectTypeOf<Parameters<typeof transform>[1]>().toEqualTypeOf<
+		| {
+		configJson?: string;
+	}
+		| null
+		| undefined
+	>();
+});
+
+test("loads the native compiler binding", () => {
+	expect(implementationKind()).toBe("native");
 });

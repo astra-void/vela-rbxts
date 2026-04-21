@@ -1,6 +1,35 @@
 [package]
-name = "compiler"
+name = "rbxts-tailwind-compiler"
 version = "0.1.0"
 edition = "2024"
+description = "SWC/N-API compiler crate for @rbxts-tailwind/compiler."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
 
 [dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+swc_core = { version = "63.1", features = [
+  "common",
+  "ecma_ast",
+  "ecma_visit",
+  "ecma_codegen",
+  "ecma_parser",
+  "ecma_parser_typescript"
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+napi = "3.8.3"
+napi-derive = "3.5.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+serde-wasm-bindgen = "0.6"
+wasm-bindgen = "0.2"

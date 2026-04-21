@@ -1,33 +1,39 @@
 {
   "name": "@rbxts-tailwind/compiler",
   "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./index.js",
+  "types": "./index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "types": "./index.d.ts",
+      "default": "./index.js"
     }
   },
+  "napi": {
+    "binaryName": "compiler",
+		"targets": [
+			"x86_64-apple-darwin",
+			"aarch64-apple-darwin",
+			"x86_64-unknown-linux-gnu",
+			"x86_64-pc-windows-msvc",
+			"x86_64-unknown-linux-musl",
+			"aarch64-unknown-linux-gnu",
+			"aarch64-unknown-linux-musl",
+			"aarch64-pc-windows-msvc"
+		]
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsc -p tsconfig.json --watch",
+    "build": "pnpm run build:native",
+    "build:native": "napi build --platform",
+    "dev": "pnpm run build:native",
     "lint": "biome check .",
     "lint:fix": "biome check . --fix --unsafe",
-    "test": "vitest run test/*.test.ts",
+    "test": "pnpm run build:native && vitest run test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});\""
   },
-  "dependencies": {
-    "@rbxts-tailwind/config": "workspace:*",
-    "@rbxts-tailwind/core": "workspace:*",
-    "@rbxts-tailwind/ir": "workspace:*",
-    "@rbxts-tailwind/types": "workspace:*",
-    "typescript": "5.9.3"
-  },
   "devDependencies": {
+    "@rbxts-tailwind/config": "workspace:*",
     "@napi-rs/cli": "^3.6.2"
   }
 }
