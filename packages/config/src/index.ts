@@ -1,3 +1,5 @@
+import defaultConfigSource from "./defaults.json";
+
 export type ThemeConfig = {
 	colors: {
 		surface: string;
@@ -22,19 +24,9 @@ export type TailwindConfigInput = {
 	};
 };
 
-export const defaultConfig: TailwindConfig = {
-	theme: {
-		colors: {
-			surface: "theme.colors.surface",
-		},
-		radius: {
-			md: "theme.radius.md",
-		},
-		spacing: {
-			"4": "theme.spacing[4]",
-		},
-	},
-};
+const validatedDefaultConfig = defaultConfigSource satisfies TailwindConfig;
+
+export const defaultConfig: TailwindConfig = validatedDefaultConfig;
 
 export function defineConfig(input: TailwindConfigInput = {}): TailwindConfig {
 	return {

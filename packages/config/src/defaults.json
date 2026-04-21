@@ -1,0 +1,13 @@
+{
+  "theme": {
+    "colors": {
+      "surface": "theme.colors.surface"
+    },
+    "radius": {
+      "md": "theme.radius.md"
+    },
+    "spacing": {
+      "4": "theme.spacing[4]"
+    }
+  }
+}
