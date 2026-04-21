@@ -55,9 +55,6 @@ importers:
       '@rbxts-tailwind/rbxtsc-host':
         specifier: workspace:*
         version: link:../../packages/rbxtsc-host
-      '@rbxts-tailwind/types':
-        specifier: workspace:*
-        version: link:../../packages/types
       '@rbxts/compiler-types':
         specifier: ^3.0.0-types.0
         version: 3.0.0-types.0
