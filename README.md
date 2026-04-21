@@ -15,11 +15,11 @@ This stage only includes shared config and package placeholders.
 ## Package Roles
 
 - @rbxts-tailwind/ir: Intermediate representation layer contracts and primitives.
-- @rbxts-tailwind/core: Core domain flow and shared utility boundary.
+- @rbxts-tailwind/core: Semantic contracts and ownership boundary (non-executable).
 - @rbxts-tailwind/config: Configuration contracts and loading entry points.
 - @rbxts-tailwind/types: Workspace-wide shared public types.
-- @rbxts-tailwind/compiler: Compile pipeline orchestration entry package.
-- @rbxts-tailwind/rbxtsc-host: Host adapter boundary for rbxtsc integration.
+- @rbxts-tailwind/compiler: Real Rust/SWC/N-API compiler execution and semantic resolution.
+- @rbxts-tailwind/rbxtsc-host: Host adapter boundary for rbxtsc integration (host-only).
 
 ## Commands
 
