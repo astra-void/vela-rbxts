@@ -14,7 +14,7 @@
         "./packages/core/src/index.ts"
       ],
       "@rbxts-tailwind/compiler": [
-        "./packages/compiler/index.d.ts"
+        "./packages/compiler"
       ],
       "@rbxts-tailwind/ir": [
         "./packages/ir/src/index.ts"
