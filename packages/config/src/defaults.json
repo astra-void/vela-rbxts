@@ -1,13 +1,13 @@
 {
   "theme": {
     "colors": {
-      "surface": "theme.colors.surface"
+      "surface": "Color3.fromRGB(40, 48, 66)"
     },
     "radius": {
-      "md": "theme.radius.md"
+      "md": "new UDim(0, 8)"
     },
     "spacing": {
-      "4": "theme.spacing[4]"
+      "4": "new UDim(0, 12)"
     }
   }
 }
