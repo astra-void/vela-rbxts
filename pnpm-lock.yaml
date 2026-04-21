@@ -63,9 +63,6 @@ importers:
       '@rbxts-tailwind/ir':
         specifier: workspace:*
         version: link:../ir
-      '@rbxts-tailwind/types':
-        specifier: workspace:*
-        version: link:../types
 
   packages/ir:
     dependencies:
