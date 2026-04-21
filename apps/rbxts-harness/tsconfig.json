@@ -12,6 +12,7 @@
     "experimentalDecorators": true,
     "forceConsistentCasingInFileNames": true,
     "moduleDetection": "force",
+    "skipLibCheck": true,
     "strict": true,
     "target": "ESNext",
     "typeRoots": ["node_modules/@rbxts"],
