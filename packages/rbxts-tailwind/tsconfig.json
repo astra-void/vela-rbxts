@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    "verbatimModuleSyntax": false,
     "rootDir": "src",
     "outDir": "dist",
     "composite": true,
@@ -15,6 +16,9 @@
     },
     {
       "path": "../rbxtsc-host"
+    },
+    {
+      "path": "../types"
     }
   ]
 }

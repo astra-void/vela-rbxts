@@ -7,12 +7,19 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./transformer": {
+      "types": "./dist/transformer.d.cts",
+      "import": "./dist/transformer.cjs",
+      "require": "./dist/transformer.cjs",
+      "default": "./dist/transformer.cjs"
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsc -p tsconfig.json --watch",
+    "build": "tsc -b tsconfig.json",
+    "dev": "tsc -b tsconfig.json --watch",
     "lint": "biome check .",
     "lint:fix": "biome check . --fix --unsafe",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -20,6 +27,7 @@
   },
   "dependencies": {
     "@rbxts-tailwind/config": "workspace:*",
-    "@rbxts-tailwind/rbxtsc-host": "workspace:*"
+    "@rbxts-tailwind/rbxtsc-host": "workspace:*",
+    "@rbxts-tailwind/types": "workspace:*"
   }
 }

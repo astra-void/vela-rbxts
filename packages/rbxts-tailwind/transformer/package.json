@@ -1,0 +1,6 @@
+{
+  "name": "rbxts-tailwind-transformer",
+  "private": true,
+  "type": "commonjs",
+  "main": "./index.js"
+}
