@@ -1,0 +1,297 @@
+:root {
+	color-scheme: dark;
+	font-family:
+		Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+		sans-serif;
+	background: #111318;
+	color: #eef1f4;
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	min-width: 320px;
+	min-height: 100vh;
+	background:
+		linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 260px),
+		#111318;
+}
+
+button,
+textarea {
+	font: inherit;
+}
+
+.shell {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	min-height: 100vh;
+	padding: 20px;
+}
+
+.topbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	padding-bottom: 4px;
+}
+
+.topbar h1 {
+	margin: 0;
+	font-size: 20px;
+	font-weight: 700;
+	line-height: 1.1;
+}
+
+.topbar p {
+	margin: 4px 0 0;
+	color: #9ca6b3;
+	font-size: 13px;
+}
+
+.status-strip {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
+	gap: 8px;
+}
+
+.status-pill,
+.metric {
+	display: inline-flex;
+	align-items: center;
+	min-height: 32px;
+	border: 1px solid #313844;
+	border-radius: 6px;
+	background: #191d24;
+	color: #cbd3dd;
+	font-size: 12px;
+}
+
+.status-pill {
+	min-width: 76px;
+	justify-content: center;
+	padding: 0 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.status-pill[data-status="running"] {
+	border-color: #8c6d1f;
+	color: #ffd166;
+}
+
+.status-pill[data-status="ok"] {
+	border-color: #247a56;
+	color: #67e8a5;
+}
+
+.status-pill[data-status="error"] {
+	border-color: #8a2d3e;
+	color: #ff8fa3;
+}
+
+.metric {
+	gap: 8px;
+	padding: 0 10px;
+}
+
+.metric b {
+	color: #f8fafc;
+	font-size: 13px;
+}
+
+.metric span {
+	color: #8c96a4;
+}
+
+.workspace {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 16px;
+	min-height: 0;
+	flex: 1;
+}
+
+.panel,
+.diagnostics-panel {
+	border: 1px solid #29303a;
+	border-radius: 8px;
+	background: #161a21;
+	overflow: hidden;
+}
+
+.panel {
+	display: flex;
+	min-height: 0;
+	flex-direction: column;
+}
+
+.panel-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	min-height: 40px;
+	border-bottom: 1px solid #29303a;
+	padding: 0 12px;
+	background: #1c2129;
+}
+
+.panel-header h2 {
+	margin: 0;
+	font-size: 13px;
+	font-weight: 700;
+}
+
+.panel-header span {
+	color: #8c96a4;
+	font-size: 12px;
+}
+
+.config-header {
+	border-top: 1px solid #29303a;
+}
+
+textarea,
+pre {
+	width: 100%;
+	margin: 0;
+	border: 0;
+	background: #111318;
+	color: #e8edf3;
+	font-family:
+		"SFMono-Regular", Consolas, "Liberation Mono", Menlo, ui-monospace,
+		monospace;
+	font-size: 13px;
+	line-height: 1.55;
+	outline: none;
+	tab-size: 2;
+}
+
+textarea {
+	resize: none;
+	padding: 12px;
+}
+
+#source-input {
+	flex: 1 1 68%;
+	min-height: 260px;
+}
+
+#config-input {
+	flex: 1 1 32%;
+	min-height: 120px;
+}
+
+pre {
+	flex: 1;
+	min-height: 420px;
+	overflow: auto;
+	padding: 12px;
+	white-space: pre;
+}
+
+.diagnostics-panel {
+	min-height: 140px;
+	max-height: 240px;
+}
+
+.diagnostics-list {
+	display: grid;
+	gap: 8px;
+	max-height: 198px;
+	overflow: auto;
+	padding: 10px;
+}
+
+.empty-state {
+	margin: 0;
+	color: #8c96a4;
+	font-size: 13px;
+}
+
+.diagnostic {
+	border: 1px solid #343c49;
+	border-left-width: 4px;
+	border-radius: 6px;
+	background: #111318;
+	padding: 10px;
+}
+
+.diagnostic-error {
+	border-left-color: #ff5d7a;
+}
+
+.diagnostic-warning,
+.diagnostic-warn {
+	border-left-color: #ffd166;
+}
+
+.diagnostic-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.diagnostic-level {
+	color: #f8fafc;
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.diagnostic code,
+.diagnostic-token {
+	color: #9dd8ff;
+	font-family:
+		"SFMono-Regular", Consolas, "Liberation Mono", Menlo, ui-monospace,
+		monospace;
+	font-size: 12px;
+}
+
+.diagnostic p {
+	margin: 8px 0 0;
+	color: #d6dde6;
+	font-size: 13px;
+	line-height: 1.45;
+}
+
+.diagnostic-token {
+	display: inline-block;
+	margin-top: 8px;
+	border: 1px solid #343c49;
+	border-radius: 4px;
+	padding: 3px 6px;
+	background: #1a2028;
+}
+
+@media (max-width: 860px) {
+	.shell {
+		padding: 14px;
+	}
+
+	.topbar {
+		align-items: flex-start;
+		flex-direction: column;
+	}
+
+	.status-strip {
+		justify-content: flex-start;
+	}
+
+	.workspace {
+		grid-template-columns: 1fr;
+	}
+
+	pre {
+		min-height: 260px;
+	}
+}

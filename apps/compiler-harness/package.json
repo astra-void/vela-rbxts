@@ -1,0 +1,22 @@
+{
+	"name": "compiler-harness",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "pnpm --filter @rbxts-tailwind/compiler build:native && vite --host 127.0.0.1",
+		"build": "tsc --noEmit && vite build",
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"lint:fix": "biome check . --fix --unsafe",
+		"clean": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});\""
+	},
+	"dependencies": {
+		"@rbxts-tailwind/compiler": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "^24.10.1",
+		"typescript": "5.9.3",
+		"vite": "^8.0.9"
+	}
+}
