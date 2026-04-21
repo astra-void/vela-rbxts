@@ -1,5 +1,17 @@
 import React from "@rbxts/react";
 
+const theme = {
+	colors: {
+		surface: Color3.fromRGB(40, 48, 66),
+	},
+	radius: {
+		md: new UDim(0, 8),
+	},
+	spacing: {
+		4: new UDim(0, 12),
+	},
+} as const;
+
 export const App = () => {
 	return (
 		<screengui ResetOnSpawn={false} IgnoreGuiInset>
