@@ -1,62 +1,29 @@
-import { defaultConfig, type TailwindConfig } from "@rbxts-tailwind/config";
-import type { Diagnostic, StyleIR } from "@rbxts-tailwind/ir";
+import type { TailwindConfig } from "@rbxts-tailwind/config";
+import type { StyleIR } from "@rbxts-tailwind/ir";
 
-export type ResolveClassTokensOptions = {
-	config?: TailwindConfig;
+export const SEMANTIC_OWNER_PACKAGE = "@rbxts-tailwind/compiler" as const;
+export const SEMANTIC_OWNER_RUNTIME = "rust-swc-napi" as const;
+
+export type SemanticOwnership = {
+	ownerPackage: typeof SEMANTIC_OWNER_PACKAGE;
+	runtime: typeof SEMANTIC_OWNER_RUNTIME;
+	notes: string;
 };
 
-export function tokenizeClassName(input: string): string[] {
-	return input
-		.trim()
-		.split(/\s+/)
-		.filter((token) => token.length > 0);
-}
+// Core declares shared semantic boundaries only.
+// Executable semantic resolution lives exclusively in @rbxts-tailwind/compiler.
+export const semanticOwnership: SemanticOwnership = {
+	ownerPackage: SEMANTIC_OWNER_PACKAGE,
+	runtime: SEMANTIC_OWNER_RUNTIME,
+	notes:
+		"This package defines semantic contracts only. Utility tokenization/resolution is compiler-owned.",
+};
 
-export function resolveClassTokens(
-	tokens: string[],
-	options: ResolveClassTokensOptions = {},
-): StyleIR {
-	const config = options.config ?? defaultConfig;
-	const props: StyleIR["props"] = [];
-	const helpers: StyleIR["helpers"] = [];
-	const diagnostics: Diagnostic[] = [];
+export type ClassNameSemanticRequest = {
+	elementTag: "frame";
+	attributeName: "className";
+	classNameLiteral: string;
+	config: TailwindConfig;
+};
 
-	for (const token of tokens) {
-		switch (token) {
-			case "rounded-md": {
-				helpers.push({
-					tag: "uicorner",
-					props: [{ name: "CornerRadius", value: config.theme.radius.md }],
-				});
-				break;
-			}
-			case "px-4": {
-				helpers.push({
-					tag: "uipadding",
-					props: [
-						{ name: "PaddingLeft", value: config.theme.spacing["4"] },
-						{ name: "PaddingRight", value: config.theme.spacing["4"] },
-					],
-				});
-				break;
-			}
-			case "bg-surface": {
-				props.push({
-					name: "BackgroundColor3",
-					value: config.theme.colors.surface,
-				});
-				break;
-			}
-			default: {
-				diagnostics.push({
-					level: "warning",
-					code: "unsupported-utility",
-					message: `Unsupported utility "${token}" in className literal.`,
-					token,
-				});
-			}
-		}
-	}
-
-	return { props, helpers, diagnostics };
-}
+export type ClassNameSemanticResult = StyleIR;

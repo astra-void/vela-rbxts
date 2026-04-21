@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@rbxts-tailwind/config": "workspace:*",
-    "@rbxts-tailwind/ir": "workspace:*",
-    "@rbxts-tailwind/types": "workspace:*"
+    "@rbxts-tailwind/ir": "workspace:*"
   }
 }
