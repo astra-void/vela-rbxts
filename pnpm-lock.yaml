@@ -52,18 +52,15 @@ importers:
         specifier: ^1.6.0
         version: 1.6.0
     devDependencies:
-      '@rbxts-tailwind/rbxtsc-host':
-        specifier: workspace:*
-        version: link:../../packages/rbxtsc-host
-      '@rbxts-tailwind/types':
-        specifier: workspace:*
-        version: link:../../packages/types
       '@rbxts/compiler-types':
         specifier: ^3.0.0-types.0
         version: 3.0.0-types.0
       '@rbxts/types':
         specifier: ^1.0.916
         version: 1.0.916
+      rbxts-tailwind:
+        specifier: workspace:*
+        version: link:../../packages/rbxts-tailwind
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
@@ -109,6 +106,9 @@ importers:
       '@rbxts-tailwind/rbxtsc-host':
         specifier: workspace:*
         version: link:../rbxtsc-host
+      '@rbxts-tailwind/types':
+        specifier: workspace:*
+        version: link:../types
 
   packages/rbxtsc-host:
     dependencies:
