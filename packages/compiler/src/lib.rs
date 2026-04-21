@@ -1,8 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
+
 use swc_core::{
     common::{sync::Lrc, FileName, SourceMap, DUMMY_SP},
     ecma::{
