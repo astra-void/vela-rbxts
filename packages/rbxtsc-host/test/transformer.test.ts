@@ -7,7 +7,7 @@ import createRbxtsTailwindProgramTransformer from "../src/transformer";
 
 vi.mock("@rbxts-tailwind/compiler", () => ({
 	transform: vi.fn(() => ({
-		code: "<frame BackgroundColor3={theme.colors.surface} />",
+		code: "<frame BackgroundColor3={Color3.fromRGB(40, 48, 66)} />",
 		diagnostics: [],
 		changed: true,
 	})),

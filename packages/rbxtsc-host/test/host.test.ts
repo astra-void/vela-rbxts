@@ -1,4 +1,9 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { transform } from "@rbxts-tailwind/compiler";
+import defaultConfig from "../../config/src/defaults.json";
 import { beforeEach, expect, test, vi } from "vitest";
 import {
 	createRbxtscTransformerBridge,
@@ -6,9 +11,12 @@ import {
 	transformSourceForHost,
 } from "../src/index";
 
+const mockTransformedCode =
+	'<frame BackgroundColor3={Color3.fromRGB(40, 48, 66)}><uicorner CornerRadius={new UDim(0, 8)}/><uipadding PaddingLeft={new UDim(0, 12)} PaddingRight={new UDim(0, 12)}/></frame>';
+
 vi.mock("@rbxts-tailwind/compiler", () => ({
 	transform: vi.fn(() => ({
-		code: "<frame BackgroundColor3={theme.colors.surface} />",
+		code: mockTransformedCode,
 		diagnostics: [
 			{
 				level: "warning",
@@ -69,16 +77,76 @@ test("returns a skipped result without invoking the compiler", () => {
 	);
 });
 
+test("falls back to defaultConfig when rbxtw.config.ts is absent", () => {
+	const project = createProject();
+
+	const result = transformSourceForHost({
+		fileName: project.sourceFile,
+		sourceText: sourceFile.sourceText,
+	});
+
+	expect(transform).toHaveBeenCalledTimes(1);
+	expect(transform).toHaveBeenCalledWith(sourceFile.sourceText, {
+		configJson: JSON.stringify(defaultConfig),
+	});
+	expect(result.skipped).toBe(false);
+	expect(result.changed).toBe(true);
+	expect(result.sourceText).toBe(mockTransformedCode);
+});
+
+test("loads rbxtw.config.ts when present", () => {
+	const project = createProject(
+		`export default defineConfig({
+			theme: {
+				colors: {
+					surface: "Color3.fromRGB(1, 2, 3)",
+				},
+				radius: {
+					md: "new UDim(0, 6)",
+				},
+				spacing: {
+					"4": "new UDim(0, 10)",
+				},
+			},
+		});`,
+	);
+
+	const result = transformSourceForHost({
+		fileName: project.sourceFile,
+		sourceText: sourceFile.sourceText,
+	});
+
+	expect(transform).toHaveBeenCalledTimes(1);
+	expect(transform).toHaveBeenCalledWith(sourceFile.sourceText, {
+		configJson: JSON.stringify({
+			theme: {
+				colors: {
+					surface: "Color3.fromRGB(1, 2, 3)",
+				},
+				radius: {
+					md: "new UDim(0, 6)",
+				},
+				spacing: {
+					"4": "new UDim(0, 10)",
+				},
+			},
+		}),
+	});
+	expect(result.skipped).toBe(false);
+	expect(result.changed).toBe(true);
+	expect(result.sourceText).toBe(mockTransformedCode);
+});
+
 test("calls the compiler and returns transformed host source", () => {
 	const result = transformSourceForHost(sourceFile);
 
 	expect(transform).toHaveBeenCalledTimes(1);
-	expect(transform).toHaveBeenCalledWith(sourceFile.sourceText, undefined);
+	expect(transform).toHaveBeenCalledWith(sourceFile.sourceText, {
+		configJson: JSON.stringify(defaultConfig),
+	});
 	expect(result.skipped).toBe(false);
 	expect(result.changed).toBe(true);
-	expect(result.sourceText).toBe(
-		"<frame BackgroundColor3={theme.colors.surface} />",
-	);
+	expect(result.sourceText).toBe(mockTransformedCode);
 });
 
 test("carries compiler diagnostics through the host diagnostic boundary", () => {
@@ -120,3 +188,21 @@ test("does not expose semantic utility resolution functions from the host", asyn
 	expect(hostExports).not.toHaveProperty("lowerClassName");
 	expect(hostExports).not.toHaveProperty("parseClassName");
 });
+
+function createProject(configFileText?: string): {
+	sourceFile: string;
+} {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "rbxtw-host-"));
+	const sourceFile = path.join(root, "src", "client", "App.tsx");
+	fs.mkdirSync(path.dirname(sourceFile), { recursive: true });
+
+	if (configFileText !== undefined) {
+		fs.writeFileSync(
+			path.join(root, "rbxtw.config.ts"),
+			configFileText,
+			"utf8",
+		);
+	}
+
+	return { sourceFile };
+}

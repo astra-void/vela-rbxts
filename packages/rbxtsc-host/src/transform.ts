@@ -6,6 +6,7 @@ import {
 	mapCompilerDiagnosticsToHostDiagnostics,
 } from "./diagnostics.js";
 import { getHostFileEligibility } from "./filter.js";
+import { resolveProjectConfig } from "./project-config.js";
 import type {
 	HostCompiler,
 	HostDiagnosticMapper,
@@ -43,12 +44,13 @@ export function transformSourceForHost(
 	}
 
 	const compiler = options.compiler ?? defaultCompiler;
-	const config = request.config ?? options.config;
 
 	try {
+		const config =
+			request.config ?? options.config ?? resolveProjectConfig(request.fileName);
 		const compilerResult = compiler.transform(
 			request.sourceText,
-			config === undefined ? undefined : { configJson: JSON.stringify(config) },
+			{ configJson: JSON.stringify(config) },
 		);
 
 		return {
