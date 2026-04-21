@@ -29,7 +29,7 @@ export function transformSourceForHost(
 
 export function createRbxtscTransformerBridge() {
 	// TODO: Wire this entry point into rbxtsc's transformer host lifecycle.
-	// TODO: Keep this package host-only; semantic resolution stays in @rbxts-tailwind/core.
+	// TODO: Keep this package host-only; semantic resolution stays in @rbxts-tailwind/compiler.
 	return {
 		name: "@rbxts-tailwind/rbxtsc-host",
 		transformSource: transformSourceForHost,
