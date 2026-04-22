@@ -1,6 +1,9 @@
 import React from "@rbxts/react";
 
 export const App = () => {
+	const active = true;
+	const roomy = false;
+
 	return (
 		<screengui ResetOnSpawn={false} IgnoreGuiInset>
 			<frame
@@ -19,6 +22,18 @@ export const App = () => {
 					Text="layout and spacing baseline"
 					TextScaled
 					TextWrapped
+				/>
+				<frame
+					BackgroundTransparency={1}
+					className={["bg-surface", active && "rounded-md"]}
+				/>
+				<frame
+					BackgroundTransparency={1}
+					className="rounded-md md:px-4 portrait:w-80 touch:px-3"
+				/>
+				<frame
+					BackgroundTransparency={1}
+					className={{ "px-4": roomy, "px-2": !roomy }}
 				/>
 			</frame>
 		</screengui>

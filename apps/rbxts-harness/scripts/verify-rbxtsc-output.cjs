@@ -22,6 +22,7 @@ const requiredFragments = [
 	"PaddingBottom = UDim.new(0, 12)",
 	'React.createElement("uilistlayout"',
 	"Padding = UDim.new(0, 16)",
+	"__rbxtsTailwindRuntimeHost",
 ];
 
 const failures = [];
