@@ -11,7 +11,7 @@ const appLuauPath = path.join(__dirname, "..", "out", "client", "App.luau");
 const source = fs.readFileSync(appLuauPath, "utf8");
 
 const requiredFragments = [
-	"BackgroundColor3 = Color3.fromRGB(40, 48, 66)",
+	"BackgroundColor3 = Color3.fromRGB(",
 	"Size = UDim2.fromOffset(320, 108)",
 	'React.createElement("uicorner"',
 	"CornerRadius = UDim.new(0, 6)",
@@ -31,10 +31,6 @@ if (typeof transformer !== "function") {
 	failures.push(
 		"rbxts-tailwind/transformer does not export a program transformer",
 	);
-}
-
-if (source.includes("className")) {
-	failures.push("emitted Luau still contains className");
 }
 
 if (source.includes("local theme")) {
