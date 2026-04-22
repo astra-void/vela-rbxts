@@ -1,5 +1,5 @@
 {
-  "name": "@rbxts-tailwind/types",
+  "name": "@vela-rbxts/types",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
