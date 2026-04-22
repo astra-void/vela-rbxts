@@ -3,9 +3,9 @@
 	"version": "0.1.0",
 	"private": true,
 	"scripts": {
-		"prebuild": "pnpm --filter rbxts-tailwind build",
+		"prebuild": "pnpm --filter vela-rbxts build",
 		"build": "rbxtsc -p tsconfig.json",
-		"predev": "pnpm --filter rbxts-tailwind build",
+		"predev": "pnpm --filter vela-rbxts build",
 		"dev": "rbxtsc -w -p tsconfig.json",
 		"test": "pnpm run build && node scripts/verify-rbxtsc-output.cjs",
 		"typecheck": "tsc --noEmit -p tsconfig.json",
@@ -19,7 +19,7 @@
 		"@rbxts/services": "^1.6.0"
 	},
 	"devDependencies": {
-		"rbxts-tailwind": "workspace:*",
+		"vela-rbxts": "workspace:*",
 		"@rbxts/compiler-types": "^3.0.0-types.0",
 		"@rbxts/types": "^1.0.916",
 		"roblox-ts": "^3.0.0",
