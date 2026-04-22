@@ -27,6 +27,7 @@
     "dev": "tsc -b tsconfig.json --watch",
     "lint": "biome check .",
     "lint:fix": "biome check . --fix --unsafe",
+    "test": "vitest run test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});\""
   },

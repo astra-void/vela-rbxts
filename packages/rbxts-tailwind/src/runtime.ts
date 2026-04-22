@@ -106,10 +106,12 @@ type RuntimeRule = {
 };
 
 type RuntimeTheme = {
-	colors: Record<string, Color3>;
+	colors: Record<string, RuntimeColorScale>;
 	radius: Record<string, UDim>;
 	spacing: Record<string, UDim>;
 };
+
+type RuntimeColorScale = Record<string, Color3>;
 
 type RuntimeEnvironment = {
 	width: number;
@@ -261,19 +263,32 @@ function detectInputMode(): RuntimeEnvironment["input"] {
 
 function normalizeTheme(config: TailwindConfig): RuntimeTheme {
 	return {
-		colors: normalizeColorScale(config.theme.colors),
+		colors: normalizeColorRegistry(config.theme.colors),
 		radius: normalizeRadiusScale(config.theme.radius),
 		spacing: normalizeSpacingScale(config.theme.spacing),
 	};
 }
 
-function normalizeColorScale(
-	scale: Record<string, string>,
-): Record<string, Color3> {
-	const normalized: Record<string, Color3> = {};
+function normalizeColorRegistry(
+	registry: Record<string, Record<string, string>>,
+): Record<string, RuntimeColorScale> {
+	const normalized: Record<string, RuntimeColorScale> = {};
+
+	for (const key in registry) {
+		normalized[key] = normalizeColorScale(registry[key]);
+	}
+
+	return normalized;
+}
+
+function normalizeColorScale(scale: Record<string, string>): RuntimeColorScale {
+	const normalized: RuntimeColorScale = {};
 
 	for (const key in scale) {
-		normalized[key] = parseColor3(scale[key]) ?? Color3.fromRGB(255, 255, 255);
+		const value = parseColor3(scale[key]);
+		if (value) {
+			normalized[key] = value;
+		}
 	}
 
 	return normalized;
@@ -411,7 +426,15 @@ function resolveUtilityToken(
 ): RuntimeResolvedEffectBundle | undefined {
 	if (token.startsWith("bg-")) {
 		const key = token.slice(3);
-		const value = theme.colors[key];
+		const [colorName, shade] = splitColorKey(key);
+		if (colorName === "transparent") {
+			return {
+				props: [{ name: "BackgroundTransparency", value: 1 }],
+				helpers: [],
+			};
+		}
+
+		const value = theme.colors[colorName]?.[shade];
 		if (!value) {
 			return undefined;
 		}
@@ -637,6 +660,36 @@ function resolveUtilityToken(
 	return undefined;
 }
 
+function splitColorKey(key: string): [string, string] {
+	const lastDash = key.lastIndexOf("-");
+	if (lastDash === -1) {
+		return [key, "500"];
+	}
+
+	const suffix = key.slice(lastDash + 1);
+	if (isColorShade(suffix)) {
+		return [key.slice(0, lastDash), suffix];
+	}
+
+	return [key, "500"];
+}
+
+function isColorShade(value: string): boolean {
+	return (
+		value === "50" ||
+		value === "100" ||
+		value === "200" ||
+		value === "300" ||
+		value === "400" ||
+		value === "500" ||
+		value === "600" ||
+		value === "700" ||
+		value === "800" ||
+		value === "900" ||
+		value === "950"
+	);
+}
+
 function resolveRadiusValue(
 	theme: RuntimeTheme,
 	key: string,
@@ -810,11 +863,15 @@ function parseColor3(value: string): Color3 | undefined {
 		return undefined;
 	}
 
-	return Color3.fromRGB(
-		Number(match[1]) || 255,
-		Number(match[2]) || 255,
-		Number(match[3]) || 255,
-	);
+	const red = Number(match[1]);
+	const green = Number(match[2]);
+	const blue = Number(match[3]);
+
+	if (![red, green, blue].every((channel) => channel >= 0 && channel <= 255)) {
+		return undefined;
+	}
+
+	return Color3.fromRGB(red, green, blue);
 }
 
 function parseUDim(value: string): UDim | undefined {
