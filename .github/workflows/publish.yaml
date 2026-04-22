@@ -1,0 +1,104 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to publish, for example v0.5.0 or v0.5.0-next.1
+        required: true
+        type: string
+      dry_run:
+        description: Run a dry-run publish instead of publishing to npm
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  NODE_VERSION: 24
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve publish metadata
+        id: release
+        env:
+          RELEASE_TAG: ${{ env.RELEASE_TAG }}
+        run: |
+          if [ -z "${RELEASE_TAG}" ]; then
+            echo "RELEASE_TAG is required." >&2
+            exit 1
+          fi
+
+          release_tag="${RELEASE_TAG#v}"
+          if [ "${release_tag}" != "${release_tag%%-*}" ]; then
+            npm_dist_tag="${release_tag#*-}"
+            npm_dist_tag="${npm_dist_tag%%.*}"
+          else
+            npm_dist_tag="latest"
+          fi
+
+          echo "Using release tag: ${RELEASE_TAG}"
+          echo "Resolved npm dist-tag: ${npm_dist_tag}"
+          echo "npm_dist_tag=${npm_dist_tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Ensure no pending changesets remain
+        run: |
+          pending_changesets="$(find .changeset -maxdepth 1 -type f -name '*.md' ! -name 'README.md')"
+          if [ -n "${pending_changesets}" ]; then
+            echo "Pending changesets must be versioned before publish:" >&2
+            echo "${pending_changesets}" >&2
+            exit 1
+          fi
+
+      - name: Run build
+        run: pnpm run build
+
+      - name: Dry-run publish
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.npm_dist_tag }}
+        run: |
+          echo "Resolved npm dist-tag: ${NPM_DIST_TAG:-latest}"
+          pnpm publish -r --dry-run --no-git-checks --tag "${NPM_DIST_TAG:-latest}"
+
+      - name: Publish packages
+        if: ${{ github.event_name == 'push' || !inputs.dry_run }}
+        env:
+          NPM_DIST_TAG: ${{ steps.release.outputs.npm_dist_tag }}
+        run: |
+          echo "Resolved npm dist-tag: ${NPM_DIST_TAG:-latest}"
+          pnpm publish -r --no-git-checks --tag "${NPM_DIST_TAG:-latest}"
