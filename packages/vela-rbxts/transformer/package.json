@@ -1,0 +1,6 @@
+{
+  "name": "vela-rbxts-transformer",
+  "private": true,
+  "type": "commonjs",
+  "main": "./index.js"
+}
