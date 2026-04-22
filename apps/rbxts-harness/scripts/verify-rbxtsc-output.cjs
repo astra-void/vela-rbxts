@@ -15,8 +15,8 @@ const requiredFragments = [
 	'React.createElement("uicorner"',
 	"CornerRadius = UDim.new(0, 8)",
 	'React.createElement("uipadding"',
-	"PaddingLeft = UDim.new(0, 12)",
-	"PaddingRight = UDim.new(0, 12)",
+	"PaddingLeft = UDim.new(0, 16)",
+	"PaddingRight = UDim.new(0, 16)",
 ];
 
 const failures = [];

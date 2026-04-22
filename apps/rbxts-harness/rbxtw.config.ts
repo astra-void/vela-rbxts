@@ -9,7 +9,7 @@ export default defineConfig({
 			md: "new UDim(0, 8)",
 		},
 		spacing: {
-			"4": "new UDim(0, 12)",
+			"4": "new UDim(0, 16)",
 		},
 	},
 });
