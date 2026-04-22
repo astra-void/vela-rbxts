@@ -1,15 +1,13 @@
 import type { ClassValue } from "@rbxts-tailwind/types";
 
 export {
-	defineConfig,
 	defaultConfig,
+	defineConfig,
 	type TailwindConfig,
 	type TailwindConfigInput,
 } from "@rbxts-tailwind/config";
 
-export {
-	createRbxtscTransformerBridge as createTransformer,
-} from "@rbxts-tailwind/rbxtsc-host";
+export { createRbxtscTransformerBridge as createTransformer } from "@rbxts-tailwind/rbxtsc-host";
 
 export type {
 	ClassValue,
