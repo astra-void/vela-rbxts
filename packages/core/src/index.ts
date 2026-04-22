@@ -19,8 +19,21 @@ export const semanticOwnership: SemanticOwnership = {
 		"This package defines semantic contracts only. Utility tokenization/resolution is compiler-owned.",
 };
 
+export const SUPPORTED_HOST_ELEMENT_TAGS = [
+	"frame",
+	"scrollingframe",
+	"canvasgroup",
+	"textlabel",
+	"textbutton",
+	"textbox",
+	"imagelabel",
+	"imagebutton",
+] as const;
+
+export type SupportedHostElementTag = (typeof SUPPORTED_HOST_ELEMENT_TAGS)[number];
+
 export type ClassNameSemanticRequest = {
-	elementTag: "frame";
+	elementTag: SupportedHostElementTag;
 	attributeName: "className";
 	classNameLiteral: string;
 	config: TailwindConfig;
