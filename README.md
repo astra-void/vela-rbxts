@@ -5,11 +5,9 @@ This monorepo contains the compiler, host adapter, shared config/types, and the 
 
 ## What is implemented now
 
-Current utility-class implementation status: about **70% complete** for the repo's current v0 scope.
+The current utility-class implementation is a focused baseline for Roblox UI styling, not full Tailwind parity.
 
-That percentage is based on the feature slice that exists today, not on full Tailwind parity.
-
-The current implementation is focused on `className`-driven utility classes for Roblox UI elements.
+The current implementation is centered on `className`-driven utility classes for Roblox UI elements.
 
 - `rbxts-tailwind` augments `React.Attributes` so TSX can accept `className?: ClassValue`.
 - `rbxts-tailwind/transformer` exposes the TypeScript transformer entry point for `rbxtsc`.
@@ -26,7 +24,7 @@ Completed in the current slice:
 - `className` support on TSX `React.Attributes`
 - host file filtering for `.tsx`, JSX presence, and `className` presence
 - nearest `rbxtw.config.ts` loading with `defineConfig()` support
-- lowering for `bg-*`, `rounded-*`, spacing-backed padding utilities, and spacing-backed sizing utilities
+- lowering for `bg-*`, `rounded-*`, spacing-backed padding utilities, `gap-*` on list-layout helpers, and spacing-backed sizing utilities
 - diagnostics for unsupported utility families and unknown theme keys
 - transformer entry points for `rbxtsc` and direct host use
 
@@ -72,6 +70,8 @@ The current config model supports these theme families:
 - `radius`
 - `spacing`
 
+`spacing` feeds padding, gap, and sizing utilities in the current compiler slice.
+
 `defineConfig()` follows Tailwind-style behavior for the current version:
 
 - `theme.extend.*` merges into the built-in defaults
@@ -99,13 +99,20 @@ Examples:
 - `bg-*` utilities map to background color props
 - `rounded-*` utilities map to `UICorner.CornerRadius`
 - padding utilities `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, and `pl-*` map to `UIPadding`
-- sizing utilities `w-*`, `h-*`, and `size-*` map to the direct `Size` prop through offset-based `UDim2.fromOffset(...)` values
+- `gap-*` lowers to a `UIListLayout` helper and sets its `Padding` property on supported Roblox host elements
+- sizing utilities `w-*`, `h-*`, and `size-*` map to the direct `Size` prop through offset- or scale-based `UDim2` values
+- `w-px` and `h-px` map to a one-pixel offset
+- `w-full` and `h-full` map to scale `1` on the relevant axis
+- fraction utilities such as `1/2`, `3/4`, and `5/12` map to scale values on the relevant axis
+- `fit` is recognized but not lowered; the compiler warns instead of pretending to model Roblox automatic sizing
+- spacing-backed numeric tokens continue to resolve through the spacing theme first, then numeric fallback where allowed
 
 Supported behavior includes:
 
 - built-in radius presets such as `rounded-none`, `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl`, and `rounded-full`
-- numeric spacing fallback for valid spacing values, including spacing-backed size utilities when the resolved spacing value is offset-only
+- numeric spacing fallback for valid spacing values, including spacing-backed size and gap utilities when the resolved spacing value is offset-only
 - explicit theme overrides through config
+- last relevant token wins per axis for width and height utilities
 
 ## Configuration
 
@@ -140,7 +147,12 @@ export default defineConfig();
 ```tsx
 // src/client/App.tsx
 export function Example() {
-  return <frame className="bg-surface rounded-md px-4 py-3 w-80 h-27" />;
+  return (
+    <frame className="bg-surface rounded-md px-4 py-3 w-80 h-27 gap-4">
+      <textlabel Text="rbxts consumer harness" TextScaled TextWrapped />
+      <textlabel Text="layout and spacing baseline" TextScaled TextWrapped />
+    </frame>
+  );
 }
 ```
 
@@ -152,6 +164,8 @@ The current implementation is intentionally narrow.
 
 - Unsupported utility families emit warnings and are not lowered.
 - Unknown theme keys emit warnings.
+- `gap-*` is currently implemented as a `UIListLayout` helper on supported Roblox host elements, not as a general-purpose CSS gap model.
+- Width, height, and size utilities are Roblox-specific `UDim2` lowerings, so `fit` is not translated into automatic layout behavior.
 - The compiler is still centered on UI element styling, not general CSS parity.
 - `className` support is for TSX/React-style usage in the roblox-ts toolchain, not plain Lua.
 
