@@ -1,5 +1,5 @@
 {
-  "name": "@rbxts-tailwind/rbxtsc-host",
+  "name": "@vela-rbxts/rbxtsc-host",
   "version": "0.1.0",
   "type": "commonjs",
   "main": "./dist/index.js",
@@ -20,9 +20,9 @@
     "clean": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});\""
   },
   "dependencies": {
-    "@rbxts-tailwind/compiler": "workspace:*",
-    "@rbxts-tailwind/config": "workspace:*",
-    "@rbxts-tailwind/ir": "workspace:*",
-    "@rbxts-tailwind/types": "workspace:*"
+    "@vela-rbxts/compiler": "workspace:*",
+    "@vela-rbxts/config": "workspace:*",
+    "@vela-rbxts/ir": "workspace:*",
+    "@vela-rbxts/types": "workspace:*"
   }
 }
