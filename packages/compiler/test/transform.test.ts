@@ -34,7 +34,7 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 				xl: "new UDim(0, 16)",
 			},
 			spacing: {
-				"4": "new UDim(0, 12)",
+				"4": "new UDim(0, 16)",
 				"6": "new UDim(0, 16)",
 			},
 		},
@@ -71,7 +71,7 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 
 test("lowers className on multiple supported Roblox host elements", () => {
 	const result = transform(
-		'<frame><textlabel className="bg-surface" /><textbutton className="rounded-md" /><canvasgroup className="px-4 py-4 pt-4" /><scrollingframe className="bg-surface" /><imagebutton className="rounded-md" /></frame>',
+		'<frame><textlabel className="bg-surface" /><textbutton className="rounded-md" /><canvasgroup className="px-2 py-3 pt-1.5 pl-0.5" /><scrollingframe className="bg-surface" /><imagebutton className="rounded-md" /></frame>',
 	);
 
 	expect(result.changed).toBe(true);
@@ -90,10 +90,45 @@ test("lowers className on multiple supported Roblox host elements", () => {
 		/<imagebutton\b[^>]*><uicorner\b[^>]*CornerRadius=\{new UDim\(0, 8\)\}[^>]*\/><\/imagebutton>/i,
 	);
 	expect(result.code).toMatch(/<uipadding\b[^>]*\/>/i);
-	expect(result.code).toMatch(/PaddingLeft=\{new UDim\(0, 12\)\}/);
-	expect(result.code).toMatch(/PaddingRight=\{new UDim\(0, 12\)\}/);
-	expect(result.code).toMatch(/PaddingTop=\{new UDim\(0, 12\)\}/);
+	expect(result.code).toMatch(/PaddingLeft=\{new UDim\(0, 2\)\}/);
+	expect(result.code).toMatch(/PaddingRight=\{new UDim\(0, 8\)\}/);
+	expect(result.code).toMatch(/PaddingTop=\{new UDim\(0, 6\)\}/);
 	expect(result.code).toMatch(/PaddingBottom=\{new UDim\(0, 12\)\}/);
+});
+
+test("prefers explicit spacing config over numeric fallback", () => {
+	const config = defineConfig({
+		theme: {
+			spacing: {
+				"2": "new UDim(0, 99)",
+			},
+		},
+	});
+
+	const result = transform('<frame className="px-2" />', {
+		configJson: JSON.stringify(config),
+	});
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toMatch(/PaddingLeft=\{new UDim\(0, 99\)\}/);
+	expect(result.code).toMatch(/PaddingRight=\{new UDim\(0, 99\)\}/);
+});
+
+test("warns for unknown non-numeric spacing keys", () => {
+	const result = transform('<frame className="px-card" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "px-card",
+			}),
+		]),
+	);
 });
 
 test("removes className even when only unsupported utilities remain", () => {
@@ -156,7 +191,7 @@ test("retains the default config shape for compatibility", () => {
 				md: "new UDim(0, 8)",
 			},
 			spacing: {
-				"4": "new UDim(0, 12)",
+				"4": "new UDim(0, 16)",
 			},
 		},
 	});

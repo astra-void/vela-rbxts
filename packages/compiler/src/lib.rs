@@ -371,82 +371,88 @@ fn resolve_class_tokens(
         }
 
         if let Some(spacing_key) = token.strip_prefix("px-") {
-            if let Some(value) = config.theme.spacing.get(spacing_key) {
-                style.set_helper_prop("uipadding", "PaddingLeft", value.clone());
-                style.set_helper_prop("uipadding", "PaddingRight", value.clone());
-            } else {
-                diagnostics.push(unknown_theme_key_diagnostic(
-                    "spacing",
-                    spacing_key,
-                    token,
-                ));
-            }
+            apply_spacing_utility(
+                &mut style,
+                config,
+                diagnostics,
+                spacing_key,
+                token,
+                |style, value| {
+                    style.set_helper_prop("uipadding", "PaddingLeft", value.clone());
+                    style.set_helper_prop("uipadding", "PaddingRight", value);
+                },
+            );
             continue;
         }
 
         if let Some(spacing_key) = token.strip_prefix("py-") {
-            if let Some(value) = config.theme.spacing.get(spacing_key) {
-                style.set_helper_prop("uipadding", "PaddingTop", value.clone());
-                style.set_helper_prop("uipadding", "PaddingBottom", value.clone());
-            } else {
-                diagnostics.push(unknown_theme_key_diagnostic(
-                    "spacing",
-                    spacing_key,
-                    token,
-                ));
-            }
+            apply_spacing_utility(
+                &mut style,
+                config,
+                diagnostics,
+                spacing_key,
+                token,
+                |style, value| {
+                    style.set_helper_prop("uipadding", "PaddingTop", value.clone());
+                    style.set_helper_prop("uipadding", "PaddingBottom", value);
+                },
+            );
             continue;
         }
 
         if let Some(spacing_key) = token.strip_prefix("pt-") {
-            if let Some(value) = config.theme.spacing.get(spacing_key) {
-                style.set_helper_prop("uipadding", "PaddingTop", value.clone());
-            } else {
-                diagnostics.push(unknown_theme_key_diagnostic(
-                    "spacing",
-                    spacing_key,
-                    token,
-                ));
-            }
+            apply_spacing_utility(
+                &mut style,
+                config,
+                diagnostics,
+                spacing_key,
+                token,
+                |style, value| {
+                    style.set_helper_prop("uipadding", "PaddingTop", value);
+                },
+            );
             continue;
         }
 
         if let Some(spacing_key) = token.strip_prefix("pr-") {
-            if let Some(value) = config.theme.spacing.get(spacing_key) {
-                style.set_helper_prop("uipadding", "PaddingRight", value.clone());
-            } else {
-                diagnostics.push(unknown_theme_key_diagnostic(
-                    "spacing",
-                    spacing_key,
-                    token,
-                ));
-            }
+            apply_spacing_utility(
+                &mut style,
+                config,
+                diagnostics,
+                spacing_key,
+                token,
+                |style, value| {
+                    style.set_helper_prop("uipadding", "PaddingRight", value);
+                },
+            );
             continue;
         }
 
         if let Some(spacing_key) = token.strip_prefix("pb-") {
-            if let Some(value) = config.theme.spacing.get(spacing_key) {
-                style.set_helper_prop("uipadding", "PaddingBottom", value.clone());
-            } else {
-                diagnostics.push(unknown_theme_key_diagnostic(
-                    "spacing",
-                    spacing_key,
-                    token,
-                ));
-            }
+            apply_spacing_utility(
+                &mut style,
+                config,
+                diagnostics,
+                spacing_key,
+                token,
+                |style, value| {
+                    style.set_helper_prop("uipadding", "PaddingBottom", value);
+                },
+            );
             continue;
         }
 
         if let Some(spacing_key) = token.strip_prefix("pl-") {
-            if let Some(value) = config.theme.spacing.get(spacing_key) {
-                style.set_helper_prop("uipadding", "PaddingLeft", value.clone());
-            } else {
-                diagnostics.push(unknown_theme_key_diagnostic(
-                    "spacing",
-                    spacing_key,
-                    token,
-                ));
-            }
+            apply_spacing_utility(
+                &mut style,
+                config,
+                diagnostics,
+                spacing_key,
+                token,
+                |style, value| {
+                    style.set_helper_prop("uipadding", "PaddingLeft", value);
+                },
+            );
             continue;
         }
 
@@ -454,6 +460,54 @@ fn resolve_class_tokens(
     }
 
     style
+}
+
+fn apply_spacing_utility(
+    style: &mut StyleIr,
+    config: &TailwindConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+    spacing_key: &str,
+    token: &str,
+    apply: impl FnOnce(&mut StyleIr, String),
+) {
+    if let Some(value) = resolve_spacing_value(config, spacing_key) {
+        apply(style, value);
+        return;
+    }
+
+    diagnostics.push(unknown_theme_key_diagnostic("spacing", spacing_key, token));
+}
+
+fn resolve_spacing_value(config: &TailwindConfig, key: &str) -> Option<String> {
+    config
+        .theme
+        .spacing
+        .get(key)
+        .cloned()
+        .or_else(|| resolve_numeric_spacing_value(key))
+}
+
+fn resolve_numeric_spacing_value(key: &str) -> Option<String> {
+    let numeric_key = key.parse::<f64>().ok()?;
+    if !numeric_key.is_finite() {
+        return None;
+    }
+
+    let offset_px = numeric_key * 4.0;
+
+    Some(format!(
+        "new UDim(0, {})",
+        format_spacing_offset(offset_px)
+    ))
+}
+
+fn format_spacing_offset(value: f64) -> String {
+    let rounded = value.round();
+    if (value - rounded).abs() < 1e-9 {
+        return format!("{rounded:.0}");
+    }
+
+    value.to_string()
 }
 
 fn create_prop_attr(prop: PropEntry) -> JSXAttrOrSpread {
