@@ -1,9 +1,5 @@
+import { implementationKind, transform } from "@rbxts-tailwind/compiler";
 import { expect, expectTypeOf, test } from "vitest";
-
-import {
-	implementationKind,
-	transform,
-} from "@rbxts-tailwind/compiler";
 
 test("transforms frame className literal into props and helper children", () => {
 	const source = '<frame className="rounded-md px-4 bg-surface" />';
@@ -27,8 +23,8 @@ test("transforms frame className literal into props and helper children", () => 
 test("keeps the public transform options compiler-centric", () => {
 	expectTypeOf<Parameters<typeof transform>[1]>().toEqualTypeOf<
 		| {
-		configJson?: string;
-	}
+				configJson?: string;
+		  }
 		| null
 		| undefined
 	>();
