@@ -1,4 +1,6 @@
-export default {
+import { defineConfig } from "rbxts-tailwind";
+
+export default defineConfig({
 	theme: {
 		colors: {
 			surface: "Color3.fromRGB(40, 48, 66)",
@@ -10,4 +12,4 @@ export default {
 			"4": "new UDim(0, 12)",
 		},
 	},
-};
+});
