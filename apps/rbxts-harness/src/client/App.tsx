@@ -13,7 +13,7 @@ export const App = () => {
 					BackgroundTransparency={1}
 					Size={UDim2.fromScale(1, 1)}
 					Text="rbxts consumer harness"
-					TextScaled	
+					TextScaled
 					TextWrapped
 				/>
 			</frame>
