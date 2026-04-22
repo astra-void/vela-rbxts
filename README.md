@@ -26,7 +26,7 @@ Completed in the current slice:
 - `className` support on TSX `React.Attributes`
 - host file filtering for `.tsx`, JSX presence, and `className` presence
 - nearest `rbxtw.config.ts` loading with `defineConfig()` support
-- lowering for `bg-*`, `rounded-*`, and `px|py|pt|pr|pb|pl-*`
+- lowering for `bg-*`, `rounded-*`, spacing-backed padding utilities, and spacing-backed sizing utilities
 - diagnostics for unsupported utility families and unknown theme keys
 - transformer entry points for `rbxtsc` and direct host use
 
@@ -92,18 +92,19 @@ The semantic boundary currently recognizes these Roblox elements:
 
 ### Current utility behavior
 
-The compiler currently supports utility classes that map to the implemented theme families and Roblox UI props.
+The compiler currently supports a narrow Tailwind-inspired utility slice that maps to the implemented theme families and Roblox UI props.
 
 Examples:
 
 - `bg-*` utilities map to background color props
 - `rounded-*` utilities map to `UICorner.CornerRadius`
-- spacing utilities such as `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, `pl-*` map to `UIPadding`
+- padding utilities `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, and `pl-*` map to `UIPadding`
+- sizing utilities `w-*`, `h-*`, and `size-*` map to the direct `Size` prop through offset-based `UDim2.fromOffset(...)` values
 
 Supported behavior includes:
 
 - built-in radius presets such as `rounded-none`, `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl`, and `rounded-full`
-- numeric spacing fallback for valid spacing values
+- numeric spacing fallback for valid spacing values, including spacing-backed size utilities when the resolved spacing value is offset-only
 - explicit theme overrides through config
 
 ## Configuration
@@ -139,7 +140,7 @@ export default defineConfig();
 ```tsx
 // src/client/App.tsx
 export function Example() {
-  return <frame className="bg-surface rounded-md px-4 py-3" />;
+  return <frame className="bg-surface rounded-md px-4 py-3 w-80 h-27" />;
 }
 ```
 
