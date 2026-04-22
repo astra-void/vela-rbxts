@@ -22,7 +22,9 @@ const requiredFragments = [
 const failures = [];
 
 if (typeof transformer !== "function") {
-	failures.push("rbxts-tailwind/transformer does not export a program transformer");
+	failures.push(
+		"rbxts-tailwind/transformer does not export a program transformer",
+	);
 }
 
 if (source.includes("className")) {
