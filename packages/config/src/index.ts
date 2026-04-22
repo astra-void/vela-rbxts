@@ -34,17 +34,17 @@ export function defineConfig(input: TailwindConfigInput = {}): TailwindConfig {
 
 	return {
 		theme: {
-			colors: mergeThemeScale(
+			colors: resolveThemeScale(
 				defaultConfig.theme.colors,
 				extend?.colors,
 				input.theme?.colors,
 			),
-			radius: mergeThemeScale(
+			radius: resolveThemeScale(
 				defaultConfig.theme.radius,
 				extend?.radius,
 				input.theme?.radius,
 			),
-			spacing: mergeThemeScale(
+			spacing: resolveThemeScale(
 				defaultConfig.theme.spacing,
 				extend?.spacing,
 				input.theme?.spacing,
@@ -53,14 +53,18 @@ export function defineConfig(input: TailwindConfigInput = {}): TailwindConfig {
 	};
 }
 
-function mergeThemeScale(
+function resolveThemeScale(
 	base: ThemeScale,
 	extend: ThemeScale | undefined,
 	override: ThemeScale | undefined,
 ): ThemeScale {
-	return {
+	// Tailwind-style rule for v0.1:
+	// - `theme.extend.*` augments the built-in defaults.
+	// - top-level `theme.*` replaces the final scale for that family.
+	const mergedDefaults = {
 		...base,
 		...extend,
-		...override,
 	};
+
+	return override ?? mergedDefaults;
 }
