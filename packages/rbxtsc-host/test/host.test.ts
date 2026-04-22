@@ -4,7 +4,9 @@ import path from "node:path";
 
 import { transform } from "@rbxts-tailwind/compiler";
 import { beforeEach, expect, test, vi } from "vitest";
-import defaultConfig from "../../config/src/defaults.json";
+import defaultConfig from "../../config/src/defaults.json" with {
+	type: "json",
+};
 import {
 	createRbxtscTransformerBridge,
 	isTransformableHostFile,
