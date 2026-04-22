@@ -24,15 +24,15 @@ Completed in the current slice:
 - `className` support on TSX `React.Attributes`
 - host file filtering for `.tsx`, JSX presence, and `className` presence
 - nearest `rbxtw.config.ts` loading with `defineConfig()` support
-- lowering for `bg-*`, `rounded-*`, spacing-backed padding utilities, `gap-*` on list-layout helpers, and spacing-backed sizing utilities
-- diagnostics for unsupported utility families and unknown theme keys
+- lowering for shared color utilities (`bg-*`, `text-*`, `image-*`, and `placeholder-*`), `rounded-*`, spacing-backed padding utilities, `gap-*` on list-layout helpers, and spacing-backed sizing utilities
+- diagnostics for unsupported utility families, unsupported color keywords, and unknown theme keys
 - transformer entry points for `rbxtsc` and direct host use
+- automatic runtime-aware lowering for dynamic `ClassValue` expressions and supported Roblox-oriented variants
 
 Still incomplete:
 
 - broader Tailwind utility families beyond the current theme-backed slice
-- variant handling such as responsive/state modifiers
-- arbitrary value support
+- arbitrary embedded expressions inside bracket literals
 - fuller CSS parity across Roblox UI styling
 - more host-aware lowering rules beyond the current supported element set
 
@@ -58,7 +58,8 @@ Still incomplete:
    - the source must contain `className`
    - the source must contain JSX syntax
 3. The host loads the nearest `rbxtw.config.ts` file if one exists, otherwise it falls back to the default config.
-4. The compiler lowers supported utility classes into Roblox props and strips the original `className` attribute.
+4. The compiler lowers supported static utility classes into Roblox props and strips the original `className` attribute.
+5. If a file uses dynamic `ClassValue` input or supported runtime variants, the host generates an include-scoped runtime artifact and the compiler rewrites the file to use it automatically.
 
 ## Supported surface
 
@@ -90,13 +91,25 @@ The semantic boundary currently recognizes these Roblox elements:
 - `imagelabel`
 - `imagebutton`
 
+### Runtime-aware variants
+
+The first runtime-aware variant slice is Roblox-oriented, not web Tailwind parity.
+
+Supported variants:
+
+- `sm:`, `md:`, and `lg:` as width-bucket aliases
+- `portrait:` and `landscape:`
+- `touch:`, `mouse:`, and `gamepad:`
+
+These variants can be used in static literals and are also resolved at runtime when a file needs the runtime path.
+
 ### Current utility behavior
 
 The compiler currently supports a narrow Tailwind-inspired utility slice that maps to the implemented theme families and Roblox UI props.
 
 Examples:
 
-- `bg-*` utilities map to background color props
+- shared color utilities map to Roblox color props with built-in palette fallback and config-first overrides
 - `rounded-*` utilities map to `UICorner.CornerRadius`
 - padding utilities `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, and `pl-*` map to `UIPadding`
 - `gap-*` lowers to a `UIListLayout` helper and sets its `Padding` property on supported Roblox host elements
@@ -106,6 +119,20 @@ Examples:
 - fraction utilities such as `1/2`, `3/4`, and `5/12` map to scale values on the relevant axis
 - `fit` is recognized but not lowered; the compiler warns instead of pretending to model Roblox automatic sizing
 - spacing-backed numeric tokens continue to resolve through the spacing theme first, then numeric fallback where allowed
+- static arbitrary values are supported only when they are literal and safe, such as `w-[320]`, `h-[48]`, and `rounded-[12]`
+
+### Static and runtime split
+
+The compiler keeps the fast path for pure static literals:
+
+- fully static `className` strings are lowered at compile time as before
+- files that only use static literals do not receive runtime helper injection
+
+When the `className` value is dynamic or contains supported runtime variants:
+
+- the file is rewritten automatically to use the generated runtime host
+- no new user import, wrapper, or setup file is required
+- the generated runtime artifact is placed under `include/rbxts-tailwind`
 
 Supported behavior includes:
 
@@ -164,6 +191,7 @@ The current implementation is intentionally narrow.
 
 - Unsupported utility families emit warnings and are not lowered.
 - Unknown theme keys emit warnings.
+- truly unsupported `className` patterns still emit diagnostics instead of being silently dropped
 - `gap-*` is currently implemented as a `UIListLayout` helper on supported Roblox host elements, not as a general-purpose CSS gap model.
 - Width, height, and size utilities are Roblox-specific `UDim2` lowerings, so `fit` is not translated into automatic layout behavior.
 - The compiler is still centered on UI element styling, not general CSS parity.
