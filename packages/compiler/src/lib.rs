@@ -1,7 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
 use napi_derive::napi;
 use serde::{Deserialize, Serialize};
-use std::sync::OnceLock;
+use std::{collections::BTreeMap, sync::OnceLock};
 
 use swc_core::{
     common::{sync::Lrc, FileName, SourceMap, DUMMY_SP},
@@ -72,68 +72,24 @@ pub fn transform(source: String, options: JsValue) -> Result<JsValue, JsValue> {
 
 #[derive(Clone, Deserialize)]
 struct TailwindConfig {
-    #[serde(default = "default_theme")]
+    #[serde(default)]
     theme: ThemeConfig,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Default)]
 struct ThemeConfig {
-    #[serde(default = "default_surface")]
-    colors: ThemeColors,
-    #[serde(default = "default_radius")]
-    radius: ThemeRadius,
-    #[serde(default = "default_spacing")]
-    spacing: ThemeSpacing,
-}
-
-#[derive(Clone, Deserialize)]
-struct ThemeColors {
-    #[serde(default = "default_surface_value")]
-    surface: String,
-}
-
-#[derive(Clone, Deserialize)]
-struct ThemeRadius {
-    #[serde(default = "default_radius_md")]
-    md: String,
-}
-
-#[derive(Clone, Deserialize)]
-struct ThemeSpacing {
-    #[serde(rename = "4", default = "default_spacing_4")]
-    four: String,
-}
-
-#[derive(Clone, Deserialize)]
-struct TailwindDefaultsDocument {
-    theme: ThemeDefaultsDocument,
-}
-
-#[derive(Clone, Deserialize)]
-struct ThemeDefaultsDocument {
-    colors: ThemeColorsDefaultsDocument,
-    radius: ThemeRadiusDefaultsDocument,
-    spacing: ThemeSpacingDefaultsDocument,
-}
-
-#[derive(Clone, Deserialize)]
-struct ThemeColorsDefaultsDocument {
-    surface: String,
-}
-
-#[derive(Clone, Deserialize)]
-struct ThemeRadiusDefaultsDocument {
-    md: String,
-}
-
-#[derive(Clone, Deserialize)]
-struct ThemeSpacingDefaultsDocument {
-    #[serde(rename = "4")]
-    four: String,
+    #[serde(default)]
+    colors: ThemeScale,
+    #[serde(default)]
+    radius: ThemeScale,
+    #[serde(default)]
+    spacing: ThemeScale,
 }
 
 const DEFAULT_CONFIG_JSON: &str = include_str!("../../config/src/defaults.json");
 static DEFAULT_CONFIG: OnceLock<TailwindConfig> = OnceLock::new();
+
+type ThemeScale = BTreeMap<String, String>;
 
 #[derive(Clone)]
 struct PropEntry {
@@ -151,6 +107,26 @@ struct HelperEntry {
 struct StyleIr {
     props: Vec<PropEntry>,
     helpers: Vec<HelperEntry>,
+}
+
+impl StyleIr {
+    fn set_prop(&mut self, name: &'static str, value: String) {
+        self.props.retain(|prop| prop.name != name);
+        self.props.push(PropEntry { name, value });
+    }
+
+    fn set_helper_prop(&mut self, tag: &'static str, name: &'static str, value: String) {
+        if let Some(helper) = self.helpers.iter_mut().find(|helper| helper.tag == tag) {
+            helper.props.retain(|prop| prop.name != name);
+            helper.props.push(PropEntry { name, value });
+            return;
+        }
+
+        self.helpers.push(HelperEntry {
+            tag,
+            props: vec![PropEntry { name, value }],
+        });
+    }
 }
 
 struct TailwindTransformer {
@@ -363,38 +339,109 @@ fn resolve_class_tokens(
     let mut style = StyleIr::default();
 
     for token in tokens {
-        match token {
-            "rounded-md" => style.helpers.push(HelperEntry {
-                tag: "uicorner",
-                props: vec![PropEntry {
-                    name: "CornerRadius",
-                    value: config.theme.radius.md.clone(),
-                }],
-            }),
-            "px-4" => style.helpers.push(HelperEntry {
-                tag: "uipadding",
-                props: vec![
-                    PropEntry {
-                        name: "PaddingLeft",
-                        value: config.theme.spacing.four.clone(),
-                    },
-                    PropEntry {
-                        name: "PaddingRight",
-                        value: config.theme.spacing.four.clone(),
-                    },
-                ],
-            }),
-            "bg-surface" => style.props.push(PropEntry {
-                name: "BackgroundColor3",
-                value: config.theme.colors.surface.clone(),
-            }),
-            other => diagnostics.push(Diagnostic {
-                level: "warning".to_owned(),
-                code: "unsupported-utility".to_owned(),
-                message: format!("Unsupported utility \"{other}\" in className literal."),
-                token: Some(other.to_owned()),
-            }),
+        if let Some(color_key) = token.strip_prefix("bg-") {
+            if let Some(value) = config.theme.colors.get(color_key) {
+                style.set_prop("BackgroundColor3", value.clone());
+            } else {
+                diagnostics.push(unknown_theme_key_diagnostic(
+                    "background color",
+                    color_key,
+                    token,
+                ));
+            }
+            continue;
         }
+
+        if let Some(radius_key) = token.strip_prefix("rounded-") {
+            if let Some(value) = config.theme.radius.get(radius_key) {
+                style.set_helper_prop("uicorner", "CornerRadius", value.clone());
+            } else {
+                diagnostics.push(unknown_theme_key_diagnostic("radius", radius_key, token));
+            }
+            continue;
+        }
+
+        if let Some(spacing_key) = token.strip_prefix("px-") {
+            if let Some(value) = config.theme.spacing.get(spacing_key) {
+                style.set_helper_prop("uipadding", "PaddingLeft", value.clone());
+                style.set_helper_prop("uipadding", "PaddingRight", value.clone());
+            } else {
+                diagnostics.push(unknown_theme_key_diagnostic(
+                    "spacing",
+                    spacing_key,
+                    token,
+                ));
+            }
+            continue;
+        }
+
+        if let Some(spacing_key) = token.strip_prefix("py-") {
+            if let Some(value) = config.theme.spacing.get(spacing_key) {
+                style.set_helper_prop("uipadding", "PaddingTop", value.clone());
+                style.set_helper_prop("uipadding", "PaddingBottom", value.clone());
+            } else {
+                diagnostics.push(unknown_theme_key_diagnostic(
+                    "spacing",
+                    spacing_key,
+                    token,
+                ));
+            }
+            continue;
+        }
+
+        if let Some(spacing_key) = token.strip_prefix("pt-") {
+            if let Some(value) = config.theme.spacing.get(spacing_key) {
+                style.set_helper_prop("uipadding", "PaddingTop", value.clone());
+            } else {
+                diagnostics.push(unknown_theme_key_diagnostic(
+                    "spacing",
+                    spacing_key,
+                    token,
+                ));
+            }
+            continue;
+        }
+
+        if let Some(spacing_key) = token.strip_prefix("pr-") {
+            if let Some(value) = config.theme.spacing.get(spacing_key) {
+                style.set_helper_prop("uipadding", "PaddingRight", value.clone());
+            } else {
+                diagnostics.push(unknown_theme_key_diagnostic(
+                    "spacing",
+                    spacing_key,
+                    token,
+                ));
+            }
+            continue;
+        }
+
+        if let Some(spacing_key) = token.strip_prefix("pb-") {
+            if let Some(value) = config.theme.spacing.get(spacing_key) {
+                style.set_helper_prop("uipadding", "PaddingBottom", value.clone());
+            } else {
+                diagnostics.push(unknown_theme_key_diagnostic(
+                    "spacing",
+                    spacing_key,
+                    token,
+                ));
+            }
+            continue;
+        }
+
+        if let Some(spacing_key) = token.strip_prefix("pl-") {
+            if let Some(value) = config.theme.spacing.get(spacing_key) {
+                style.set_helper_prop("uipadding", "PaddingLeft", value.clone());
+            } else {
+                diagnostics.push(unknown_theme_key_diagnostic(
+                    "spacing",
+                    spacing_key,
+                    token,
+                ));
+            }
+            continue;
+        }
+
+        diagnostics.push(unsupported_utility_family_diagnostic(token));
     }
 
     style
@@ -472,55 +519,33 @@ fn default_config() -> TailwindConfig {
     default_config_ref().clone()
 }
 
-fn default_theme() -> ThemeConfig {
-    default_config_ref().theme.clone()
-}
-
-fn default_surface() -> ThemeColors {
-    default_config_ref().theme.colors.clone()
-}
-
-fn default_radius() -> ThemeRadius {
-    default_config_ref().theme.radius.clone()
-}
-
-fn default_spacing() -> ThemeSpacing {
-    default_config_ref().theme.spacing.clone()
-}
-
-fn default_surface_value() -> String {
-    default_config_ref().theme.colors.surface.clone()
-}
-
-fn default_radius_md() -> String {
-    default_config_ref().theme.radius.md.clone()
-}
-
-fn default_spacing_4() -> String {
-    default_config_ref().theme.spacing.four.clone()
-}
-
 fn default_config_ref() -> &'static TailwindConfig {
     DEFAULT_CONFIG.get_or_init(|| {
-        let document: TailwindDefaultsDocument = serde_json::from_str(DEFAULT_CONFIG_JSON)
-            .expect(
-                "packages/config/src/defaults.json must be valid TailwindConfig-compatible JSON",
-            );
-
-        TailwindConfig {
-            theme: ThemeConfig {
-                colors: ThemeColors {
-                    surface: document.theme.colors.surface,
-                },
-                radius: ThemeRadius {
-                    md: document.theme.radius.md,
-                },
-                spacing: ThemeSpacing {
-                    four: document.theme.spacing.four,
-                },
-            },
-        }
+        serde_json::from_str(DEFAULT_CONFIG_JSON)
+            .expect("packages/config/src/defaults.json must be valid TailwindConfig-compatible JSON")
     })
+}
+
+fn unsupported_utility_family_diagnostic(token: &str) -> Diagnostic {
+    let family = token.split_once('-').map(|(family, _)| family).unwrap_or(token);
+
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-utility-family".to_owned(),
+        message: format!("Unsupported utility family \"{family}\" in className literal."),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn unknown_theme_key_diagnostic(theme_family: &str, key: &str, token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unknown-theme-key".to_owned(),
+        message: format!(
+            "Unknown theme key \"{key}\" for {theme_family} utility in className literal."
+        ),
+        token: Some(token.to_owned()),
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
