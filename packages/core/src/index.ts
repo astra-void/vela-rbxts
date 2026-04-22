@@ -30,7 +30,8 @@ export const SUPPORTED_HOST_ELEMENT_TAGS = [
 	"imagebutton",
 ] as const;
 
-export type SupportedHostElementTag = (typeof SUPPORTED_HOST_ELEMENT_TAGS)[number];
+export type SupportedHostElementTag =
+	(typeof SUPPORTED_HOST_ELEMENT_TAGS)[number];
 
 export type ClassNameSemanticRequest = {
 	elementTag: SupportedHostElementTag;
