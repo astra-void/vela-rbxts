@@ -218,6 +218,61 @@ test("prefers explicit spacing config over padding shorthand numeric fallback", 
 	expect(result.code).toMatch(/PaddingBottom=\{new UDim\(0, 99\)\}/);
 });
 
+test("keeps spacing-backed padding and size utilities on the same resolver path", () => {
+	const result = transform(
+		'<frame className="p-2 px-2 pt-1.5 w-2 h-2 size-2" />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/PaddingLeft=\{new UDim\(0, 8\)\}/);
+	expect(result.code).toMatch(/PaddingRight=\{new UDim\(0, 8\)\}/);
+	expect(result.code).toMatch(/PaddingTop=\{new UDim\(0, 6\)\}/);
+	expect(result.code).toMatch(/PaddingBottom=\{new UDim\(0, 8\)\}/);
+	expect(result.code).toMatch(/Size=\{UDim2\.fromOffset\(8, 8\)\}/);
+});
+
+test("lowers gap spacing utilities to a UIListLayout helper", () => {
+	const result = transform('<frame className="gap-4" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(
+		/<frame><uilistlayout\b[^>]*Padding=\{new UDim\(0, 16\)\}[^>]*\/><\/frame>/i,
+	);
+});
+
+test("resolves fractional gap numeric spacing fallback tokens", () => {
+	const result = transform('<frame className="gap-0.5" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/<uilistlayout\b[^>]*\/>/i);
+	expect(result.code).toMatch(/Padding=\{new UDim\(0, 2\)\}/);
+});
+
+test("prefers explicit spacing config for gap utilities", () => {
+	const config = defineConfig({
+		theme: {
+			spacing: {
+				"2": "new UDim(0, 99)",
+			},
+		},
+	});
+
+	const result = transform('<frame className="gap-2" />', {
+		configJson: JSON.stringify(config),
+	});
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toMatch(/<uilistlayout\b[^>]*\/>/i);
+	expect(result.code).toMatch(/Padding=\{new UDim\(0, 99\)\}/);
+});
+
 test("lowers width spacing utilities to a direct Size prop", () => {
 	const result = transform('<frame className="w-4" />');
 
@@ -247,6 +302,33 @@ test("lowers square size spacing utilities to both Size axes", () => {
 	expect(result.code).toMatch(/Size=\{UDim2\.fromOffset\(16, 16\)\}/);
 });
 
+test("lowers square pixel size utilities to both Size axes", () => {
+	const result = transform('<frame className="size-px" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.fromOffset\(1, 1\)\}/);
+});
+
+test("lowers square full size utilities to both Size axes", () => {
+	const result = transform('<frame className="size-full" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.fromScale\(1, 1\)\}/);
+});
+
+test("lowers square fractional size utilities to both Size axes", () => {
+	const result = transform('<frame className="size-1/2" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.fromScale\(0\.5, 0\.5\)\}/);
+});
+
 test("lets width utilities override only the width axis after size", () => {
 	const result = transform('<frame className="size-4 w-8" />');
 
@@ -274,6 +356,69 @@ test("resolves width and height numeric spacing fallback tokens", () => {
 	expect(result.code).toMatch(/Size=\{UDim2\.fromOffset\(8, 12\)\}/);
 });
 
+test("lowers pixel width and height utilities to one offset pixel", () => {
+	const result = transform('<frame className="w-px h-px" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.fromOffset\(1, 1\)\}/);
+});
+
+test("lowers full width and height utilities to full scale", () => {
+	const result = transform('<frame className="w-full h-full" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.fromScale\(1, 1\)\}/);
+});
+
+test("lowers fractional width and height utilities to scale axes", () => {
+	const result = transform('<frame className="w-1/2 h-3/4" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.fromScale\(0\.5, 0\.75\)\}/);
+});
+
+test("lowers twelfth fractional width utilities", () => {
+	const result = transform('<frame className="w-5/12" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.fromScale\(0\.4166666667, 0\)\}/);
+});
+
+test("lets full width override only the width axis after size", () => {
+	const result = transform('<frame className="size-4 w-full" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.new\(1, 0, 0, 16\)\}/);
+});
+
+test("lets height spacing utilities override only the height axis after full size", () => {
+	const result = transform('<frame className="size-full h-4" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.new\(1, 0, 0, 16\)\}/);
+});
+
+test("lets fractional height override only the height axis after size", () => {
+	const result = transform('<frame className="size-4 h-1/2" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.new\(0, 16, 0\.5, 0\)\}/);
+});
+
 test("prefers explicit spacing config for size utilities", () => {
 	const config = defineConfig({
 		theme: {
@@ -291,6 +436,35 @@ test("prefers explicit spacing config for size utilities", () => {
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).toMatch(/Size=\{UDim2\.fromOffset\(99, 111\)\}/);
+});
+
+test("prefers the same explicit spacing override across padding and size utilities", () => {
+	const config = defineConfig({
+		theme: {
+			spacing: {
+				"2": "new UDim(0, 99)",
+			},
+		},
+	});
+
+	const paddingResult = transform('<frame className="p-2 px-2 pt-2" />', {
+		configJson: JSON.stringify(config),
+	});
+
+	expect(paddingResult.changed).toBe(true);
+	expect(paddingResult.diagnostics).toEqual([]);
+	expect(paddingResult.code).toMatch(/PaddingLeft=\{new UDim\(0, 99\)\}/);
+	expect(paddingResult.code).toMatch(/PaddingRight=\{new UDim\(0, 99\)\}/);
+	expect(paddingResult.code).toMatch(/PaddingTop=\{new UDim\(0, 99\)\}/);
+	expect(paddingResult.code).toMatch(/PaddingBottom=\{new UDim\(0, 99\)\}/);
+
+	const sizeResult = transform('<frame className="w-2 h-2 size-2" />', {
+		configJson: JSON.stringify(config),
+	});
+
+	expect(sizeResult.changed).toBe(true);
+	expect(sizeResult.diagnostics).toEqual([]);
+	expect(sizeResult.code).toMatch(/Size=\{UDim2\.fromOffset\(99, 99\)\}/);
 });
 
 test("warns when size utilities resolve to non-offset spacing values", () => {
@@ -373,6 +547,59 @@ test("rejects invalid padding shorthand spacing fallback tokens", () => {
 	expect(result.code).not.toMatch(/PaddingBottom=/);
 });
 
+test("rejects invalid spacing tokens consistently across padding and size utilities", () => {
+	const result = transform(
+		'<frame className="p-card px-2.3 w-2.3 size-card" />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "p-card",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "px-2.3",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "w-2.3",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "size-card",
+			}),
+		]),
+	);
+	expect(result.code).not.toMatch(/Padding=/);
+	expect(result.code).not.toMatch(/Size=/);
+});
+
+test("rejects unknown gap spacing tokens", () => {
+	const result = transform('<frame className="gap-card" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "gap-card",
+			}),
+		]),
+	);
+	expect(result.code).not.toMatch(/<uilistlayout\b/i);
+	expect(result.code).not.toMatch(/Padding=/);
+});
+
 test("rejects unknown size spacing tokens", () => {
 	const result = transform('<frame className="w-card" />');
 
@@ -390,6 +617,23 @@ test("rejects unknown size spacing tokens", () => {
 	expect(result.code).not.toMatch(/Size=/);
 });
 
+test("rejects unknown square size spacing tokens", () => {
+	const result = transform('<frame className="size-card" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "size-card",
+			}),
+		]),
+	);
+	expect(result.code).not.toMatch(/Size=/);
+});
+
 test("rejects invalid numeric size spacing fallback tokens", () => {
 	const result = transform('<frame className="h-2.3" />');
 
@@ -401,6 +645,62 @@ test("rejects invalid numeric size spacing fallback tokens", () => {
 				level: "warning",
 				code: "unknown-theme-key",
 				token: "h-2.3",
+			}),
+		]),
+	);
+	expect(result.code).not.toMatch(/Size=/);
+});
+
+test("rejects invalid numeric square size spacing fallback tokens", () => {
+	const result = transform('<frame className="size-2.3" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "size-2.3",
+			}),
+		]),
+	);
+	expect(result.code).not.toMatch(/Size=/);
+});
+
+test("warns on fit size mode instead of generating misleading sizing", () => {
+	const result = transform('<frame className="w-fit h-fit" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unsupported-size-mode",
+				token: "w-fit",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "unsupported-size-mode",
+				token: "h-fit",
+			}),
+		]),
+	);
+	expect(result.code).not.toMatch(/Size=/);
+});
+
+test("warns on square fit size mode instead of generating misleading sizing", () => {
+	const result = transform('<frame className="size-fit" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unsupported-size-mode",
+				token: "size-fit",
 			}),
 		]),
 	);

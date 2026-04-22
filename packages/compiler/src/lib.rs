@@ -109,6 +109,32 @@ struct StyleIr {
     helpers: Vec<HelperEntry>,
 }
 
+#[derive(Clone)]
+struct SizeAxisValue {
+    scale: String,
+    offset: String,
+}
+
+impl SizeAxisValue {
+    fn offset(offset: impl Into<String>) -> Self {
+        Self {
+            scale: "0".to_owned(),
+            offset: offset.into(),
+        }
+    }
+
+    fn scale(scale: impl Into<String>) -> Self {
+        Self {
+            scale: scale.into(),
+            offset: "0".to_owned(),
+        }
+    }
+
+    fn zero() -> Self {
+        Self::offset("0")
+    }
+}
+
 impl StyleIr {
     fn set_prop(&mut self, name: &'static str, value: String) {
         self.props.retain(|prop| prop.name != name);
@@ -346,8 +372,8 @@ fn resolve_class_tokens(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> StyleIr {
     let mut style = StyleIr::default();
-    let mut pending_size_width: Option<String> = None;
-    let mut pending_size_height: Option<String> = None;
+    let mut pending_size_width: Option<SizeAxisValue> = None;
+    let mut pending_size_height: Option<SizeAxisValue> = None;
 
     for token in tokens {
         if let Some(color_key) = token.strip_prefix("bg-") {
@@ -475,31 +501,34 @@ fn resolve_class_tokens(
             continue;
         }
 
-        if let Some(spacing_key) = token.strip_prefix("w-") {
-            if let Some(offset) =
-                resolve_size_spacing_offset(config, diagnostics, spacing_key, token)
-            {
-                pending_size_width = Some(offset);
-            }
+        if let Some(spacing_key) = token.strip_prefix("gap-") {
+            apply_spacing_utility(
+                &mut style,
+                config,
+                diagnostics,
+                spacing_key,
+                token,
+                |style, value| {
+                    style.set_helper_prop("uilistlayout", "Padding", value);
+                },
+            );
             continue;
         }
 
-        if let Some(spacing_key) = token.strip_prefix("h-") {
-            if let Some(offset) =
-                resolve_size_spacing_offset(config, diagnostics, spacing_key, token)
-            {
-                pending_size_height = Some(offset);
-            }
+        if let Some(size_key) = token.strip_prefix("w-") {
+            pending_size_width = resolve_size_axis_value(config, diagnostics, size_key, token);
             continue;
         }
 
-        if let Some(spacing_key) = token.strip_prefix("size-") {
-            if let Some(offset) =
-                resolve_size_spacing_offset(config, diagnostics, spacing_key, token)
-            {
-                pending_size_width = Some(offset.clone());
-                pending_size_height = Some(offset);
-            }
+        if let Some(size_key) = token.strip_prefix("h-") {
+            pending_size_height = resolve_size_axis_value(config, diagnostics, size_key, token);
+            continue;
+        }
+
+        if let Some(size_key) = token.strip_prefix("size-") {
+            let value = resolve_size_axis_value(config, diagnostics, size_key, token);
+            pending_size_width = value.clone();
+            pending_size_height = value;
             continue;
         }
 
@@ -509,11 +538,7 @@ fn resolve_class_tokens(
     if pending_size_width.is_some() || pending_size_height.is_some() {
         style.set_prop(
             "Size",
-            format!(
-                "UDim2.fromOffset({}, {})",
-                pending_size_width.unwrap_or_else(|| "0".to_owned()),
-                pending_size_height.unwrap_or_else(|| "0".to_owned())
-            ),
+            format_size_prop(pending_size_width, pending_size_height),
         );
     }
 
@@ -536,6 +561,32 @@ fn apply_spacing_utility(
     diagnostics.push(unknown_theme_key_diagnostic("spacing", spacing_key, token));
 }
 
+fn resolve_size_axis_value(
+    config: &TailwindConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+    size_key: &str,
+    token: &str,
+) -> Option<SizeAxisValue> {
+    if size_key == "px" {
+        return Some(SizeAxisValue::offset("1"));
+    }
+
+    if size_key == "full" {
+        return Some(SizeAxisValue::scale("1"));
+    }
+
+    if size_key == "fit" {
+        diagnostics.push(unsupported_size_mode_diagnostic(size_key, token));
+        return None;
+    }
+
+    if let Some(fraction) = resolve_size_fraction_scale(size_key) {
+        return Some(SizeAxisValue::scale(fraction));
+    }
+
+    resolve_size_spacing_offset(config, diagnostics, size_key, token).map(SizeAxisValue::offset)
+}
+
 fn resolve_size_spacing_offset(
     config: &TailwindConfig,
     diagnostics: &mut Vec<Diagnostic>,
@@ -553,6 +604,46 @@ fn resolve_size_spacing_offset(
 
     diagnostics.push(unsupported_size_spacing_value_diagnostic(&value, token));
     None
+}
+
+fn resolve_size_fraction_scale(key: &str) -> Option<String> {
+    let (numerator, denominator) = key.split_once('/')?;
+    let numerator = numerator.parse::<u32>().ok()?;
+    let denominator = denominator.parse::<u32>().ok()?;
+
+    let is_supported = match denominator {
+        2 => numerator == 1,
+        3 => matches!(numerator, 1 | 2),
+        4 => matches!(numerator, 1 | 3),
+        5 => matches!(numerator, 1 | 2 | 3 | 4),
+        6 => matches!(numerator, 1 | 5),
+        12 => (1..=11).contains(&numerator),
+        _ => false,
+    };
+
+    if !is_supported {
+        return None;
+    }
+
+    Some(format_fraction_scale(numerator, denominator))
+}
+
+fn format_size_prop(width: Option<SizeAxisValue>, height: Option<SizeAxisValue>) -> String {
+    let width = width.unwrap_or_else(SizeAxisValue::zero);
+    let height = height.unwrap_or_else(SizeAxisValue::zero);
+
+    if width.scale == "0" && height.scale == "0" {
+        return format!("UDim2.fromOffset({}, {})", width.offset, height.offset);
+    }
+
+    if width.offset == "0" && height.offset == "0" {
+        return format!("UDim2.fromScale({}, {})", width.scale, height.scale);
+    }
+
+    format!(
+        "UDim2.new({}, {}, {}, {})",
+        width.scale, width.offset, height.scale, height.offset
+    )
 }
 
 fn resolve_spacing_value(config: &TailwindConfig, key: &str) -> Option<String> {
@@ -619,6 +710,19 @@ fn format_spacing_offset(value: f64) -> String {
     }
 
     value.to_string()
+}
+
+fn format_fraction_scale(numerator: u32, denominator: u32) -> String {
+    let value = numerator as f64 / denominator as f64;
+    let rounded = value.round();
+    if (value - rounded).abs() < 1e-9 {
+        return format!("{rounded:.0}");
+    }
+
+    format!("{value:.10}")
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_owned()
 }
 
 fn create_prop_attr(prop: PropEntry) -> JSXAttrOrSpread {
@@ -742,6 +846,17 @@ fn unsupported_size_spacing_value_diagnostic(value: &str, token: &str) -> Diagno
         code: "unsupported-size-spacing-value".to_owned(),
         message: format!(
             "Spacing value \"{value}\" for size utility must be an offset-only UDim expression."
+        ),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn unsupported_size_mode_diagnostic(mode: &str, token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-size-mode".to_owned(),
+        message: format!(
+            "Size mode \"{mode}\" needs Roblox automatic sizing semantics and is not lowered to Size."
         ),
         token: Some(token.to_owned()),
     }
