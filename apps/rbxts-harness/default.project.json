@@ -7,23 +7,14 @@
 			"node_modules": {
 				"$className": "Folder",
 				"@rbxts": {
-					"$path": "node_modules/@rbxts"
+					"$path": "../../node_modules/@rbxts"
 				},
 				"@rbxts-js": {
-					"$path": "node_modules/@rbxts-js"
+					"$path": "../../node_modules/@rbxts-js"
 				}
 			},
 			"TS": {
 				"$path": "include"
-			},
-			"Shared": {
-				"$path": "out/shared"
-			}
-		},
-		"ServerScriptService": {
-			"$className": "ServerScriptService",
-			"Server": {
-				"$path": "out/server"
 			}
 		},
 		"StarterPlayer": {
