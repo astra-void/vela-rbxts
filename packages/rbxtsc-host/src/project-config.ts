@@ -2,21 +2,21 @@ declare const __dirname: string;
 declare const __filename: string;
 declare const require: (id: string) => unknown;
 
-const fs = require("fs") as {
+const fs = require("node:fs") as {
 	readFileSync(path: string, encoding: string): string;
 	statSync(path: string): {
 		isFile(): boolean;
 	};
 };
 
-const path = require("path") as {
+const path = require("node:path") as {
 	join(...segments: string[]): string;
 	dirname(path: string): string;
 	resolve(path: string): string;
 	basename(path: string): string;
 };
 
-const { createRequire } = require("module") as {
+const { createRequire } = require("node:module") as {
 	createRequire(filename: string): (id: string) => unknown;
 };
 
@@ -184,7 +184,11 @@ function coerceTailwindConfig(
 }
 
 function normalizeConfigExport(value: unknown): unknown {
-	if (isRecord(value) && "default" in value && isTailwindConfig(value.default)) {
+	if (
+		isRecord(value) &&
+		"default" in value &&
+		isTailwindConfig(value.default)
+	) {
 		return value.default;
 	}
 

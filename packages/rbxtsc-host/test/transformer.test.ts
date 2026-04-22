@@ -1,7 +1,6 @@
-import { beforeEach, expect, test, vi } from "vitest";
-import ts from "typescript";
-
 import { transform as compilerTransform } from "@rbxts-tailwind/compiler";
+import ts from "typescript";
+import { beforeEach, expect, test, vi } from "vitest";
 
 import createRbxtsTailwindProgramTransformer from "../src/transformer";
 

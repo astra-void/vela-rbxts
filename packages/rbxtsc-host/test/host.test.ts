@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { transform } from "@rbxts-tailwind/compiler";
-import defaultConfig from "../../config/src/defaults.json";
 import { beforeEach, expect, test, vi } from "vitest";
+import defaultConfig from "../../config/src/defaults.json";
 import {
 	createRbxtscTransformerBridge,
 	isTransformableHostFile,
@@ -12,7 +12,7 @@ import {
 } from "../src/index";
 
 const mockTransformedCode =
-	'<frame BackgroundColor3={Color3.fromRGB(40, 48, 66)}><uicorner CornerRadius={new UDim(0, 8)}/><uipadding PaddingLeft={new UDim(0, 12)} PaddingRight={new UDim(0, 12)}/></frame>';
+	"<frame BackgroundColor3={Color3.fromRGB(40, 48, 66)}><uicorner CornerRadius={new UDim(0, 8)}/><uipadding PaddingLeft={new UDim(0, 12)} PaddingRight={new UDim(0, 12)}/></frame>";
 
 vi.mock("@rbxts-tailwind/compiler", () => ({
 	transform: vi.fn(() => ({

@@ -47,11 +47,12 @@ export function transformSourceForHost(
 
 	try {
 		const config =
-			request.config ?? options.config ?? resolveProjectConfig(request.fileName);
-		const compilerResult = compiler.transform(
-			request.sourceText,
-			{ configJson: JSON.stringify(config) },
-		);
+			request.config ??
+			options.config ??
+			resolveProjectConfig(request.fileName);
+		const compilerResult = compiler.transform(request.sourceText, {
+			configJson: JSON.stringify(config),
+		});
 
 		return {
 			fileName: request.fileName,

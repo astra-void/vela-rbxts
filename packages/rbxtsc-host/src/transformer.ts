@@ -135,8 +135,10 @@ export default function createRbxtsTailwindProgramTransformer(
 		);
 	}
 
-	const { diagnosticCodeBase = DEFAULT_DIAGNOSTIC_CODE_BASE, ...bridgeOptions } =
-		options;
+	const {
+		diagnosticCodeBase = DEFAULT_DIAGNOSTIC_CODE_BASE,
+		...bridgeOptions
+	} = options;
 	const bridge = createRbxtscTransformerBridge(bridgeOptions);
 
 	return (context) => {
