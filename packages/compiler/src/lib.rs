@@ -304,7 +304,20 @@ fn lower_class_name(
                     .to_owned(),
                 token: None,
             });
-            return None;
+            return Some(LoweredClassName {
+                props: Vec::new(),
+                helpers: Vec::new(),
+                preserved_attrs: attrs
+                    .iter()
+                    .filter(|attr| {
+                        !matches!(
+                            attr,
+                            JSXAttrOrSpread::JSXAttr(attr) if is_class_name_attr(&attr.name)
+                        )
+                    })
+                    .cloned()
+                    .collect(),
+            });
         }
     };
 

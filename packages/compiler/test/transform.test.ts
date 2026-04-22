@@ -117,6 +117,21 @@ test("removes className even when only unsupported utilities remain", () => {
 	);
 });
 
+test("removes non-literal className values and preserves the warning", () => {
+	const result = transform("<frame className={themeClass} />");
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unsupported-classname-expression",
+			}),
+		]),
+	);
+});
+
 test("keeps the public transform options compiler-centric", () => {
 	expectTypeOf<Parameters<typeof transform>[1]>().toEqualTypeOf<
 		| {
