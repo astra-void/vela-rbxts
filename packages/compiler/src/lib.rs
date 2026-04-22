@@ -488,17 +488,34 @@ fn resolve_spacing_value(config: &TailwindConfig, key: &str) -> Option<String> {
 }
 
 fn resolve_numeric_spacing_value(key: &str) -> Option<String> {
+    if matches!(key.as_bytes().first(), Some(b'-') | Some(b'+')) {
+        return None;
+    }
+
     let numeric_key = key.parse::<f64>().ok()?;
-    if !numeric_key.is_finite() {
+    if !numeric_key.is_finite() || numeric_key < 0.0 {
+        return None;
+    }
+
+    let half_step_units = numeric_key * 2.0;
+    if !half_step_units.is_finite() || !is_whole_number(half_step_units) {
         return None;
     }
 
     let offset_px = numeric_key * 4.0;
+    if !offset_px.is_finite() {
+        return None;
+    }
 
     Some(format!(
         "new UDim(0, {})",
         format_spacing_offset(offset_px)
     ))
+}
+
+fn is_whole_number(value: f64) -> bool {
+    let rounded = value.round();
+    (value - rounded).abs() < 1e-9
 }
 
 fn format_spacing_offset(value: f64) -> String {

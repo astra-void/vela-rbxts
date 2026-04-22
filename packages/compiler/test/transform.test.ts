@@ -96,6 +96,26 @@ test("lowers className on multiple supported Roblox host elements", () => {
 	expect(result.code).toMatch(/PaddingBottom=\{new UDim\(0, 12\)\}/);
 });
 
+test("resolves valid numeric spacing fallback tokens", () => {
+	const result = transform('<frame className="px-2 pt-1.5 pl-0.5" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/PaddingLeft=\{new UDim\(0, 2\)\}/);
+	expect(result.code).toMatch(/PaddingRight=\{new UDim\(0, 8\)\}/);
+	expect(result.code).toMatch(/PaddingTop=\{new UDim\(0, 6\)\}/);
+});
+
+test("resolves zero numeric spacing fallback tokens", () => {
+	const result = transform('<frame className="pr-0" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/PaddingRight=\{new UDim\(0, 0\)\}/);
+});
+
 test("prefers explicit spacing config over numeric fallback", () => {
 	const config = defineConfig({
 		theme: {
@@ -115,8 +135,8 @@ test("prefers explicit spacing config over numeric fallback", () => {
 	expect(result.code).toMatch(/PaddingRight=\{new UDim\(0, 99\)\}/);
 });
 
-test("warns for unknown non-numeric spacing keys", () => {
-	const result = transform('<frame className="px-card" />');
+test("rejects invalid numeric spacing fallback tokens", () => {
+	const result = transform('<frame className="px--1 px-2.3 px-card" />');
 
 	expect(result.changed).toBe(true);
 	expect(result.code).not.toContain("className=");
@@ -125,10 +145,22 @@ test("warns for unknown non-numeric spacing keys", () => {
 			expect.objectContaining({
 				level: "warning",
 				code: "unknown-theme-key",
+				token: "px--1",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "px-2.3",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
 				token: "px-card",
 			}),
 		]),
 	);
+	expect(result.code).not.toMatch(/PaddingLeft=/);
+	expect(result.code).not.toMatch(/PaddingRight=/);
 });
 
 test("removes className even when only unsupported utilities remain", () => {
