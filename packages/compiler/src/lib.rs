@@ -7,9 +7,10 @@ use swc_core::{
     common::{sync::Lrc, FileName, SourceMap, DUMMY_SP},
     ecma::{
         ast::{
-            Expr, Ident, IdentName, JSXAttr, JSXAttrName, JSXAttrOrSpread, JSXAttrValue,
-            JSXClosingElement, JSXElement, JSXElementChild, JSXElementName, JSXExpr,
-            JSXExprContainer, JSXOpeningElement, Module, Str,
+            Expr, Ident, IdentName, ImportDecl, ImportNamedSpecifier, ImportSpecifier,
+            JSXAttr, JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXClosingElement,
+            JSXElement, JSXElementChild, JSXElementName, JSXExpr, JSXExprContainer,
+            JSXOpeningElement, Module, ModuleDecl, ModuleItem, ModuleExportName, Str,
         },
         codegen::{text_writer::JsWriter, Config as CodegenConfig, Emitter},
         parser::{parse_file_as_expr, parse_file_as_module, Syntax, TsSyntax},
@@ -38,6 +39,7 @@ pub struct TransformResult {
     pub code: String,
     pub diagnostics: Vec<Diagnostic>,
     pub changed: bool,
+    pub ir: Vec<String>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -91,22 +93,51 @@ static DEFAULT_CONFIG: OnceLock<TailwindConfig> = OnceLock::new();
 
 type ThemeScale = BTreeMap<String, String>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize)]
 struct PropEntry {
     name: &'static str,
     value: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize)]
 struct HelperEntry {
     tag: &'static str,
     props: Vec<PropEntry>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 struct StyleIr {
+    base: StyleEffectBundle,
+    runtime_rules: Vec<RuntimeRule>,
+    runtime_class_value: bool,
+}
+
+#[derive(Clone, Debug, Serialize, Default)]
+struct StyleEffectBundle {
     props: Vec<PropEntry>,
     helpers: Vec<HelperEntry>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum RuntimeCondition {
+    All { conditions: Vec<RuntimeCondition> },
+    Width {
+        alias: String,
+        #[serde(rename = "minWidth")]
+        min_width: u32,
+        #[serde(rename = "maxWidth")]
+        max_width: Option<u32>,
+    },
+    Orientation { value: String },
+    Input { value: String },
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct RuntimeRule {
+    condition: RuntimeCondition,
+    effects: StyleEffectBundle,
 }
 
 #[derive(Clone)]
@@ -137,34 +168,442 @@ impl SizeAxisValue {
 
 impl StyleIr {
     fn set_prop(&mut self, name: &'static str, value: String) {
-        self.props.retain(|prop| prop.name != name);
-        self.props.push(PropEntry { name, value });
+        self.base.props.retain(|prop| prop.name != name);
+        self.base.props.push(PropEntry { name, value });
+    }
+
+    fn remove_prop(&mut self, name: &'static str) {
+        self.base.props.retain(|prop| prop.name != name);
     }
 
     fn set_helper_prop(&mut self, tag: &'static str, name: &'static str, value: String) {
-        if let Some(helper) = self.helpers.iter_mut().find(|helper| helper.tag == tag) {
+        if let Some(helper) = self.base.helpers.iter_mut().find(|helper| helper.tag == tag) {
             helper.props.retain(|prop| prop.name != name);
             helper.props.push(PropEntry { name, value });
             return;
         }
 
-        self.helpers.push(HelperEntry {
+        self.base.helpers.push(HelperEntry {
             tag,
             props: vec![PropEntry { name, value }],
         });
     }
 }
 
+#[derive(Clone)]
+enum ColorResolution {
+    Expression(String),
+    BuiltinHex(&'static str),
+    Transparent,
+}
+
+#[derive(Clone, Copy)]
+struct ColorFamilySpec {
+    theme_family: &'static str,
+    color_prop: &'static str,
+    transparency_prop: Option<&'static str>,
+}
+
+const BACKGROUND_COLOR_FAMILY: ColorFamilySpec = ColorFamilySpec {
+    theme_family: "background color",
+    color_prop: "BackgroundColor3",
+    transparency_prop: Some("BackgroundTransparency"),
+};
+
+const TEXT_COLOR_FAMILY: ColorFamilySpec = ColorFamilySpec {
+    theme_family: "text color",
+    color_prop: "TextColor3",
+    transparency_prop: Some("TextTransparency"),
+};
+
+const IMAGE_COLOR_FAMILY: ColorFamilySpec = ColorFamilySpec {
+    theme_family: "image color",
+    color_prop: "ImageColor3",
+    transparency_prop: Some("ImageTransparency"),
+};
+
+const PLACEHOLDER_COLOR_FAMILY: ColorFamilySpec = ColorFamilySpec {
+    theme_family: "placeholder color",
+    color_prop: "PlaceholderColor3",
+    transparency_prop: None,
+};
+
+static BUILTIN_COLOR_PALETTE: &[(&str, ColorResolution)] = &[
+    ("transparent", ColorResolution::Transparent),
+    ("black", ColorResolution::BuiltinHex("#000")),
+    ("white", ColorResolution::BuiltinHex("#fff")),
+    ("slate-50", ColorResolution::BuiltinHex("#f8fafc")),
+    ("slate-100", ColorResolution::BuiltinHex("#f1f5f9")),
+    ("slate-200", ColorResolution::BuiltinHex("#e2e8f0")),
+    ("slate-300", ColorResolution::BuiltinHex("#cbd5e1")),
+    ("slate-400", ColorResolution::BuiltinHex("#94a3b8")),
+    ("slate-500", ColorResolution::BuiltinHex("#64748b")),
+    ("slate-600", ColorResolution::BuiltinHex("#475569")),
+    ("slate-700", ColorResolution::BuiltinHex("#334155")),
+    ("slate-800", ColorResolution::BuiltinHex("#1e293b")),
+    ("slate-900", ColorResolution::BuiltinHex("#0f172a")),
+    ("slate-950", ColorResolution::BuiltinHex("#020617")),
+    ("gray-50", ColorResolution::BuiltinHex("#f9fafb")),
+    ("gray-100", ColorResolution::BuiltinHex("#f3f4f6")),
+    ("gray-200", ColorResolution::BuiltinHex("#e5e7eb")),
+    ("gray-300", ColorResolution::BuiltinHex("#d1d5db")),
+    ("gray-400", ColorResolution::BuiltinHex("#9ca3af")),
+    ("gray-500", ColorResolution::BuiltinHex("#6b7280")),
+    ("gray-600", ColorResolution::BuiltinHex("#4b5563")),
+    ("gray-700", ColorResolution::BuiltinHex("#374151")),
+    ("gray-800", ColorResolution::BuiltinHex("#1f2937")),
+    ("gray-900", ColorResolution::BuiltinHex("#111827")),
+    ("gray-950", ColorResolution::BuiltinHex("#030712")),
+    ("zinc-50", ColorResolution::BuiltinHex("#fafafa")),
+    ("zinc-100", ColorResolution::BuiltinHex("#f4f4f5")),
+    ("zinc-200", ColorResolution::BuiltinHex("#e4e4e7")),
+    ("zinc-300", ColorResolution::BuiltinHex("#d4d4d8")),
+    ("zinc-400", ColorResolution::BuiltinHex("#a1a1aa")),
+    ("zinc-500", ColorResolution::BuiltinHex("#71717a")),
+    ("zinc-600", ColorResolution::BuiltinHex("#52525b")),
+    ("zinc-700", ColorResolution::BuiltinHex("#3f3f46")),
+    ("zinc-800", ColorResolution::BuiltinHex("#27272a")),
+    ("zinc-900", ColorResolution::BuiltinHex("#18181b")),
+    ("zinc-950", ColorResolution::BuiltinHex("#09090b")),
+    ("neutral-50", ColorResolution::BuiltinHex("#fafafa")),
+    ("neutral-100", ColorResolution::BuiltinHex("#f5f5f5")),
+    ("neutral-200", ColorResolution::BuiltinHex("#e5e5e5")),
+    ("neutral-300", ColorResolution::BuiltinHex("#d4d4d4")),
+    ("neutral-400", ColorResolution::BuiltinHex("#a3a3a3")),
+    ("neutral-500", ColorResolution::BuiltinHex("#737373")),
+    ("neutral-600", ColorResolution::BuiltinHex("#525252")),
+    ("neutral-700", ColorResolution::BuiltinHex("#404040")),
+    ("neutral-800", ColorResolution::BuiltinHex("#262626")),
+    ("neutral-900", ColorResolution::BuiltinHex("#171717")),
+    ("neutral-950", ColorResolution::BuiltinHex("#0a0a0a")),
+    ("stone-50", ColorResolution::BuiltinHex("#fafaf9")),
+    ("stone-100", ColorResolution::BuiltinHex("#f5f5f4")),
+    ("stone-200", ColorResolution::BuiltinHex("#e7e5e4")),
+    ("stone-300", ColorResolution::BuiltinHex("#d6d3d1")),
+    ("stone-400", ColorResolution::BuiltinHex("#a8a29e")),
+    ("stone-500", ColorResolution::BuiltinHex("#78716c")),
+    ("stone-600", ColorResolution::BuiltinHex("#57534e")),
+    ("stone-700", ColorResolution::BuiltinHex("#44403c")),
+    ("stone-800", ColorResolution::BuiltinHex("#292524")),
+    ("stone-900", ColorResolution::BuiltinHex("#1c1917")),
+    ("stone-950", ColorResolution::BuiltinHex("#0c0a09")),
+    ("red-50", ColorResolution::BuiltinHex("#fef2f2")),
+    ("red-100", ColorResolution::BuiltinHex("#fee2e2")),
+    ("red-200", ColorResolution::BuiltinHex("#fecaca")),
+    ("red-300", ColorResolution::BuiltinHex("#fca5a5")),
+    ("red-400", ColorResolution::BuiltinHex("#f87171")),
+    ("red-500", ColorResolution::BuiltinHex("#ef4444")),
+    ("red-600", ColorResolution::BuiltinHex("#dc2626")),
+    ("red-700", ColorResolution::BuiltinHex("#b91c1c")),
+    ("red-800", ColorResolution::BuiltinHex("#991b1b")),
+    ("red-900", ColorResolution::BuiltinHex("#7f1d1d")),
+    ("red-950", ColorResolution::BuiltinHex("#450a0a")),
+    ("orange-50", ColorResolution::BuiltinHex("#fff7ed")),
+    ("orange-100", ColorResolution::BuiltinHex("#ffedd5")),
+    ("orange-200", ColorResolution::BuiltinHex("#fed7aa")),
+    ("orange-300", ColorResolution::BuiltinHex("#fdba74")),
+    ("orange-400", ColorResolution::BuiltinHex("#fb923c")),
+    ("orange-500", ColorResolution::BuiltinHex("#f97316")),
+    ("orange-600", ColorResolution::BuiltinHex("#ea580c")),
+    ("orange-700", ColorResolution::BuiltinHex("#c2410c")),
+    ("orange-800", ColorResolution::BuiltinHex("#9a3412")),
+    ("orange-900", ColorResolution::BuiltinHex("#7c2d12")),
+    ("orange-950", ColorResolution::BuiltinHex("#431407")),
+    ("amber-50", ColorResolution::BuiltinHex("#fffbeb")),
+    ("amber-100", ColorResolution::BuiltinHex("#fef3c7")),
+    ("amber-200", ColorResolution::BuiltinHex("#fde68a")),
+    ("amber-300", ColorResolution::BuiltinHex("#fcd34d")),
+    ("amber-400", ColorResolution::BuiltinHex("#fbbf24")),
+    ("amber-500", ColorResolution::BuiltinHex("#f59e0b")),
+    ("amber-600", ColorResolution::BuiltinHex("#d97706")),
+    ("amber-700", ColorResolution::BuiltinHex("#b45309")),
+    ("amber-800", ColorResolution::BuiltinHex("#92400e")),
+    ("amber-900", ColorResolution::BuiltinHex("#78350f")),
+    ("amber-950", ColorResolution::BuiltinHex("#451a03")),
+    ("yellow-50", ColorResolution::BuiltinHex("#fefce8")),
+    ("yellow-100", ColorResolution::BuiltinHex("#fef9c3")),
+    ("yellow-200", ColorResolution::BuiltinHex("#fef08a")),
+    ("yellow-300", ColorResolution::BuiltinHex("#fde047")),
+    ("yellow-400", ColorResolution::BuiltinHex("#facc15")),
+    ("yellow-500", ColorResolution::BuiltinHex("#eab308")),
+    ("yellow-600", ColorResolution::BuiltinHex("#ca8a04")),
+    ("yellow-700", ColorResolution::BuiltinHex("#a16207")),
+    ("yellow-800", ColorResolution::BuiltinHex("#854d0e")),
+    ("yellow-900", ColorResolution::BuiltinHex("#713f12")),
+    ("yellow-950", ColorResolution::BuiltinHex("#422006")),
+    ("lime-50", ColorResolution::BuiltinHex("#f7fee7")),
+    ("lime-100", ColorResolution::BuiltinHex("#ecfccb")),
+    ("lime-200", ColorResolution::BuiltinHex("#d9f99d")),
+    ("lime-300", ColorResolution::BuiltinHex("#bef264")),
+    ("lime-400", ColorResolution::BuiltinHex("#a3e635")),
+    ("lime-500", ColorResolution::BuiltinHex("#84cc16")),
+    ("lime-600", ColorResolution::BuiltinHex("#65a30d")),
+    ("lime-700", ColorResolution::BuiltinHex("#4d7c0f")),
+    ("lime-800", ColorResolution::BuiltinHex("#3f6212")),
+    ("lime-900", ColorResolution::BuiltinHex("#365314")),
+    ("lime-950", ColorResolution::BuiltinHex("#1a2e05")),
+    ("green-50", ColorResolution::BuiltinHex("#f0fdf4")),
+    ("green-100", ColorResolution::BuiltinHex("#dcfce7")),
+    ("green-200", ColorResolution::BuiltinHex("#bbf7d0")),
+    ("green-300", ColorResolution::BuiltinHex("#86efac")),
+    ("green-400", ColorResolution::BuiltinHex("#4ade80")),
+    ("green-500", ColorResolution::BuiltinHex("#22c55e")),
+    ("green-600", ColorResolution::BuiltinHex("#16a34a")),
+    ("green-700", ColorResolution::BuiltinHex("#15803d")),
+    ("green-800", ColorResolution::BuiltinHex("#166534")),
+    ("green-900", ColorResolution::BuiltinHex("#14532d")),
+    ("green-950", ColorResolution::BuiltinHex("#052e16")),
+    ("emerald-50", ColorResolution::BuiltinHex("#ecfdf5")),
+    ("emerald-100", ColorResolution::BuiltinHex("#d1fae5")),
+    ("emerald-200", ColorResolution::BuiltinHex("#a7f3d0")),
+    ("emerald-300", ColorResolution::BuiltinHex("#6ee7b7")),
+    ("emerald-400", ColorResolution::BuiltinHex("#34d399")),
+    ("emerald-500", ColorResolution::BuiltinHex("#10b981")),
+    ("emerald-600", ColorResolution::BuiltinHex("#059669")),
+    ("emerald-700", ColorResolution::BuiltinHex("#047857")),
+    ("emerald-800", ColorResolution::BuiltinHex("#065f46")),
+    ("emerald-900", ColorResolution::BuiltinHex("#064e3b")),
+    ("emerald-950", ColorResolution::BuiltinHex("#022c22")),
+    ("teal-50", ColorResolution::BuiltinHex("#f0fdfa")),
+    ("teal-100", ColorResolution::BuiltinHex("#ccfbf1")),
+    ("teal-200", ColorResolution::BuiltinHex("#99f6e4")),
+    ("teal-300", ColorResolution::BuiltinHex("#5eead4")),
+    ("teal-400", ColorResolution::BuiltinHex("#2dd4bf")),
+    ("teal-500", ColorResolution::BuiltinHex("#14b8a6")),
+    ("teal-600", ColorResolution::BuiltinHex("#0d9488")),
+    ("teal-700", ColorResolution::BuiltinHex("#0f766e")),
+    ("teal-800", ColorResolution::BuiltinHex("#115e59")),
+    ("teal-900", ColorResolution::BuiltinHex("#134e4a")),
+    ("teal-950", ColorResolution::BuiltinHex("#042f2e")),
+    ("cyan-50", ColorResolution::BuiltinHex("#ecfeff")),
+    ("cyan-100", ColorResolution::BuiltinHex("#cffafe")),
+    ("cyan-200", ColorResolution::BuiltinHex("#a5f3fc")),
+    ("cyan-300", ColorResolution::BuiltinHex("#67e8f9")),
+    ("cyan-400", ColorResolution::BuiltinHex("#22d3ee")),
+    ("cyan-500", ColorResolution::BuiltinHex("#06b6d4")),
+    ("cyan-600", ColorResolution::BuiltinHex("#0891b2")),
+    ("cyan-700", ColorResolution::BuiltinHex("#0e7490")),
+    ("cyan-800", ColorResolution::BuiltinHex("#155e75")),
+    ("cyan-900", ColorResolution::BuiltinHex("#164e63")),
+    ("cyan-950", ColorResolution::BuiltinHex("#083344")),
+    ("sky-50", ColorResolution::BuiltinHex("#f0f9ff")),
+    ("sky-100", ColorResolution::BuiltinHex("#e0f2fe")),
+    ("sky-200", ColorResolution::BuiltinHex("#bae6fd")),
+    ("sky-300", ColorResolution::BuiltinHex("#7dd3fc")),
+    ("sky-400", ColorResolution::BuiltinHex("#38bdf8")),
+    ("sky-500", ColorResolution::BuiltinHex("#0ea5e9")),
+    ("sky-600", ColorResolution::BuiltinHex("#0284c7")),
+    ("sky-700", ColorResolution::BuiltinHex("#0369a1")),
+    ("sky-800", ColorResolution::BuiltinHex("#075985")),
+    ("sky-900", ColorResolution::BuiltinHex("#0c4a6e")),
+    ("sky-950", ColorResolution::BuiltinHex("#082f49")),
+    ("blue-50", ColorResolution::BuiltinHex("#eff6ff")),
+    ("blue-100", ColorResolution::BuiltinHex("#dbeafe")),
+    ("blue-200", ColorResolution::BuiltinHex("#bfdbfe")),
+    ("blue-300", ColorResolution::BuiltinHex("#93c5fd")),
+    ("blue-400", ColorResolution::BuiltinHex("#60a5fa")),
+    ("blue-500", ColorResolution::BuiltinHex("#3b82f6")),
+    ("blue-600", ColorResolution::BuiltinHex("#2563eb")),
+    ("blue-700", ColorResolution::BuiltinHex("#1d4ed8")),
+    ("blue-800", ColorResolution::BuiltinHex("#1e40af")),
+    ("blue-900", ColorResolution::BuiltinHex("#1e3a8a")),
+    ("blue-950", ColorResolution::BuiltinHex("#172554")),
+    ("indigo-50", ColorResolution::BuiltinHex("#eef2ff")),
+    ("indigo-100", ColorResolution::BuiltinHex("#e0e7ff")),
+    ("indigo-200", ColorResolution::BuiltinHex("#c7d2fe")),
+    ("indigo-300", ColorResolution::BuiltinHex("#a5b4fc")),
+    ("indigo-400", ColorResolution::BuiltinHex("#818cf8")),
+    ("indigo-500", ColorResolution::BuiltinHex("#6366f1")),
+    ("indigo-600", ColorResolution::BuiltinHex("#4f46e5")),
+    ("indigo-700", ColorResolution::BuiltinHex("#4338ca")),
+    ("indigo-800", ColorResolution::BuiltinHex("#3730a3")),
+    ("indigo-900", ColorResolution::BuiltinHex("#312e81")),
+    ("indigo-950", ColorResolution::BuiltinHex("#1e1b4b")),
+    ("violet-50", ColorResolution::BuiltinHex("#f5f3ff")),
+    ("violet-100", ColorResolution::BuiltinHex("#ede9fe")),
+    ("violet-200", ColorResolution::BuiltinHex("#ddd6fe")),
+    ("violet-300", ColorResolution::BuiltinHex("#c4b5fd")),
+    ("violet-400", ColorResolution::BuiltinHex("#a78bfa")),
+    ("violet-500", ColorResolution::BuiltinHex("#8b5cf6")),
+    ("violet-600", ColorResolution::BuiltinHex("#7c3aed")),
+    ("violet-700", ColorResolution::BuiltinHex("#6d28d9")),
+    ("violet-800", ColorResolution::BuiltinHex("#5b21b6")),
+    ("violet-900", ColorResolution::BuiltinHex("#4c1d95")),
+    ("violet-950", ColorResolution::BuiltinHex("#2e1065")),
+    ("purple-50", ColorResolution::BuiltinHex("#faf5ff")),
+    ("purple-100", ColorResolution::BuiltinHex("#f3e8ff")),
+    ("purple-200", ColorResolution::BuiltinHex("#e9d5ff")),
+    ("purple-300", ColorResolution::BuiltinHex("#d8b4fe")),
+    ("purple-400", ColorResolution::BuiltinHex("#c084fc")),
+    ("purple-500", ColorResolution::BuiltinHex("#a855f7")),
+    ("purple-600", ColorResolution::BuiltinHex("#9333ea")),
+    ("purple-700", ColorResolution::BuiltinHex("#7e22ce")),
+    ("purple-800", ColorResolution::BuiltinHex("#6b21a8")),
+    ("purple-900", ColorResolution::BuiltinHex("#581c87")),
+    ("purple-950", ColorResolution::BuiltinHex("#3b0764")),
+    ("fuchsia-50", ColorResolution::BuiltinHex("#fdf4ff")),
+    ("fuchsia-100", ColorResolution::BuiltinHex("#fae8ff")),
+    ("fuchsia-200", ColorResolution::BuiltinHex("#f5d0fe")),
+    ("fuchsia-300", ColorResolution::BuiltinHex("#f0abfc")),
+    ("fuchsia-400", ColorResolution::BuiltinHex("#e879f9")),
+    ("fuchsia-500", ColorResolution::BuiltinHex("#d946ef")),
+    ("fuchsia-600", ColorResolution::BuiltinHex("#c026d3")),
+    ("fuchsia-700", ColorResolution::BuiltinHex("#a21caf")),
+    ("fuchsia-800", ColorResolution::BuiltinHex("#86198f")),
+    ("fuchsia-900", ColorResolution::BuiltinHex("#701a75")),
+    ("fuchsia-950", ColorResolution::BuiltinHex("#4a044e")),
+    ("pink-50", ColorResolution::BuiltinHex("#fdf2f8")),
+    ("pink-100", ColorResolution::BuiltinHex("#fce7f3")),
+    ("pink-200", ColorResolution::BuiltinHex("#fbcfe8")),
+    ("pink-300", ColorResolution::BuiltinHex("#f9a8d4")),
+    ("pink-400", ColorResolution::BuiltinHex("#f472b6")),
+    ("pink-500", ColorResolution::BuiltinHex("#ec4899")),
+    ("pink-600", ColorResolution::BuiltinHex("#db2777")),
+    ("pink-700", ColorResolution::BuiltinHex("#be185d")),
+    ("pink-800", ColorResolution::BuiltinHex("#9d174d")),
+    ("pink-900", ColorResolution::BuiltinHex("#831843")),
+    ("pink-950", ColorResolution::BuiltinHex("#500724")),
+    ("rose-50", ColorResolution::BuiltinHex("#fff1f2")),
+    ("rose-100", ColorResolution::BuiltinHex("#ffe4e6")),
+    ("rose-200", ColorResolution::BuiltinHex("#fecdd3")),
+    ("rose-300", ColorResolution::BuiltinHex("#fda4af")),
+    ("rose-400", ColorResolution::BuiltinHex("#fb7185")),
+    ("rose-500", ColorResolution::BuiltinHex("#f43f5e")),
+    ("rose-600", ColorResolution::BuiltinHex("#e11d48")),
+    ("rose-700", ColorResolution::BuiltinHex("#be123c")),
+    ("rose-800", ColorResolution::BuiltinHex("#9f1239")),
+    ("rose-900", ColorResolution::BuiltinHex("#881337")),
+    ("rose-950", ColorResolution::BuiltinHex("#4c0519")),
+];
+
 struct TailwindTransformer {
     changed: bool,
     config: TailwindConfig,
     diagnostics: Vec<Diagnostic>,
+    ir: Vec<StyleIr>,
+    runtime_import_needed: bool,
 }
 
 struct LoweredClassName {
-    props: Vec<PropEntry>,
-    helpers: Vec<HelperEntry>,
+    style_ir: StyleIr,
     preserved_attrs: Vec<JSXAttrOrSpread>,
+    runtime_class_name: Option<JSXAttr>,
+    needs_runtime_host: bool,
+}
+
+fn apply_color_utility(
+    style: &mut StyleIr,
+    config: &TailwindConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+    spec: ColorFamilySpec,
+    color_key: &str,
+    token: &str,
+) {
+    let Some(resolution) = resolve_color_value(config, diagnostics, spec, color_key, token) else {
+        return;
+    };
+
+    match resolution {
+        ColorResolution::Expression(value) => {
+            if let Some(transparency_prop) = spec.transparency_prop {
+                style.remove_prop(transparency_prop);
+            }
+
+            style.set_prop(spec.color_prop, value);
+        }
+        ColorResolution::BuiltinHex(hex) => {
+            if let Some(transparency_prop) = spec.transparency_prop {
+                style.remove_prop(transparency_prop);
+            }
+
+            style.set_prop(spec.color_prop, builtin_color_expression(hex));
+        }
+        ColorResolution::Transparent => {
+            if let Some(transparency_prop) = spec.transparency_prop {
+                style.remove_prop(spec.color_prop);
+                style.set_prop(transparency_prop, "1".to_owned());
+                return;
+            }
+
+            diagnostics.push(unsupported_color_keyword_diagnostic(
+                spec.theme_family,
+                color_key,
+                token,
+            ));
+        }
+    }
+}
+
+fn resolve_color_value(
+    config: &TailwindConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+    spec: ColorFamilySpec,
+    color_key: &str,
+    token: &str,
+) -> Option<ColorResolution> {
+    if let Some(value) = config.theme.colors.get(color_key) {
+        return Some(ColorResolution::Expression(value.clone()));
+    }
+
+    if let Some(value) = resolve_builtin_color(color_key) {
+        return Some(value);
+    }
+
+    if matches!(color_key, "current" | "inherit") {
+        diagnostics.push(unsupported_color_keyword_diagnostic(
+            spec.theme_family,
+            color_key,
+            token,
+        ));
+        return None;
+    }
+
+    diagnostics.push(unknown_theme_key_diagnostic(spec.theme_family, color_key, token));
+    None
+}
+
+fn resolve_builtin_color(key: &str) -> Option<ColorResolution> {
+    BUILTIN_COLOR_PALETTE
+        .iter()
+        .find(|(builtin_key, _)| *builtin_key == key)
+        .map(|(_, value)| value.clone())
+}
+
+fn unsupported_color_keyword_diagnostic(
+    theme_family: &str,
+    key: &str,
+    token: &str,
+) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-color-key".to_owned(),
+        message: format!(
+            "Unsupported color keyword \"{key}\" for {theme_family} utility in className literal."
+        ),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn builtin_color_expression(hex: &str) -> String {
+    let hex = hex.strip_prefix('#').unwrap_or(hex);
+    let expanded = match hex.len() {
+        3 => {
+            let mut out = String::with_capacity(6);
+            for ch in hex.chars() {
+                out.push(ch);
+                out.push(ch);
+            }
+            out
+        }
+        6 => hex.to_owned(),
+        _ => panic!("builtin color hex values must be 3 or 6 digits"),
+    };
+
+    let red = u8::from_str_radix(&expanded[0..2], 16).expect("builtin color red channel");
+    let green = u8::from_str_radix(&expanded[2..4], 16).expect("builtin color green channel");
+    let blue = u8::from_str_radix(&expanded[4..6], 16).expect("builtin color blue channel");
+
+    format!("Color3.fromRGB({red}, {green}, {blue})")
 }
 
 fn transform_impl(source: String, options: Option<TransformOptions>) -> TransformResult {
@@ -196,6 +635,7 @@ fn transform_impl(source: String, options: Option<TransformOptions>) -> Transfor
                     token: None,
                 }],
                 changed: false,
+                ir: Vec::new(),
             };
         }
     };
@@ -210,6 +650,7 @@ fn transform_impl(source: String, options: Option<TransformOptions>) -> Transfor
                 token: None,
             }],
             changed: false,
+            ir: Vec::new(),
         };
     }
 
@@ -217,6 +658,8 @@ fn transform_impl(source: String, options: Option<TransformOptions>) -> Transfor
         changed: false,
         config,
         diagnostics: Vec::new(),
+        ir: Vec::new(),
+        runtime_import_needed: false,
     };
     module.visit_mut_with(&mut transformer);
 
@@ -234,6 +677,13 @@ fn transform_impl(source: String, options: Option<TransformOptions>) -> Transfor
         code: emitted_code,
         diagnostics: transformer.diagnostics,
         changed: transformer.changed,
+        ir: transformer
+            .ir
+            .into_iter()
+            .map(|style| {
+                serde_json::to_string(&style).expect("style IR must serialize to JSON")
+            })
+            .collect(),
     }
 }
 
@@ -256,6 +706,17 @@ fn emit_module(cm: &Lrc<SourceMap>, module: &Module) -> Result<String, String> {
 }
 
 impl VisitMut for TailwindTransformer {
+    fn visit_mut_module(&mut self, module: &mut Module) {
+        module.visit_mut_children_with(self);
+
+        if self.runtime_import_needed {
+            module.body.insert(
+                0,
+                ModuleItem::ModuleDecl(create_runtime_import_declaration()),
+            );
+        }
+    }
+
     fn visit_mut_jsx_element(&mut self, element: &mut JSXElement) {
         element.visit_mut_children_with(self);
 
@@ -272,17 +733,44 @@ impl VisitMut for TailwindTransformer {
         };
 
         self.changed = true;
-        element.opening.attrs = lowered
-            .preserved_attrs
-            .into_iter()
-            .chain(lowered.props.into_iter().map(create_prop_attr))
-            .collect();
+        self.ir.push(lowered.style_ir.clone());
+
+        let mut attrs = lowered.preserved_attrs;
+        if let Some(runtime_class_name) = lowered.runtime_class_name {
+            attrs.push(JSXAttrOrSpread::JSXAttr(runtime_class_name));
+        }
 
         let helper_children = lowered
+            .style_ir
+            .base
             .helpers
             .into_iter()
             .map(create_helper_child)
             .collect::<Vec<_>>();
+
+        if lowered.needs_runtime_host {
+            self.runtime_import_needed = true;
+            attrs.extend(lowered.style_ir.base.props.into_iter().map(create_prop_attr));
+            if !lowered.style_ir.runtime_rules.is_empty() {
+                attrs.push(create_prop_attr(PropEntry {
+                    name: "__rbxtsTailwindRules",
+                    value: serde_json::to_string(&lowered.style_ir.runtime_rules)
+                        .expect("runtime rules must serialize to JSON"),
+                }));
+            }
+            attrs.push(create_prop_attr(PropEntry {
+                name: "__rbxtsTailwindTag",
+                value: format!("\"{}\"", element_tag_name(&element.opening.name)),
+            }));
+            element.opening.name = JSXElementName::Ident(Ident::new_no_ctxt(
+                "__rbxtsTailwindRuntimeHost".into(),
+                DUMMY_SP,
+            ));
+        } else {
+            attrs.extend(lowered.style_ir.base.props.into_iter().map(create_prop_attr));
+        }
+
+        element.opening.attrs = attrs;
 
         if element.opening.self_closing && helper_children.is_empty() {
             return;
@@ -320,34 +808,6 @@ fn lower_class_name(
         _ => None,
     })?;
 
-    let class_name = match &class_name_attr.value {
-        Some(JSXAttrValue::Str(value)) => value.value.to_string_lossy().into_owned(),
-        _ => {
-            diagnostics.push(Diagnostic {
-                level: "warning".to_owned(),
-                code: "unsupported-classname-expression".to_owned(),
-                message: "Only className string literals are supported in this compiler slice."
-                    .to_owned(),
-                token: None,
-            });
-            return Some(LoweredClassName {
-                props: Vec::new(),
-                helpers: Vec::new(),
-                preserved_attrs: attrs
-                    .iter()
-                    .filter(|attr| {
-                        !matches!(
-                            attr,
-                            JSXAttrOrSpread::JSXAttr(attr) if is_class_name_attr(&attr.name)
-                        )
-                    })
-                    .cloned()
-                    .collect(),
-            });
-        }
-    };
-
-    let style = resolve_class_tokens(tokenize_class_name(&class_name), config, diagnostics);
     let preserved_attrs = attrs
         .iter()
         .filter(|attr| {
@@ -359,11 +819,31 @@ fn lower_class_name(
         .cloned()
         .collect();
 
-    Some(LoweredClassName {
-        props: style.props,
-        helpers: style.helpers,
-        preserved_attrs,
-    })
+    match &class_name_attr.value {
+        Some(JSXAttrValue::Str(value)) => {
+            let class_name = value.value.to_string_lossy().into_owned();
+            let style = resolve_class_tokens(tokenize_class_name(&class_name), config, diagnostics);
+            let needs_runtime_host =
+                !style.runtime_rules.is_empty() || style.runtime_class_value;
+
+            Some(LoweredClassName {
+                style_ir: style,
+                preserved_attrs,
+                runtime_class_name: None,
+                needs_runtime_host,
+            })
+        }
+        _ => Some(LoweredClassName {
+            style_ir: StyleIr {
+                base: StyleEffectBundle::default(),
+                runtime_rules: Vec::new(),
+                runtime_class_value: true,
+            },
+            preserved_attrs,
+            runtime_class_name: Some(class_name_attr.clone()),
+            needs_runtime_host: true,
+        }),
+    }
 }
 
 fn resolve_class_tokens(
@@ -376,16 +856,62 @@ fn resolve_class_tokens(
     let mut pending_size_height: Option<SizeAxisValue> = None;
 
     for token in tokens {
-        if let Some(color_key) = token.strip_prefix("bg-") {
-            if let Some(value) = config.theme.colors.get(color_key) {
-                style.set_prop("BackgroundColor3", value.clone());
-            } else {
-                diagnostics.push(unknown_theme_key_diagnostic(
-                    "background color",
-                    color_key,
-                    token,
-                ));
+        if let Some((condition, runtime_token)) = parse_runtime_variant_token(token) {
+            let runtime_style = resolve_class_tokens(vec![runtime_token], config, diagnostics);
+            if !runtime_style.base.props.is_empty() || !runtime_style.base.helpers.is_empty() {
+                style.runtime_rules.push(RuntimeRule {
+                    condition,
+                    effects: runtime_style.base,
+                });
             }
+            continue;
+        }
+
+        if let Some(color_key) = token.strip_prefix("bg-") {
+            apply_color_utility(
+                &mut style,
+                config,
+                diagnostics,
+                BACKGROUND_COLOR_FAMILY,
+                color_key,
+                token,
+            );
+            continue;
+        }
+
+        if let Some(color_key) = token.strip_prefix("text-") {
+            apply_color_utility(
+                &mut style,
+                config,
+                diagnostics,
+                TEXT_COLOR_FAMILY,
+                color_key,
+                token,
+            );
+            continue;
+        }
+
+        if let Some(color_key) = token.strip_prefix("image-") {
+            apply_color_utility(
+                &mut style,
+                config,
+                diagnostics,
+                IMAGE_COLOR_FAMILY,
+                color_key,
+                token,
+            );
+            continue;
+        }
+
+        if let Some(color_key) = token.strip_prefix("placeholder-") {
+            apply_color_utility(
+                &mut style,
+                config,
+                diagnostics,
+                PLACEHOLDER_COLOR_FAMILY,
+                color_key,
+                token,
+            );
             continue;
         }
 
@@ -543,6 +1069,67 @@ fn resolve_class_tokens(
     }
 
     style
+}
+
+fn parse_runtime_variant_token(token: &str) -> Option<(RuntimeCondition, &str)> {
+    let mut prefixes = Vec::new();
+    let mut remainder = token;
+
+    while let Some((prefix, next)) = remainder.split_once(':') {
+        let condition = parse_runtime_prefix(prefix)?;
+        prefixes.push(condition);
+        remainder = next;
+    }
+
+    if prefixes.is_empty() {
+        return None;
+    }
+
+    let condition = if prefixes.len() == 1 {
+        prefixes.into_iter().next().unwrap()
+    } else {
+        RuntimeCondition::All {
+            conditions: prefixes,
+        }
+    };
+
+    Some((condition, remainder))
+}
+
+fn parse_runtime_prefix(prefix: &str) -> Option<RuntimeCondition> {
+    match prefix {
+        "sm" => Some(RuntimeCondition::Width {
+            alias: "sm".to_owned(),
+            min_width: 640,
+            max_width: None,
+        }),
+        "md" => Some(RuntimeCondition::Width {
+            alias: "md".to_owned(),
+            min_width: 768,
+            max_width: None,
+        }),
+        "lg" => Some(RuntimeCondition::Width {
+            alias: "lg".to_owned(),
+            min_width: 1024,
+            max_width: None,
+        }),
+        "portrait" => Some(RuntimeCondition::Orientation {
+            value: "portrait".to_owned(),
+        }),
+        "landscape" => Some(RuntimeCondition::Orientation {
+            value: "landscape".to_owned(),
+        }),
+        "touch" => Some(RuntimeCondition::Input {
+            value: "touch".to_owned(),
+        }),
+        "mouse" => Some(RuntimeCondition::Input {
+            value: "mouse".to_owned(),
+        }),
+        "gamepad" => Some(RuntimeCondition::Input {
+            value: "gamepad".to_owned(),
+        }),
+        _ => None,
+    }
 }
 
 fn apply_spacing_utility(
@@ -734,6 +1321,36 @@ fn create_prop_attr(prop: PropEntry) -> JSXAttrOrSpread {
             expr: JSXExpr::Expr(parse_expression(&prop.value)),
         })),
     })
+}
+
+fn create_runtime_import_declaration() -> ModuleDecl {
+    ModuleDecl::Import(ImportDecl {
+        span: DUMMY_SP,
+        specifiers: vec![ImportSpecifier::Named(ImportNamedSpecifier {
+            span: DUMMY_SP,
+            local: Ident::new_no_ctxt("__rbxtsTailwindRuntimeHost".into(), DUMMY_SP),
+            imported: Some(ModuleExportName::Ident(Ident::new_no_ctxt(
+                "TailwindRuntimeHost".into(),
+                DUMMY_SP,
+            ))),
+            is_type_only: false,
+        })],
+        src: Box::new(Str {
+            span: DUMMY_SP,
+            value: "rbxts-tailwind/runtime-host".into(),
+            raw: None,
+        }),
+        type_only: false,
+        with: None,
+        phase: Default::default(),
+    })
+}
+
+fn element_tag_name(name: &JSXElementName) -> String {
+    match name {
+        JSXElementName::Ident(ident) => ident.sym.to_string(),
+        _ => "frame".to_owned(),
+    }
 }
 
 fn create_helper_child(helper: HelperEntry) -> JSXElementChild {

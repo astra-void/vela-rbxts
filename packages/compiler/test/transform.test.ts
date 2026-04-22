@@ -76,6 +76,119 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 	expect(result.code).not.toContain("theme.");
 });
 
+test("prefers config colors over built-in palette colors", () => {
+	const config = defineConfig({
+		theme: {
+			colors: {
+				"slate-500": "Color3.fromRGB(1, 2, 3)",
+			},
+		},
+	});
+
+	const result = transform('<frame className="bg-slate-500" />', {
+		configJson: JSON.stringify(config),
+	});
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toContain(
+		"<frame BackgroundColor3={Color3.fromRGB(1, 2, 3)}/>",
+	);
+});
+
+test("resolves built-in background color defaults", () => {
+	const result = transform(
+		'<frame><frame className="bg-white" /><frame className="bg-black" /><frame className="bg-transparent" /></frame>',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toContain(
+		"<frame BackgroundColor3={Color3.fromRGB(255, 255, 255)}/>",
+	);
+	expect(result.code).toContain(
+		"<frame BackgroundColor3={Color3.fromRGB(0, 0, 0)}/>",
+	);
+	expect(result.code).toContain("<frame BackgroundTransparency={1}/>");
+});
+
+test("resolves built-in palette background colors", () => {
+	const result = transform(
+		'<frame><frame className="bg-slate-500" /><frame className="bg-blue-600" /><frame className="bg-rose-400" /></frame>',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toContain(
+		"<frame BackgroundColor3={Color3.fromRGB(100, 116, 139)}/>",
+	);
+	expect(result.code).toContain(
+		"<frame BackgroundColor3={Color3.fromRGB(37, 99, 235)}/>",
+	);
+	expect(result.code).toContain(
+		"<frame BackgroundColor3={Color3.fromRGB(251, 113, 133)}/>",
+	);
+});
+
+test("warns on unknown background color keys unless config defines them", () => {
+	const result = transform('<frame className="bg-brand-primary" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "bg-brand-primary",
+			}),
+		]),
+	);
+	expect(result.code).not.toMatch(/Background(Color3|Transparency)=/);
+});
+
+test("does not pretend to support unsupported color keywords", () => {
+	const result = transform('<frame className="bg-current bg-inherit" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unsupported-color-key",
+				token: "bg-current",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "unsupported-color-key",
+				token: "bg-inherit",
+			}),
+		]),
+	);
+	expect(result.code).not.toMatch(/Background(Color3|Transparency)=/);
+});
+
+test("shares the color resolver across text image and placeholder utilities", () => {
+	const result = transform(
+		'<frame><textlabel className="text-slate-500 text-transparent" /><imagelabel className="image-blue-600 image-transparent" /><textbox className="placeholder-rose-400" /></frame>',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toContain("<textlabel TextTransparency={1}/>");
+	expect(result.code).toContain("<imagelabel ImageTransparency={1}/>");
+	expect(result.code).toContain(
+		"<textbox PlaceholderColor3={Color3.fromRGB(251, 113, 133)}/>",
+	);
+	expect(result.code).not.toContain("TextColor3=");
+	expect(result.code).not.toContain("ImageColor3=");
+});
+
 test("resolves built-in radius presets out of the box", () => {
 	const result = transform(
 		'<frame><textbutton className="rounded-none" /><imagebutton className="rounded-sm" /><textbutton className="rounded-md" /><imagebutton className="rounded-lg" /><textbutton className="rounded-xl" /><imagebutton className="rounded-2xl" /><textbutton className="rounded-full" /></frame>',
@@ -745,18 +858,85 @@ test("removes className even when only unsupported utilities remain", () => {
 	);
 });
 
-test("removes non-literal className values and preserves the warning", () => {
-	const result = transform("<frame className={themeClass} />");
+test("rewrites dynamic ClassValue expressions through the runtime wrapper", () => {
+	const result = transform(
+		'<frame className={["bg-surface", active && "rounded-md"]} />',
+	);
 
 	expect(result.changed).toBe(true);
-	expect(result.code).not.toContain("className=");
-	expect(result.diagnostics).toEqual(
-		expect.arrayContaining([
-			expect.objectContaining({
-				level: "warning",
-				code: "unsupported-classname-expression",
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toContain("__rbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("className={[");
+	expect(result.code).toContain('active && "rounded-md"');
+	expect(result.code).not.toContain("unsupported-classname-expression");
+	expect(result.ir).toHaveLength(1);
+	expect(JSON.parse(result.ir[0])).toEqual(
+		expect.objectContaining({
+			base: expect.objectContaining({
+				props: [],
+				helpers: [],
 			}),
-		]),
+			runtimeRules: [],
+			runtimeClassValue: true,
+		}),
+	);
+});
+
+test("lifts variant-prefixed literal utilities into runtime rules", () => {
+	const result = transform(
+		'<frame className="rounded-md md:px-4 portrait:w-80" />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toContain("__rbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("__rbxtsTailwindRules");
+	expect(result.code).not.toContain(
+		'className="rounded-md md:px-4 portrait:w-80"',
+	);
+	expect(result.ir).toHaveLength(1);
+
+	const style = JSON.parse(result.ir[0]);
+	expect(style).toEqual(
+		expect.objectContaining({
+			base: expect.objectContaining({
+				helpers: expect.arrayContaining([
+					expect.objectContaining({
+						tag: "uicorner",
+					}),
+				]),
+			}),
+			runtimeRules: expect.arrayContaining([
+				expect.objectContaining({
+					condition: expect.objectContaining({
+						kind: "width",
+						alias: "md",
+					}),
+					effects: expect.objectContaining({
+						helpers: expect.arrayContaining([
+							expect.objectContaining({
+								tag: "uipadding",
+							}),
+						]),
+					}),
+				}),
+				expect.objectContaining({
+					condition: expect.objectContaining({
+						kind: "orientation",
+						value: "portrait",
+					}),
+					effects: expect.objectContaining({
+						props: expect.arrayContaining([
+							expect.objectContaining({
+								name: "Size",
+								value: "UDim2.fromOffset(320, 0)",
+							}),
+						]),
+					}),
+				}),
+			]),
+			runtimeClassValue: false,
+		}),
 	);
 });
 
