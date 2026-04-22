@@ -78,6 +78,8 @@ The current config model supports these theme families:
 - `theme.extend.*` merges into the built-in defaults
 - top-level `theme.*` replaces the final scale for that family
 
+Color families are normalized internally to shade-based palette entries before the compiler sees them. A single literal color is still accepted for authoring, but it is expanded into a normalized palette during config resolution.
+
 ### Supported host elements
 
 The semantic boundary currently recognizes these Roblox elements:
@@ -109,7 +111,8 @@ The compiler currently supports a narrow Tailwind-inspired utility slice that ma
 
 Examples:
 
-- shared color utilities map to Roblox color props with built-in palette fallback and config-first overrides
+- shared color utilities map to Roblox color props through normalized palette lookup in config output
+- unshaded color tokens such as `bg-surface` use shade `500` as the compatibility bridge
 - `rounded-*` utilities map to `UICorner.CornerRadius`
 - padding utilities `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, and `pl-*` map to `UIPadding`
 - `gap-*` lowers to a `UIListLayout` helper and sets its `Padding` property on supported Roblox host elements
