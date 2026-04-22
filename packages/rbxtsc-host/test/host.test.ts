@@ -4,9 +4,7 @@ import path from "node:path";
 
 import { transform } from "@rbxts-tailwind/compiler";
 import { beforeEach, expect, test, vi } from "vitest";
-import defaultConfig from "../../config/src/defaults.json" with {
-	type: "json",
-};
+import { defaultConfig, defineConfig } from "../../config/src/index";
 import {
 	createRbxtscTransformerBridge,
 	isTransformableHostFile,
@@ -14,7 +12,7 @@ import {
 } from "../src/index";
 
 const mockTransformedCode =
-	"<frame BackgroundColor3={Color3.fromRGB(40, 48, 66)}><uicorner CornerRadius={new UDim(0, 6)}/><uipadding PaddingLeft={new UDim(0, 12)} PaddingRight={new UDim(0, 12)}/></frame>";
+	"<frame BackgroundColor3={Color3.fromRGB(1, 2, 3)}><uicorner CornerRadius={new UDim(0, 6)}/><uipadding PaddingLeft={new UDim(0, 12)} PaddingRight={new UDim(0, 12)}/></frame>";
 
 vi.mock("@rbxts-tailwind/compiler", () => ({
 	transform: vi.fn(() => ({
@@ -217,23 +215,62 @@ test("loads rbxtw.config.ts when present", () => {
 
 	expect(transform).toHaveBeenCalledTimes(1);
 	expect(transform).toHaveBeenCalledWith(sourceFile.sourceText, {
-		configJson: JSON.stringify({
-			theme: {
-				colors: {
-					primary: "Color3.fromRGB(99, 102, 241)",
+		configJson: JSON.stringify(
+			defineConfig({
+				theme: {
+					colors: {
+						primary: "Color3.fromRGB(99, 102, 241)",
+					},
+					radius: {
+						md: "new UDim(0, 6)",
+					},
+					spacing: {
+						"4": "new UDim(0, 10)",
+					},
 				},
-				radius: {
-					md: "new UDim(0, 6)",
-				},
-				spacing: {
-					"4": "new UDim(0, 10)",
-				},
-			},
-		}),
+			}),
+		),
 	});
 	expect(result.skipped).toBe(false);
 	expect(result.changed).toBe(true);
 	expect(result.sourceText).toBe(mockTransformedCode);
+});
+
+test("normalizes nearest rbxtw.config.ts authoring-shaped color input", () => {
+	const project = createProject(
+		`export default {
+			theme: {
+				extend: {
+					colors: {
+						surface: {
+							700: "Color3.fromRGB(7, 8, 9)",
+						},
+					},
+				},
+			},
+		};`,
+	);
+
+	transformSourceForHost({
+		fileName: project.sourceFile,
+		sourceText: sourceFile.sourceText,
+	});
+
+	expect(transform).toHaveBeenCalledWith(sourceFile.sourceText, {
+		configJson: JSON.stringify(
+			defineConfig({
+				theme: {
+					extend: {
+						colors: {
+							surface: {
+								700: "Color3.fromRGB(7, 8, 9)",
+							},
+						},
+					},
+				},
+			}),
+		),
+	});
 });
 
 test("calls the compiler and returns transformed host source", () => {

@@ -21,20 +21,19 @@ const { createRequire } = require("node:module") as {
 };
 
 import type {
+	ColorInputMap,
+	ColorScaleInput,
+	NormalizedColorScale,
 	TailwindConfig,
 	TailwindConfigInput,
+	ThemeColors,
 } from "@rbxts-tailwind/config";
+import { defaultConfig, defineConfig, SHADES } from "@rbxts-tailwind/config";
 
 type TypeScriptModule = typeof import("typescript");
 type ConfigLoader = (input?: TailwindConfigInput) => TailwindConfig;
 
 const CONFIG_FILE_NAME = "rbxtw.config.ts";
-const DEFAULT_CONFIG_PATH = path.join(
-	__dirname,
-	"../../config/src/defaults.json",
-);
-
-const defaultConfig = loadDefaultConfig();
 
 export function resolveProjectConfig(sourceFileName: string): TailwindConfig {
 	const configFilePath = findProjectConfigFile(sourceFileName);
@@ -153,13 +152,6 @@ function isExistingFile(filePath: string): boolean {
 	}
 }
 
-function loadDefaultConfig(): TailwindConfig {
-	return coerceTailwindConfig(
-		JSON.parse(fs.readFileSync(DEFAULT_CONFIG_PATH, "utf8")),
-		DEFAULT_CONFIG_PATH,
-	);
-}
-
 function loadTypeScript(): TypeScriptModule {
 	const require = createRequire(__filename);
 
@@ -174,64 +166,25 @@ function loadTypeScript(): TypeScriptModule {
 	}
 }
 
-function defineConfig(input: TailwindConfigInput = {}): TailwindConfig {
-	const extend = input.theme?.extend;
-
-	return {
-		theme: {
-			colors: resolveThemeScale(
-				defaultConfig.theme.colors,
-				extend?.colors,
-				input.theme?.colors,
-			),
-			radius: resolveThemeScale(
-				defaultConfig.theme.radius,
-				extend?.radius,
-				input.theme?.radius,
-			),
-			spacing: resolveThemeScale(
-				defaultConfig.theme.spacing,
-				extend?.spacing,
-				input.theme?.spacing,
-			),
-		},
-	};
-}
-
-function resolveThemeScale(
-	base: Record<string, string>,
-	extend: Record<string, string> | undefined,
-	override: Record<string, string> | undefined,
-): Record<string, string> {
-	// Match the compiler-facing config contract:
-	// extend merges into defaults, while top-level theme values replace the scale.
-	const mergedDefaults = {
-		...base,
-		...extend,
-	};
-
-	return override ?? mergedDefaults;
-}
-
 function coerceTailwindConfig(
 	value: unknown,
 	sourcePath: string,
 ): TailwindConfig {
-	if (!isTailwindConfig(value)) {
-		throw new Error(
-			`Expected ${sourcePath} to export a TailwindConfig-compatible object.`,
-		);
+	if (isTailwindConfig(value)) {
+		return value;
 	}
 
-	return value;
+	if (isTailwindConfigInput(value)) {
+		return defineConfig(value);
+	}
+
+	throw new Error(
+		`Expected ${sourcePath} to export a TailwindConfig-compatible object.`,
+	);
 }
 
 function normalizeConfigExport(value: unknown): unknown {
-	if (
-		isRecord(value) &&
-		"default" in value &&
-		isTailwindConfig(value.default)
-	) {
+	if (isRecord(value) && "default" in value) {
 		return value.default;
 	}
 
@@ -242,10 +195,76 @@ function isTailwindConfig(value: unknown): value is TailwindConfig {
 	return (
 		isRecord(value) &&
 		isRecord(value.theme) &&
-		isThemeScale(value.theme.colors) &&
+		isThemeColors(value.theme.colors) &&
 		isThemeScale(value.theme.radius) &&
 		isThemeScale(value.theme.spacing)
 	);
+}
+
+function isThemeColors(value: unknown): value is ThemeColors {
+	return (
+		isRecord(value) &&
+		Object.values(value).every((entry) => isNormalizedColorScale(entry))
+	);
+}
+
+function isNormalizedColorScale(value: unknown): value is NormalizedColorScale {
+	return (
+		isRecord(value) && SHADES.every((shade) => typeof value[shade] === "string")
+	);
+}
+
+function isTailwindConfigInput(value: unknown): value is TailwindConfigInput {
+	if (!isRecord(value)) {
+		return false;
+	}
+
+	if (!("theme" in value)) {
+		return true;
+	}
+
+	if (!isRecord(value.theme)) {
+		return false;
+	}
+
+	return isThemeConfigInput(value.theme);
+}
+
+function isThemeConfigInput(value: Record<string, unknown>): boolean {
+	return (
+		isOptionalColorInputMap(value.colors) &&
+		isOptionalThemeScale(value.radius) &&
+		isOptionalThemeScale(value.spacing) &&
+		(value.extend === undefined ||
+			(isRecord(value.extend) &&
+				isOptionalColorInputMap(value.extend.colors) &&
+				isOptionalThemeScale(value.extend.radius) &&
+				isOptionalThemeScale(value.extend.spacing)))
+	);
+}
+
+function isOptionalColorInputMap(
+	value: unknown,
+): value is ColorInputMap | undefined {
+	if (value === undefined) {
+		return true;
+	}
+
+	return isRecord(value) && Object.values(value).every(isColorScaleInput);
+}
+
+function isColorScaleInput(value: unknown): value is ColorScaleInput {
+	return (
+		typeof value === "string" ||
+		(isRecord(value) &&
+			Object.values(value).every((entry) => typeof entry === "string"))
+	);
+}
+
+function isOptionalThemeScale(
+	value: unknown,
+): value is Record<string, string> | undefined {
+	return value === undefined || isThemeScale(value);
 }
 
 function isThemeScale(value: unknown): value is Record<string, string> {
