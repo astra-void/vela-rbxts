@@ -46,6 +46,27 @@ export function resolveProjectConfig(sourceFileName: string): TailwindConfig {
 	return loadProjectConfig(configFilePath);
 }
 
+export function resolveProjectConfigInfo(sourceFileName: string): {
+	config: TailwindConfig;
+	configFilePath?: string;
+	projectRoot: string;
+} {
+	const configFilePath = findProjectConfigFile(sourceFileName);
+
+	if (!configFilePath) {
+		return {
+			config: defaultConfig,
+			projectRoot: path.dirname(path.resolve(sourceFileName)),
+		};
+	}
+
+	return {
+		config: loadProjectConfig(configFilePath),
+		configFilePath,
+		projectRoot: path.dirname(configFilePath),
+	};
+}
+
 function loadProjectConfig(configFilePath: string): TailwindConfig {
 	const ts = loadTypeScript();
 	const sourceText = fs.readFileSync(configFilePath, "utf8");

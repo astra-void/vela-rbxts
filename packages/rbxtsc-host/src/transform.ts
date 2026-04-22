@@ -6,9 +6,11 @@ import {
 	mapCompilerDiagnosticsToHostDiagnostics,
 } from "./diagnostics.js";
 import { getHostFileEligibility } from "./filter.js";
-import { resolveProjectConfig } from "./project-config.js";
+import { resolveProjectConfigInfo } from "./project-config.js";
+import { writeRuntimeArtifact } from "./runtime-artifact.js";
 import type {
 	HostCompiler,
+	HostCompilerResult,
 	HostDiagnosticMapper,
 	HostFileFilterOptions,
 	HostTransformRequest,
@@ -24,6 +26,7 @@ export type TransformSourceForHostOptions = {
 	compiler?: HostCompiler;
 	filter?: HostFileFilterOptions;
 	mapDiagnostic?: HostDiagnosticMapper;
+	projectRoot?: string;
 };
 
 export function transformSourceForHost(
@@ -46,25 +49,37 @@ export function transformSourceForHost(
 	const compiler = options.compiler ?? defaultCompiler;
 
 	try {
-		const config =
-			request.config ??
-			options.config ??
-			resolveProjectConfig(request.fileName);
+		const projectConfig = resolveProjectConfigInfo(request.fileName);
+		const config = request.config ?? options.config ?? projectConfig.config;
 		const compilerResult = compiler.transform(request.sourceText, {
 			configJson: JSON.stringify(config),
 		});
+		const normalizedCompilerResult = normalizeCompilerResult(compilerResult);
+		const runtimeRequired =
+			normalizedCompilerResult.ir?.some(
+				(style) =>
+					(style.runtimeRules?.length ?? 0) > 0 ||
+					style.runtimeClassValue === true,
+			) ?? false;
+		const runtimeRoot =
+			request.projectRoot ?? options.projectRoot ?? projectConfig.projectRoot;
+		const runtimeArtifact =
+			runtimeRequired && runtimeRoot
+				? writeRuntimeArtifact(runtimeRoot, config)
+				: undefined;
 
 		return {
 			fileName: request.fileName,
-			sourceText: compilerResult.code,
+			sourceText: normalizedCompilerResult.code,
 			diagnostics: mapCompilerDiagnosticsToHostDiagnostics(
-				compilerResult.diagnostics,
+				normalizedCompilerResult.diagnostics,
 				options.mapDiagnostic,
 			),
-			changed: compilerResult.changed,
+			changed: normalizedCompilerResult.changed,
 			skipped: false,
 			eligibility,
-			compilerResult,
+			compilerResult: normalizedCompilerResult,
+			runtimeArtifact,
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -84,4 +99,21 @@ export function transformSourceForHost(
 			eligibility,
 		};
 	}
+}
+
+function normalizeCompilerResult(
+	result: ReturnType<HostCompiler["transform"]>,
+): HostCompilerResult {
+	const ir = (result.ir ?? []).map((entry) => {
+		if (typeof entry === "string") {
+			return JSON.parse(entry);
+		}
+
+		return entry;
+	});
+
+	return {
+		...result,
+		ir,
+	} as HostCompilerResult;
 }

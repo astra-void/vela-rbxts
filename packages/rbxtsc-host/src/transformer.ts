@@ -139,7 +139,15 @@ export default function createRbxtsTailwindProgramTransformer(
 		diagnosticCodeBase = DEFAULT_DIAGNOSTIC_CODE_BASE,
 		...bridgeOptions
 	} = options;
-	const bridge = createRbxtscTransformerBridge(bridgeOptions);
+	const projectRoot =
+		bridgeOptions.projectRoot ??
+		(typeof _program.getCurrentDirectory === "function"
+			? _program.getCurrentDirectory()
+			: undefined);
+	const bridge = createRbxtscTransformerBridge({
+		...bridgeOptions,
+		projectRoot,
+	});
 
 	return (context) => {
 		const addDiagnostic = (
@@ -152,6 +160,7 @@ export default function createRbxtsTailwindProgramTransformer(
 			const request: HostTransformRequest = {
 				fileName: sourceFile.fileName,
 				sourceText: sourceFile.text,
+				projectRoot,
 			};
 
 			const eligibility = bridge.getFileEligibility(request);

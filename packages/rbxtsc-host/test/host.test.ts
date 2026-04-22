@@ -28,6 +28,7 @@ vi.mock("@rbxts-tailwind/compiler", () => ({
 			},
 		],
 		changed: true,
+		ir: [],
 	})),
 }));
 
@@ -94,6 +95,91 @@ test("falls back to defaultConfig when rbxtw.config.ts is absent", () => {
 	expect(result.skipped).toBe(false);
 	expect(result.changed).toBe(true);
 	expect(result.sourceText).toBe(mockTransformedCode);
+});
+
+test("does not generate runtime artifacts for pure static files", () => {
+	const project = createProject();
+
+	const result = transformSourceForHost({
+		fileName: project.sourceFile,
+		sourceText: sourceFile.sourceText,
+		projectRoot: project.root,
+	});
+
+	expect(result.runtimeArtifact).toBeUndefined();
+	expect(fs.existsSync(project.runtimeArtifactPath)).toBe(false);
+});
+
+test("writes a runtime artifact when the compiler reports runtime rules", () => {
+	vi.mocked(transform).mockReturnValueOnce({
+		code: '<frame __rbxtsTailwindTag="frame" />',
+		diagnostics: [],
+		changed: true,
+		ir: [
+			JSON.stringify({
+				base: {
+					props: [],
+					helpers: [],
+				},
+				runtimeRules: [
+					{
+						condition: {
+							kind: "width",
+							alias: "md",
+							minWidth: 768,
+							maxWidth: null,
+						},
+						effects: {
+							props: [
+								{
+									name: "PaddingLeft",
+									value: "new UDim(0, 12)",
+								},
+							],
+							helpers: [],
+						},
+					},
+				],
+				runtimeClassValue: false,
+			}),
+		],
+	});
+
+	const project = createProject(
+		`export default defineConfig({
+			theme: {
+				colors: {
+					primary: "Color3.fromRGB(99, 102, 241)",
+				},
+				radius: {
+					md: "new UDim(0, 6)",
+				},
+				spacing: {
+					"4": "new UDim(0, 10)",
+				},
+			},
+		});`,
+	);
+
+	const result = transformSourceForHost({
+		fileName: project.sourceFile,
+		sourceText: sourceFile.sourceText,
+		projectRoot: project.root,
+	});
+
+	expect(result.runtimeArtifact).toEqual(
+		expect.objectContaining({
+			fileName: project.runtimeArtifactPath,
+			moduleSpecifier: "rbxts-tailwind/runtime-host",
+		}),
+	);
+	expect(fs.existsSync(project.runtimeArtifactPath)).toBe(true);
+	expect(fs.readFileSync(project.runtimeArtifactPath, "utf8")).toContain(
+		"createTailwindRuntimeHost",
+	);
+	expect(fs.readFileSync(project.runtimeArtifactPath, "utf8")).toContain(
+		'"theme"',
+	);
 });
 
 test("loads rbxtw.config.ts when present", () => {
@@ -204,6 +290,8 @@ test("does not expose semantic utility resolution functions from the host", asyn
 
 function createProject(configFileText?: string): {
 	sourceFile: string;
+	root: string;
+	runtimeArtifactPath: string;
 } {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "rbxtw-host-"));
 	const sourceFile = path.join(root, "src", "client", "App.tsx");
@@ -217,5 +305,14 @@ function createProject(configFileText?: string): {
 		);
 	}
 
-	return { sourceFile };
+	return {
+		sourceFile,
+		root,
+		runtimeArtifactPath: path.join(
+			root,
+			"include",
+			"rbxts-tailwind",
+			"runtime-host.ts",
+		),
+	};
 }

@@ -24,6 +24,7 @@ export type {
 	HostFileEligibility,
 	HostFileEligibilityReason,
 	HostFileFilterOptions,
+	HostRuntimeArtifact,
 	HostSourceFile,
 	HostTransformRequest,
 	HostTransformResponse,

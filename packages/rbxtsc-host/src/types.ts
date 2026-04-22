@@ -4,6 +4,7 @@ import type {
 	TransformResult as CompilerTransformResult,
 } from "@rbxts-tailwind/compiler";
 import type { TailwindConfig } from "@rbxts-tailwind/config";
+import type { StyleIR } from "@rbxts-tailwind/ir";
 
 export type HostSourceFile = {
 	fileName: string;
@@ -12,6 +13,7 @@ export type HostSourceFile = {
 
 export type HostTransformRequest = HostSourceFile & {
 	config?: TailwindConfig;
+	projectRoot?: string;
 };
 
 export type HostFileEligibilityReason =
@@ -51,7 +53,18 @@ export type HostTransformResult = {
 	changed: boolean;
 	skipped: boolean;
 	eligibility: HostFileEligibility;
-	compilerResult?: CompilerTransformResult;
+	compilerResult?: HostCompilerResult;
+	runtimeArtifact?: HostRuntimeArtifact;
+};
+
+export type HostCompilerResult = Omit<CompilerTransformResult, "ir"> & {
+	ir: StyleIR[];
+};
+
+export type HostRuntimeArtifact = {
+	fileName: string;
+	moduleSpecifier: string;
+	sourceText: string;
 };
 
 export type HostCompiler = {
@@ -70,6 +83,7 @@ export type RbxtscTransformerBridgeOptions = {
 	compiler?: HostCompiler;
 	filter?: HostFileFilterOptions;
 	mapDiagnostic?: HostDiagnosticMapper;
+	projectRoot?: string;
 };
 
 export type RbxtscTransformerBridge = {
