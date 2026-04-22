@@ -158,17 +158,17 @@ function defineConfig(input: TailwindConfigInput = {}): TailwindConfig {
 
 	return {
 		theme: {
-			colors: mergeThemeScale(
+			colors: resolveThemeScale(
 				defaultConfig.theme.colors,
 				extend?.colors,
 				input.theme?.colors,
 			),
-			radius: mergeThemeScale(
+			radius: resolveThemeScale(
 				defaultConfig.theme.radius,
 				extend?.radius,
 				input.theme?.radius,
 			),
-			spacing: mergeThemeScale(
+			spacing: resolveThemeScale(
 				defaultConfig.theme.spacing,
 				extend?.spacing,
 				input.theme?.spacing,
@@ -177,16 +177,19 @@ function defineConfig(input: TailwindConfigInput = {}): TailwindConfig {
 	};
 }
 
-function mergeThemeScale(
+function resolveThemeScale(
 	base: Record<string, string>,
 	extend: Record<string, string> | undefined,
 	override: Record<string, string> | undefined,
 ): Record<string, string> {
-	return {
+	// Match the compiler-facing config contract:
+	// extend merges into defaults, while top-level theme values replace the scale.
+	const mergedDefaults = {
 		...base,
 		...extend,
-		...override,
 	};
+
+	return override ?? mergedDefaults;
 }
 
 function coerceTailwindConfig(

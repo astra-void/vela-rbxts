@@ -101,7 +101,7 @@ test("loads rbxtw.config.ts when present", () => {
 		`export default defineConfig({
 			theme: {
 				colors: {
-					surface: "Color3.fromRGB(1, 2, 3)",
+					primary: "Color3.fromRGB(99, 102, 241)",
 				},
 				radius: {
 					md: "new UDim(0, 6)",
@@ -111,7 +111,7 @@ test("loads rbxtw.config.ts when present", () => {
 				},
 				extend: {
 					colors: {
-						primary: "Color3.fromRGB(99, 102, 241)",
+						secondary: "Color3.fromRGB(16, 185, 129)",
 					},
 					radius: {
 						lg: "new UDim(0, 12)",
@@ -134,16 +134,13 @@ test("loads rbxtw.config.ts when present", () => {
 		configJson: JSON.stringify({
 			theme: {
 				colors: {
-					surface: "Color3.fromRGB(1, 2, 3)",
 					primary: "Color3.fromRGB(99, 102, 241)",
 				},
 				radius: {
 					md: "new UDim(0, 6)",
-					lg: "new UDim(0, 12)",
 				},
 				spacing: {
 					"4": "new UDim(0, 10)",
-					"6": "new UDim(0, 16)",
 				},
 			},
 		}),
