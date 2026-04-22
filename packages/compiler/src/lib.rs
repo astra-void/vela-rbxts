@@ -346,6 +346,8 @@ fn resolve_class_tokens(
     diagnostics: &mut Vec<Diagnostic>,
 ) -> StyleIr {
     let mut style = StyleIr::default();
+    let mut pending_size_width: Option<String> = None;
+    let mut pending_size_height: Option<String> = None;
 
     for token in tokens {
         if let Some(color_key) = token.strip_prefix("bg-") {
@@ -367,6 +369,23 @@ fn resolve_class_tokens(
             } else {
                 diagnostics.push(unknown_theme_key_diagnostic("radius", radius_key, token));
             }
+            continue;
+        }
+
+        if let Some(spacing_key) = token.strip_prefix("p-") {
+            apply_spacing_utility(
+                &mut style,
+                config,
+                diagnostics,
+                spacing_key,
+                token,
+                |style, value| {
+                    style.set_helper_prop("uipadding", "PaddingTop", value.clone());
+                    style.set_helper_prop("uipadding", "PaddingRight", value.clone());
+                    style.set_helper_prop("uipadding", "PaddingBottom", value.clone());
+                    style.set_helper_prop("uipadding", "PaddingLeft", value);
+                },
+            );
             continue;
         }
 
@@ -456,7 +475,46 @@ fn resolve_class_tokens(
             continue;
         }
 
+        if let Some(spacing_key) = token.strip_prefix("w-") {
+            if let Some(offset) =
+                resolve_size_spacing_offset(config, diagnostics, spacing_key, token)
+            {
+                pending_size_width = Some(offset);
+            }
+            continue;
+        }
+
+        if let Some(spacing_key) = token.strip_prefix("h-") {
+            if let Some(offset) =
+                resolve_size_spacing_offset(config, diagnostics, spacing_key, token)
+            {
+                pending_size_height = Some(offset);
+            }
+            continue;
+        }
+
+        if let Some(spacing_key) = token.strip_prefix("size-") {
+            if let Some(offset) =
+                resolve_size_spacing_offset(config, diagnostics, spacing_key, token)
+            {
+                pending_size_width = Some(offset.clone());
+                pending_size_height = Some(offset);
+            }
+            continue;
+        }
+
         diagnostics.push(unsupported_utility_family_diagnostic(token));
+    }
+
+    if pending_size_width.is_some() || pending_size_height.is_some() {
+        style.set_prop(
+            "Size",
+            format!(
+                "UDim2.fromOffset({}, {})",
+                pending_size_width.unwrap_or_else(|| "0".to_owned()),
+                pending_size_height.unwrap_or_else(|| "0".to_owned())
+            ),
+        );
     }
 
     style
@@ -476,6 +534,25 @@ fn apply_spacing_utility(
     }
 
     diagnostics.push(unknown_theme_key_diagnostic("spacing", spacing_key, token));
+}
+
+fn resolve_size_spacing_offset(
+    config: &TailwindConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+    spacing_key: &str,
+    token: &str,
+) -> Option<String> {
+    let Some(value) = resolve_spacing_value(config, spacing_key) else {
+        diagnostics.push(unknown_theme_key_diagnostic("spacing", spacing_key, token));
+        return None;
+    };
+
+    if let Some(offset) = spacing_value_to_offset(&value) {
+        return Some(offset);
+    }
+
+    diagnostics.push(unsupported_size_spacing_value_diagnostic(&value, token));
+    None
 }
 
 fn resolve_spacing_value(config: &TailwindConfig, key: &str) -> Option<String> {
@@ -511,6 +588,23 @@ fn resolve_numeric_spacing_value(key: &str) -> Option<String> {
         "new UDim(0, {})",
         format_spacing_offset(offset_px)
     ))
+}
+
+fn spacing_value_to_offset(value: &str) -> Option<String> {
+    let args = value.trim().strip_prefix("new UDim(")?.strip_suffix(')')?;
+
+    let mut parts = args.split(',');
+    let scale = parts.next()?.trim().parse::<f64>().ok()?;
+    let offset = parts.next()?.trim().parse::<f64>().ok()?;
+    if parts.next().is_some() || !scale.is_finite() || !offset.is_finite() {
+        return None;
+    }
+
+    if scale.abs() >= 1e-9 {
+        return None;
+    }
+
+    Some(format_spacing_offset(offset))
 }
 
 fn is_whole_number(value: f64) -> bool {
@@ -637,6 +731,17 @@ fn unknown_theme_key_diagnostic(theme_family: &str, key: &str, token: &str) -> D
         code: "unknown-theme-key".to_owned(),
         message: format!(
             "Unknown theme key \"{key}\" for {theme_family} utility in className literal."
+        ),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn unsupported_size_spacing_value_diagnostic(value: &str, token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-size-spacing-value".to_owned(),
+        message: format!(
+            "Spacing value \"{value}\" for size utility must be an offset-only UDim expression."
         ),
         token: Some(token.to_owned()),
     }
