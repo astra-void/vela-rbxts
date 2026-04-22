@@ -18,6 +18,10 @@ const requiredFragments = [
 	'React.createElement("uipadding"',
 	"PaddingLeft = UDim.new(0, 16)",
 	"PaddingRight = UDim.new(0, 16)",
+	"PaddingTop = UDim.new(0, 12)",
+	"PaddingBottom = UDim.new(0, 12)",
+	'React.createElement("uilistlayout"',
+	"Padding = UDim.new(0, 16)",
 ];
 
 const failures = [];
