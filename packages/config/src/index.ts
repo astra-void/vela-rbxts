@@ -1,4 +1,4 @@
-import defaultConfigSource from "./defaults.json";
+import defaultConfigSource from "./defaults.json" with { type: "json" };
 
 export type ThemeConfig = {
 	colors: {
