@@ -12,6 +12,7 @@ const source = fs.readFileSync(appLuauPath, "utf8");
 
 const requiredFragments = [
 	"BackgroundColor3 = Color3.fromRGB(40, 48, 66)",
+	"Size = UDim2.fromOffset(320, 108)",
 	'React.createElement("uicorner"',
 	"CornerRadius = UDim.new(0, 6)",
 	'React.createElement("uipadding"',

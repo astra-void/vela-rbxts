@@ -6,8 +6,7 @@ export const App = () => {
 			<frame
 				AnchorPoint={new Vector2(0.5, 0.5)}
 				Position={UDim2.fromScale(0.5, 0.5)}
-				Size={new UDim2(0, 320, 0, 108)}
-				className="rounded-md px-4 bg-surface"
+				className="rounded-md px-4 bg-surface w-80 h-27"
 			>
 				<textlabel
 					BackgroundTransparency={1}
