@@ -4,7 +4,16 @@
       "surface": "Color3.fromRGB(40, 48, 66)"
     },
     "radius": {
-      "md": "new UDim(0, 8)"
+      "none": "new UDim(0, 0)",
+      "xs": "new UDim(0, 2)",
+      "sm": "new UDim(0, 4)",
+      "md": "new UDim(0, 6)",
+      "lg": "new UDim(0, 8)",
+      "xl": "new UDim(0, 12)",
+      "2xl": "new UDim(0, 16)",
+      "3xl": "new UDim(0, 24)",
+      "4xl": "new UDim(0, 32)",
+      "full": "new UDim(0.5, 0)"
     },
     "spacing": {
       "4": "new UDim(0, 16)"
