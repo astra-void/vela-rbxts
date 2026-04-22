@@ -29,9 +29,16 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 				primary: "Color3.fromRGB(99, 102, 241)",
 			},
 			radius: {
-				md: "new UDim(0, 8)",
+				none: "new UDim(0, 0)",
+				xs: "new UDim(0, 2)",
+				sm: "new UDim(0, 4)",
+				md: "new UDim(0, 6)",
 				lg: "new UDim(0, 12)",
 				xl: "new UDim(0, 16)",
+				"2xl": "new UDim(0, 16)",
+				"3xl": "new UDim(0, 24)",
+				"4xl": "new UDim(0, 32)",
+				full: "new UDim(0.5, 0)",
 			},
 			spacing: {
 				"4": "new UDim(0, 16)",
@@ -69,6 +76,37 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 	expect(result.code).not.toContain("theme.");
 });
 
+test("resolves built-in radius presets out of the box", () => {
+	const result = transform(
+		'<frame><textbutton className="rounded-none" /><imagebutton className="rounded-sm" /><textbutton className="rounded-md" /><imagebutton className="rounded-lg" /><textbutton className="rounded-xl" /><imagebutton className="rounded-2xl" /><textbutton className="rounded-full" /></frame>',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toContain(
+		"<textbutton><uicorner CornerRadius={new UDim(0, 0)}/></textbutton>",
+	);
+	expect(result.code).toContain(
+		"<imagebutton><uicorner CornerRadius={new UDim(0, 4)}/></imagebutton>",
+	);
+	expect(result.code).toContain(
+		"<textbutton><uicorner CornerRadius={new UDim(0, 6)}/></textbutton>",
+	);
+	expect(result.code).toContain(
+		"<imagebutton><uicorner CornerRadius={new UDim(0, 8)}/></imagebutton>",
+	);
+	expect(result.code).toContain(
+		"<textbutton><uicorner CornerRadius={new UDim(0, 12)}/></textbutton>",
+	);
+	expect(result.code).toContain(
+		"<imagebutton><uicorner CornerRadius={new UDim(0, 16)}/></imagebutton>",
+	);
+	expect(result.code).toContain(
+		"<textbutton><uicorner CornerRadius={new UDim(0.5, 0)}/></textbutton>",
+	);
+});
+
 test("lowers className on multiple supported Roblox host elements", () => {
 	const result = transform(
 		'<frame><textlabel className="bg-surface" /><textbutton className="rounded-md" /><canvasgroup className="px-2 py-3 pt-1.5 pl-0.5" /><scrollingframe className="bg-surface" /><imagebutton className="rounded-md" /></frame>',
@@ -84,10 +122,10 @@ test("lowers className on multiple supported Roblox host elements", () => {
 		/<scrollingframe\b[^>]*BackgroundColor3=\{Color3\.fromRGB\(40, 48, 66\)\}[^>]*\/>/i,
 	);
 	expect(result.code).toMatch(
-		/<textbutton\b[^>]*><uicorner\b[^>]*CornerRadius=\{new UDim\(0, 8\)\}[^>]*\/><\/textbutton>/i,
+		/<textbutton\b[^>]*><uicorner\b[^>]*CornerRadius=\{new UDim\(0, 6\)\}[^>]*\/><\/textbutton>/i,
 	);
 	expect(result.code).toMatch(
-		/<imagebutton\b[^>]*><uicorner\b[^>]*CornerRadius=\{new UDim\(0, 8\)\}[^>]*\/><\/imagebutton>/i,
+		/<imagebutton\b[^>]*><uicorner\b[^>]*CornerRadius=\{new UDim\(0, 6\)\}[^>]*\/><\/imagebutton>/i,
 	);
 	expect(result.code).toMatch(/<uipadding\b[^>]*\/>/i);
 	expect(result.code).toMatch(/PaddingLeft=\{new UDim\(0, 2\)\}/);
@@ -163,6 +201,23 @@ test("rejects invalid numeric spacing fallback tokens", () => {
 	expect(result.code).not.toMatch(/PaddingRight=/);
 });
 
+test("warns on unknown radius keys without falling back to numeric radius resolution", () => {
+	const result = transform('<frame className="rounded-card" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unknown-theme-key",
+				token: "rounded-card",
+			}),
+		]),
+	);
+	expect(result.code).not.toMatch(/CornerRadius=/);
+});
+
 test("removes className even when only unsupported utilities remain", () => {
 	const result = transform('<frame className="shadow-md bg-card" />');
 
@@ -220,7 +275,16 @@ test("retains the default config shape for compatibility", () => {
 				surface: "Color3.fromRGB(40, 48, 66)",
 			},
 			radius: {
-				md: "new UDim(0, 8)",
+				none: "new UDim(0, 0)",
+				xs: "new UDim(0, 2)",
+				sm: "new UDim(0, 4)",
+				md: "new UDim(0, 6)",
+				lg: "new UDim(0, 8)",
+				xl: "new UDim(0, 12)",
+				"2xl": "new UDim(0, 16)",
+				"3xl": "new UDim(0, 24)",
+				"4xl": "new UDim(0, 32)",
+				full: "new UDim(0.5, 0)",
 			},
 			spacing: {
 				"4": "new UDim(0, 16)",
