@@ -1,15 +1,11 @@
 import defaultConfigSource from "./defaults.json" with { type: "json" };
 
+export type ThemeScale = Record<string, string>;
+
 export type ThemeConfig = {
-	colors: {
-		surface: string;
-	};
-	radius: {
-		md: string;
-	};
-	spacing: {
-		"4": string;
-	};
+	colors: ThemeScale;
+	radius: ThemeScale;
+	spacing: ThemeScale;
 };
 
 export type TailwindConfig = {
@@ -18,9 +14,14 @@ export type TailwindConfig = {
 
 export type TailwindConfigInput = {
 	theme?: {
-		colors?: Partial<ThemeConfig["colors"]>;
-		radius?: Partial<ThemeConfig["radius"]>;
-		spacing?: Partial<ThemeConfig["spacing"]>;
+		colors?: ThemeScale;
+		radius?: ThemeScale;
+		spacing?: ThemeScale;
+		extend?: {
+			colors?: ThemeScale;
+			radius?: ThemeScale;
+			spacing?: ThemeScale;
+		};
 	};
 };
 
@@ -29,18 +30,37 @@ const validatedDefaultConfig = defaultConfigSource satisfies TailwindConfig;
 export const defaultConfig: TailwindConfig = validatedDefaultConfig;
 
 export function defineConfig(input: TailwindConfigInput = {}): TailwindConfig {
+	const extend = input.theme?.extend;
+
 	return {
 		theme: {
-			colors: {
-				surface:
-					input.theme?.colors?.surface ?? defaultConfig.theme.colors.surface,
-			},
-			radius: {
-				md: input.theme?.radius?.md ?? defaultConfig.theme.radius.md,
-			},
-			spacing: {
-				"4": input.theme?.spacing?.["4"] ?? defaultConfig.theme.spacing["4"],
-			},
+			colors: mergeThemeScale(
+				defaultConfig.theme.colors,
+				extend?.colors,
+				input.theme?.colors,
+			),
+			radius: mergeThemeScale(
+				defaultConfig.theme.radius,
+				extend?.radius,
+				input.theme?.radius,
+			),
+			spacing: mergeThemeScale(
+				defaultConfig.theme.spacing,
+				extend?.spacing,
+				input.theme?.spacing,
+			),
 		},
+	};
+}
+
+function mergeThemeScale(
+	base: ThemeScale,
+	extend: ThemeScale | undefined,
+	override: ThemeScale | undefined,
+): ThemeScale {
+	return {
+		...base,
+		...extend,
+		...override,
 	};
 }
