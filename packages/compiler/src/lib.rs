@@ -233,7 +233,7 @@ impl VisitMut for TailwindTransformer {
     fn visit_mut_jsx_element(&mut self, element: &mut JSXElement) {
         element.visit_mut_children_with(self);
 
-        if !is_frame_name(&element.opening.name) {
+        if !is_supported_host_element(&element.opening.name) {
             return;
         }
 
@@ -309,10 +309,6 @@ fn lower_class_name(
     };
 
     let style = resolve_class_tokens(tokenize_class_name(&class_name), config, diagnostics);
-    if style.props.is_empty() && style.helpers.is_empty() {
-        return None;
-    }
-
     let preserved_attrs = attrs
         .iter()
         .filter(|attr| {
@@ -505,8 +501,22 @@ fn is_class_name_attr(name: &JSXAttrName) -> bool {
     matches!(name, JSXAttrName::Ident(ident) if ident.sym == "className")
 }
 
-fn is_frame_name(name: &JSXElementName) -> bool {
-    matches!(name, JSXElementName::Ident(ident) if ident.sym == "frame")
+fn is_supported_host_element(name: &JSXElementName) -> bool {
+    matches!(
+        name,
+        JSXElementName::Ident(ident)
+            if matches!(
+                ident.sym.as_ref(),
+                "frame"
+                    | "scrollingframe"
+                    | "canvasgroup"
+                    | "textlabel"
+                    | "textbutton"
+                    | "textbox"
+                    | "imagelabel"
+                    | "imagebutton"
+            )
+    )
 }
 
 fn parse_config(config_json: Option<&str>) -> TailwindConfig {
