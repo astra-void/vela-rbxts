@@ -26,7 +26,7 @@ importers:
 
   apps/compiler-harness:
     dependencies:
-      '@rbxts-tailwind/compiler':
+      '@vela-rbxts/compiler':
         specifier: workspace:*
         version: link:../../packages/compiler
     devDependencies:
@@ -58,74 +58,74 @@ importers:
       '@rbxts/types':
         specifier: ^1.0.916
         version: 1.0.916
-      rbxts-tailwind:
-        specifier: workspace:*
-        version: link:../../packages/rbxts-tailwind
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+      vela-rbxts:
+        specifier: workspace:*
+        version: link:../../packages/vela-rbxts
 
   packages/compiler:
     devDependencies:
       '@napi-rs/cli':
         specifier: ^3.6.2
         version: 3.6.2(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(@types/node@24.12.2)
-      '@rbxts-tailwind/config':
+      '@vela-rbxts/config':
         specifier: workspace:*
         version: link:../config
 
   packages/config:
     dependencies:
-      '@rbxts-tailwind/types':
+      '@vela-rbxts/types':
         specifier: workspace:*
         version: link:../types
 
   packages/core:
     dependencies:
-      '@rbxts-tailwind/config':
+      '@vela-rbxts/config':
         specifier: workspace:*
         version: link:../config
-      '@rbxts-tailwind/ir':
+      '@vela-rbxts/ir':
         specifier: workspace:*
         version: link:../ir
 
   packages/ir:
     dependencies:
-      '@rbxts-tailwind/types':
-        specifier: workspace:*
-        version: link:../types
-
-  packages/rbxts-tailwind:
-    dependencies:
-      '@rbxts-tailwind/config':
-        specifier: workspace:*
-        version: link:../config
-      '@rbxts-tailwind/rbxtsc-host':
-        specifier: workspace:*
-        version: link:../rbxtsc-host
-      '@rbxts-tailwind/types':
+      '@vela-rbxts/types':
         specifier: workspace:*
         version: link:../types
 
   packages/rbxtsc-host:
     dependencies:
-      '@rbxts-tailwind/compiler':
+      '@vela-rbxts/compiler':
         specifier: workspace:*
         version: link:../compiler
-      '@rbxts-tailwind/config':
+      '@vela-rbxts/config':
         specifier: workspace:*
         version: link:../config
-      '@rbxts-tailwind/ir':
+      '@vela-rbxts/ir':
         specifier: workspace:*
         version: link:../ir
-      '@rbxts-tailwind/types':
+      '@vela-rbxts/types':
         specifier: workspace:*
         version: link:../types
 
   packages/types: {}
+
+  packages/vela-rbxts:
+    dependencies:
+      '@vela-rbxts/config':
+        specifier: workspace:*
+        version: link:../config
+      '@vela-rbxts/rbxtsc-host':
+        specifier: workspace:*
+        version: link:../rbxtsc-host
+      '@vela-rbxts/types':
+        specifier: workspace:*
+        version: link:../types
 
 packages:
 
