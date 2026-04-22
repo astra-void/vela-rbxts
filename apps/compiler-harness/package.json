@@ -4,7 +4,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "pnpm --filter @rbxts-tailwind/compiler build:native && vite",
+		"dev": "pnpm --filter @vela-rbxts/compiler build:native && vite",
 		"build": "tsc --noEmit && vite build",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check .",
@@ -12,7 +12,7 @@
 		"clean": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});\""
 	},
 	"dependencies": {
-		"@rbxts-tailwind/compiler": "workspace:*"
+		"@vela-rbxts/compiler": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "^24.10.1",
