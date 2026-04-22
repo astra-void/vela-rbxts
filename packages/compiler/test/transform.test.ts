@@ -1,6 +1,13 @@
 import { implementationKind, transform } from "@rbxts-tailwind/compiler";
 import { expect, expectTypeOf, test } from "vitest";
-import { defaultConfig, defineConfig } from "../../config/src/index";
+import { defaultConfig, defineConfig, SHADES } from "../../config/src/index";
+
+function buildNormalizedColorScale(value: string) {
+	return Object.fromEntries(SHADES.map((shade) => [shade, value])) as Record<
+		string,
+		string
+	>;
+}
 
 test("applies theme.extend while top-level theme scales replace the family", () => {
 	const config = defineConfig({
@@ -26,7 +33,7 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 	expect(config).toEqual({
 		theme: {
 			colors: {
-				primary: "Color3.fromRGB(99, 102, 241)",
+				primary: buildNormalizedColorScale("Color3.fromRGB(99, 102, 241)"),
 			},
 			radius: {
 				none: "new UDim(0, 0)",
@@ -76,18 +83,31 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 	expect(result.code).not.toContain("theme.");
 });
 
-test("prefers config colors over built-in palette colors", () => {
+test("resolves normalized shade tokens from config colors", () => {
 	const config = defineConfig({
 		theme: {
 			colors: {
-				"slate-500": "Color3.fromRGB(1, 2, 3)",
+				slate: {
+					500: "Color3.fromRGB(1, 2, 3)",
+					700: "Color3.fromRGB(4, 5, 6)",
+				},
 			},
 		},
 	});
 
-	const result = transform('<frame className="bg-slate-500" />', {
-		configJson: JSON.stringify(config),
-	});
+	expect(config.theme.colors.slate).toEqual(
+		expect.objectContaining({
+			500: "Color3.fromRGB(1, 2, 3)",
+			700: "Color3.fromRGB(4, 5, 6)",
+		}),
+	);
+
+	const result = transform(
+		'<frame><frame className="bg-slate" /><frame className="bg-slate-700" /></frame>',
+		{
+			configJson: JSON.stringify(config),
+		},
+	);
 
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
@@ -95,33 +115,43 @@ test("prefers config colors over built-in palette colors", () => {
 	expect(result.code).toContain(
 		"<frame BackgroundColor3={Color3.fromRGB(1, 2, 3)}/>",
 	);
+	expect(result.code).toContain(
+		"<frame BackgroundColor3={Color3.fromRGB(4, 5, 6)}/>",
+	);
 });
 
-test("resolves built-in background color defaults", () => {
+test("merges extend colors into the normalized default palette", () => {
+	const config = defineConfig({
+		theme: {
+			extend: {
+				colors: {
+					slate: {
+						500: "Color3.fromRGB(100, 116, 139)",
+					},
+					blue: {
+						600: "Color3.fromRGB(37, 99, 235)",
+					},
+					rose: {
+						400: "Color3.fromRGB(251, 113, 133)",
+					},
+				},
+			},
+		},
+	});
+
 	const result = transform(
-		'<frame><frame className="bg-white" /><frame className="bg-black" /><frame className="bg-transparent" /></frame>',
+		'<frame><frame className="bg-surface" /><frame className="bg-slate-500" /><frame className="bg-blue-600" /><frame className="bg-rose-400" /></frame>',
+		{
+			configJson: JSON.stringify(config),
+		},
 	);
 
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).not.toContain("className=");
 	expect(result.code).toContain(
-		"<frame BackgroundColor3={Color3.fromRGB(255, 255, 255)}/>",
+		`<frame BackgroundColor3={${defaultConfig.theme.colors.surface[500]}}/>`,
 	);
-	expect(result.code).toContain(
-		"<frame BackgroundColor3={Color3.fromRGB(0, 0, 0)}/>",
-	);
-	expect(result.code).toContain("<frame BackgroundTransparency={1}/>");
-});
-
-test("resolves built-in palette background colors", () => {
-	const result = transform(
-		'<frame><frame className="bg-slate-500" /><frame className="bg-blue-600" /><frame className="bg-rose-400" /></frame>',
-	);
-
-	expect(result.changed).toBe(true);
-	expect(result.diagnostics).toEqual([]);
-	expect(result.code).not.toContain("className=");
 	expect(result.code).toContain(
 		"<frame BackgroundColor3={Color3.fromRGB(100, 116, 139)}/>",
 	);
@@ -131,6 +161,52 @@ test("resolves built-in palette background colors", () => {
 	expect(result.code).toContain(
 		"<frame BackgroundColor3={Color3.fromRGB(251, 113, 133)}/>",
 	);
+});
+
+test("keeps the legacy unshaded token bridge on normalized palettes", () => {
+	const config = defineConfig({
+		theme: {
+			colors: {
+				brand: {
+					500: "Color3.fromRGB(12, 34, 56)",
+					700: "Color3.fromRGB(78, 90, 123)",
+				},
+			},
+		},
+	});
+
+	const result = transform(
+		'<frame><frame className="bg-brand" /><frame className="bg-brand-700" /></frame>',
+		{
+			configJson: JSON.stringify(config),
+		},
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toContain(
+		"<frame BackgroundColor3={Color3.fromRGB(12, 34, 56)}/>",
+	);
+	expect(result.code).toContain(
+		"<frame BackgroundColor3={Color3.fromRGB(78, 90, 123)}/>",
+	);
+});
+
+test("resolves normalized default background colors and transparent keywords", () => {
+	const result = transform(
+		'<frame><frame className="bg-surface" /><frame className="bg-surface-500" /><frame className="bg-transparent" /></frame>',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(
+		result.code.split(
+			`BackgroundColor3={${defaultConfig.theme.colors.surface[500]}}`,
+		),
+	).toHaveLength(3);
+	expect(result.code).toContain("<frame BackgroundTransparency={1}/>");
 });
 
 test("warns on unknown background color keys unless config defines them", () => {
@@ -173,8 +249,29 @@ test("does not pretend to support unsupported color keywords", () => {
 });
 
 test("shares the color resolver across text image and placeholder utilities", () => {
+	const config = defineConfig({
+		theme: {
+			extend: {
+				colors: {
+					slate: {
+						500: "Color3.fromRGB(100, 116, 139)",
+					},
+					blue: {
+						600: "Color3.fromRGB(37, 99, 235)",
+					},
+					rose: {
+						400: "Color3.fromRGB(251, 113, 133)",
+					},
+				},
+			},
+		},
+	});
+
 	const result = transform(
 		'<frame><textlabel className="text-slate-500 text-transparent" /><imagelabel className="image-blue-600 image-transparent" /><textbox className="placeholder-rose-400" /></frame>',
+		{
+			configJson: JSON.stringify(config),
+		},
 	);
 
 	expect(result.changed).toBe(true);
@@ -221,18 +318,26 @@ test("resolves built-in radius presets out of the box", () => {
 });
 
 test("lowers className on multiple supported Roblox host elements", () => {
+	const config = defineConfig({
+		theme: {
+			colors: {
+				surface: "Color3.fromRGB(10, 20, 30)",
+			},
+		},
+	});
 	const result = transform(
 		'<frame><textlabel className="bg-surface" /><textbutton className="rounded-md" /><canvasgroup className="px-2 py-3 pt-1.5 pl-0.5" /><scrollingframe className="bg-surface" /><imagebutton className="rounded-md" /></frame>',
+		{ configJson: JSON.stringify(config) },
 	);
 
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).not.toContain("className=");
 	expect(result.code).toMatch(
-		/<textlabel\b[^>]*BackgroundColor3=\{Color3\.fromRGB\(40, 48, 66\)\}[^>]*\/>/i,
+		/<textlabel\b[^>]*BackgroundColor3=\{Color3\.fromRGB\(10, 20, 30\)\}[^>]*\/>/i,
 	);
 	expect(result.code).toMatch(
-		/<scrollingframe\b[^>]*BackgroundColor3=\{Color3\.fromRGB\(40, 48, 66\)\}[^>]*\/>/i,
+		/<scrollingframe\b[^>]*BackgroundColor3=\{Color3\.fromRGB\(10, 20, 30\)\}[^>]*\/>/i,
 	);
 	expect(result.code).toMatch(
 		/<textbutton\b[^>]*><uicorner\b[^>]*CornerRadius=\{new UDim\(0, 6\)\}[^>]*\/><\/textbutton>/i,
@@ -958,7 +1063,7 @@ test("retains the default config shape for compatibility", () => {
 	expect(defaultConfig).toEqual({
 		theme: {
 			colors: {
-				surface: "Color3.fromRGB(40, 48, 66)",
+				surface: buildNormalizedColorScale("Color3.fromRGB(40, 48, 66)"),
 			},
 			radius: {
 				none: "new UDim(0, 0)",

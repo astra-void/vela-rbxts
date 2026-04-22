@@ -4,16 +4,16 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, sync::OnceLock};
 
 use swc_core::{
-    common::{sync::Lrc, FileName, SourceMap, DUMMY_SP},
+    common::{DUMMY_SP, FileName, SourceMap, sync::Lrc},
     ecma::{
         ast::{
-            Expr, Ident, IdentName, ImportDecl, ImportNamedSpecifier, ImportSpecifier,
-            JSXAttr, JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXClosingElement,
-            JSXElement, JSXElementChild, JSXElementName, JSXExpr, JSXExprContainer,
-            JSXOpeningElement, Module, ModuleDecl, ModuleItem, ModuleExportName, Str,
+            Expr, Ident, IdentName, ImportDecl, ImportNamedSpecifier, ImportSpecifier, JSXAttr,
+            JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXClosingElement, JSXElement,
+            JSXElementChild, JSXElementName, JSXExpr, JSXExprContainer, JSXOpeningElement, Module,
+            ModuleDecl, ModuleExportName, ModuleItem, Str,
         },
-        codegen::{text_writer::JsWriter, Config as CodegenConfig, Emitter},
-        parser::{parse_file_as_expr, parse_file_as_module, Syntax, TsSyntax},
+        codegen::{Config as CodegenConfig, Emitter, text_writer::JsWriter},
+        parser::{Syntax, TsSyntax, parse_file_as_expr, parse_file_as_module},
         visit::{VisitMut, VisitMutWith},
     },
 };
@@ -56,10 +56,7 @@ pub fn implementation_kind() -> String {
 
 #[cfg(not(target_arch = "wasm32"))]
 #[napi]
-pub fn transform(
-    source: String,
-    options: Option<TransformOptions>,
-) -> TransformResult {
+pub fn transform(source: String, options: Option<TransformOptions>) -> TransformResult {
     transform_impl(source, options)
 }
 
@@ -68,11 +65,12 @@ pub fn transform(
 pub fn transform(source: String, options: JsValue) -> Result<JsValue, JsValue> {
     let options = parse_wasm_transform_options(options)?;
     let result = transform_impl(source, options);
-    serde_wasm_bindgen::to_value(&result)
-        .map_err(|error| JsValue::from_str(&format!("Failed to serialize transform result: {error}")))
+    serde_wasm_bindgen::to_value(&result).map_err(|error| {
+        JsValue::from_str(&format!("Failed to serialize transform result: {error}"))
+    })
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Default)]
 struct TailwindConfig {
     #[serde(default)]
     theme: ThemeConfig,
@@ -81,7 +79,7 @@ struct TailwindConfig {
 #[derive(Clone, Deserialize, Default)]
 struct ThemeConfig {
     #[serde(default)]
-    colors: ThemeScale,
+    colors: ThemeColors,
     #[serde(default)]
     radius: ThemeScale,
     #[serde(default)]
@@ -92,6 +90,41 @@ const DEFAULT_CONFIG_JSON: &str = include_str!("../../config/src/defaults.json")
 static DEFAULT_CONFIG: OnceLock<TailwindConfig> = OnceLock::new();
 
 type ThemeScale = BTreeMap<String, String>;
+type ThemeColors = BTreeMap<String, ColorScale>;
+type ColorScale = BTreeMap<String, String>;
+
+#[derive(Clone, Deserialize, Default)]
+struct TailwindConfigInput {
+    theme: Option<ThemeConfigInput>,
+}
+
+#[derive(Clone, Deserialize, Default)]
+struct ThemeConfigInput {
+    colors: Option<ColorInputMap>,
+    radius: Option<ThemeScale>,
+    spacing: Option<ThemeScale>,
+    extend: Option<ThemeConfigExtendInput>,
+}
+
+#[derive(Clone, Deserialize, Default)]
+struct ThemeConfigExtendInput {
+    colors: Option<ColorInputMap>,
+    radius: Option<ThemeScale>,
+    spacing: Option<ThemeScale>,
+}
+
+type ColorInputMap = BTreeMap<String, ColorScaleInput>;
+
+#[derive(Clone, Deserialize)]
+#[serde(untagged)]
+enum ColorScaleInput {
+    Literal(String),
+    Scale(ColorScale),
+}
+
+const COLOR_SHADES: [&str; 11] = [
+    "50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950",
+];
 
 #[derive(Clone, Debug, Serialize)]
 struct PropEntry {
@@ -122,16 +155,22 @@ struct StyleEffectBundle {
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 enum RuntimeCondition {
-    All { conditions: Vec<RuntimeCondition> },
+    All {
+        conditions: Vec<RuntimeCondition>,
+    },
     Width {
         alias: String,
         #[serde(rename = "minWidth")]
         min_width: u32,
-        #[serde(rename = "maxWidth")]
+        #[serde(rename = "maxWidth", skip_serializing_if = "Option::is_none")]
         max_width: Option<u32>,
     },
-    Orientation { value: String },
-    Input { value: String },
+    Orientation {
+        value: String,
+    },
+    Input {
+        value: String,
+    },
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -177,7 +216,12 @@ impl StyleIr {
     }
 
     fn set_helper_prop(&mut self, tag: &'static str, name: &'static str, value: String) {
-        if let Some(helper) = self.base.helpers.iter_mut().find(|helper| helper.tag == tag) {
+        if let Some(helper) = self
+            .base
+            .helpers
+            .iter_mut()
+            .find(|helper| helper.tag == tag)
+        {
             helper.props.retain(|prop| prop.name != name);
             helper.props.push(PropEntry { name, value });
             return;
@@ -193,7 +237,6 @@ impl StyleIr {
 #[derive(Clone)]
 enum ColorResolution {
     Expression(String),
-    BuiltinHex(&'static str),
     Transparent,
 }
 
@@ -227,254 +270,6 @@ const PLACEHOLDER_COLOR_FAMILY: ColorFamilySpec = ColorFamilySpec {
     color_prop: "PlaceholderColor3",
     transparency_prop: None,
 };
-
-static BUILTIN_COLOR_PALETTE: &[(&str, ColorResolution)] = &[
-    ("transparent", ColorResolution::Transparent),
-    ("black", ColorResolution::BuiltinHex("#000")),
-    ("white", ColorResolution::BuiltinHex("#fff")),
-    ("slate-50", ColorResolution::BuiltinHex("#f8fafc")),
-    ("slate-100", ColorResolution::BuiltinHex("#f1f5f9")),
-    ("slate-200", ColorResolution::BuiltinHex("#e2e8f0")),
-    ("slate-300", ColorResolution::BuiltinHex("#cbd5e1")),
-    ("slate-400", ColorResolution::BuiltinHex("#94a3b8")),
-    ("slate-500", ColorResolution::BuiltinHex("#64748b")),
-    ("slate-600", ColorResolution::BuiltinHex("#475569")),
-    ("slate-700", ColorResolution::BuiltinHex("#334155")),
-    ("slate-800", ColorResolution::BuiltinHex("#1e293b")),
-    ("slate-900", ColorResolution::BuiltinHex("#0f172a")),
-    ("slate-950", ColorResolution::BuiltinHex("#020617")),
-    ("gray-50", ColorResolution::BuiltinHex("#f9fafb")),
-    ("gray-100", ColorResolution::BuiltinHex("#f3f4f6")),
-    ("gray-200", ColorResolution::BuiltinHex("#e5e7eb")),
-    ("gray-300", ColorResolution::BuiltinHex("#d1d5db")),
-    ("gray-400", ColorResolution::BuiltinHex("#9ca3af")),
-    ("gray-500", ColorResolution::BuiltinHex("#6b7280")),
-    ("gray-600", ColorResolution::BuiltinHex("#4b5563")),
-    ("gray-700", ColorResolution::BuiltinHex("#374151")),
-    ("gray-800", ColorResolution::BuiltinHex("#1f2937")),
-    ("gray-900", ColorResolution::BuiltinHex("#111827")),
-    ("gray-950", ColorResolution::BuiltinHex("#030712")),
-    ("zinc-50", ColorResolution::BuiltinHex("#fafafa")),
-    ("zinc-100", ColorResolution::BuiltinHex("#f4f4f5")),
-    ("zinc-200", ColorResolution::BuiltinHex("#e4e4e7")),
-    ("zinc-300", ColorResolution::BuiltinHex("#d4d4d8")),
-    ("zinc-400", ColorResolution::BuiltinHex("#a1a1aa")),
-    ("zinc-500", ColorResolution::BuiltinHex("#71717a")),
-    ("zinc-600", ColorResolution::BuiltinHex("#52525b")),
-    ("zinc-700", ColorResolution::BuiltinHex("#3f3f46")),
-    ("zinc-800", ColorResolution::BuiltinHex("#27272a")),
-    ("zinc-900", ColorResolution::BuiltinHex("#18181b")),
-    ("zinc-950", ColorResolution::BuiltinHex("#09090b")),
-    ("neutral-50", ColorResolution::BuiltinHex("#fafafa")),
-    ("neutral-100", ColorResolution::BuiltinHex("#f5f5f5")),
-    ("neutral-200", ColorResolution::BuiltinHex("#e5e5e5")),
-    ("neutral-300", ColorResolution::BuiltinHex("#d4d4d4")),
-    ("neutral-400", ColorResolution::BuiltinHex("#a3a3a3")),
-    ("neutral-500", ColorResolution::BuiltinHex("#737373")),
-    ("neutral-600", ColorResolution::BuiltinHex("#525252")),
-    ("neutral-700", ColorResolution::BuiltinHex("#404040")),
-    ("neutral-800", ColorResolution::BuiltinHex("#262626")),
-    ("neutral-900", ColorResolution::BuiltinHex("#171717")),
-    ("neutral-950", ColorResolution::BuiltinHex("#0a0a0a")),
-    ("stone-50", ColorResolution::BuiltinHex("#fafaf9")),
-    ("stone-100", ColorResolution::BuiltinHex("#f5f5f4")),
-    ("stone-200", ColorResolution::BuiltinHex("#e7e5e4")),
-    ("stone-300", ColorResolution::BuiltinHex("#d6d3d1")),
-    ("stone-400", ColorResolution::BuiltinHex("#a8a29e")),
-    ("stone-500", ColorResolution::BuiltinHex("#78716c")),
-    ("stone-600", ColorResolution::BuiltinHex("#57534e")),
-    ("stone-700", ColorResolution::BuiltinHex("#44403c")),
-    ("stone-800", ColorResolution::BuiltinHex("#292524")),
-    ("stone-900", ColorResolution::BuiltinHex("#1c1917")),
-    ("stone-950", ColorResolution::BuiltinHex("#0c0a09")),
-    ("red-50", ColorResolution::BuiltinHex("#fef2f2")),
-    ("red-100", ColorResolution::BuiltinHex("#fee2e2")),
-    ("red-200", ColorResolution::BuiltinHex("#fecaca")),
-    ("red-300", ColorResolution::BuiltinHex("#fca5a5")),
-    ("red-400", ColorResolution::BuiltinHex("#f87171")),
-    ("red-500", ColorResolution::BuiltinHex("#ef4444")),
-    ("red-600", ColorResolution::BuiltinHex("#dc2626")),
-    ("red-700", ColorResolution::BuiltinHex("#b91c1c")),
-    ("red-800", ColorResolution::BuiltinHex("#991b1b")),
-    ("red-900", ColorResolution::BuiltinHex("#7f1d1d")),
-    ("red-950", ColorResolution::BuiltinHex("#450a0a")),
-    ("orange-50", ColorResolution::BuiltinHex("#fff7ed")),
-    ("orange-100", ColorResolution::BuiltinHex("#ffedd5")),
-    ("orange-200", ColorResolution::BuiltinHex("#fed7aa")),
-    ("orange-300", ColorResolution::BuiltinHex("#fdba74")),
-    ("orange-400", ColorResolution::BuiltinHex("#fb923c")),
-    ("orange-500", ColorResolution::BuiltinHex("#f97316")),
-    ("orange-600", ColorResolution::BuiltinHex("#ea580c")),
-    ("orange-700", ColorResolution::BuiltinHex("#c2410c")),
-    ("orange-800", ColorResolution::BuiltinHex("#9a3412")),
-    ("orange-900", ColorResolution::BuiltinHex("#7c2d12")),
-    ("orange-950", ColorResolution::BuiltinHex("#431407")),
-    ("amber-50", ColorResolution::BuiltinHex("#fffbeb")),
-    ("amber-100", ColorResolution::BuiltinHex("#fef3c7")),
-    ("amber-200", ColorResolution::BuiltinHex("#fde68a")),
-    ("amber-300", ColorResolution::BuiltinHex("#fcd34d")),
-    ("amber-400", ColorResolution::BuiltinHex("#fbbf24")),
-    ("amber-500", ColorResolution::BuiltinHex("#f59e0b")),
-    ("amber-600", ColorResolution::BuiltinHex("#d97706")),
-    ("amber-700", ColorResolution::BuiltinHex("#b45309")),
-    ("amber-800", ColorResolution::BuiltinHex("#92400e")),
-    ("amber-900", ColorResolution::BuiltinHex("#78350f")),
-    ("amber-950", ColorResolution::BuiltinHex("#451a03")),
-    ("yellow-50", ColorResolution::BuiltinHex("#fefce8")),
-    ("yellow-100", ColorResolution::BuiltinHex("#fef9c3")),
-    ("yellow-200", ColorResolution::BuiltinHex("#fef08a")),
-    ("yellow-300", ColorResolution::BuiltinHex("#fde047")),
-    ("yellow-400", ColorResolution::BuiltinHex("#facc15")),
-    ("yellow-500", ColorResolution::BuiltinHex("#eab308")),
-    ("yellow-600", ColorResolution::BuiltinHex("#ca8a04")),
-    ("yellow-700", ColorResolution::BuiltinHex("#a16207")),
-    ("yellow-800", ColorResolution::BuiltinHex("#854d0e")),
-    ("yellow-900", ColorResolution::BuiltinHex("#713f12")),
-    ("yellow-950", ColorResolution::BuiltinHex("#422006")),
-    ("lime-50", ColorResolution::BuiltinHex("#f7fee7")),
-    ("lime-100", ColorResolution::BuiltinHex("#ecfccb")),
-    ("lime-200", ColorResolution::BuiltinHex("#d9f99d")),
-    ("lime-300", ColorResolution::BuiltinHex("#bef264")),
-    ("lime-400", ColorResolution::BuiltinHex("#a3e635")),
-    ("lime-500", ColorResolution::BuiltinHex("#84cc16")),
-    ("lime-600", ColorResolution::BuiltinHex("#65a30d")),
-    ("lime-700", ColorResolution::BuiltinHex("#4d7c0f")),
-    ("lime-800", ColorResolution::BuiltinHex("#3f6212")),
-    ("lime-900", ColorResolution::BuiltinHex("#365314")),
-    ("lime-950", ColorResolution::BuiltinHex("#1a2e05")),
-    ("green-50", ColorResolution::BuiltinHex("#f0fdf4")),
-    ("green-100", ColorResolution::BuiltinHex("#dcfce7")),
-    ("green-200", ColorResolution::BuiltinHex("#bbf7d0")),
-    ("green-300", ColorResolution::BuiltinHex("#86efac")),
-    ("green-400", ColorResolution::BuiltinHex("#4ade80")),
-    ("green-500", ColorResolution::BuiltinHex("#22c55e")),
-    ("green-600", ColorResolution::BuiltinHex("#16a34a")),
-    ("green-700", ColorResolution::BuiltinHex("#15803d")),
-    ("green-800", ColorResolution::BuiltinHex("#166534")),
-    ("green-900", ColorResolution::BuiltinHex("#14532d")),
-    ("green-950", ColorResolution::BuiltinHex("#052e16")),
-    ("emerald-50", ColorResolution::BuiltinHex("#ecfdf5")),
-    ("emerald-100", ColorResolution::BuiltinHex("#d1fae5")),
-    ("emerald-200", ColorResolution::BuiltinHex("#a7f3d0")),
-    ("emerald-300", ColorResolution::BuiltinHex("#6ee7b7")),
-    ("emerald-400", ColorResolution::BuiltinHex("#34d399")),
-    ("emerald-500", ColorResolution::BuiltinHex("#10b981")),
-    ("emerald-600", ColorResolution::BuiltinHex("#059669")),
-    ("emerald-700", ColorResolution::BuiltinHex("#047857")),
-    ("emerald-800", ColorResolution::BuiltinHex("#065f46")),
-    ("emerald-900", ColorResolution::BuiltinHex("#064e3b")),
-    ("emerald-950", ColorResolution::BuiltinHex("#022c22")),
-    ("teal-50", ColorResolution::BuiltinHex("#f0fdfa")),
-    ("teal-100", ColorResolution::BuiltinHex("#ccfbf1")),
-    ("teal-200", ColorResolution::BuiltinHex("#99f6e4")),
-    ("teal-300", ColorResolution::BuiltinHex("#5eead4")),
-    ("teal-400", ColorResolution::BuiltinHex("#2dd4bf")),
-    ("teal-500", ColorResolution::BuiltinHex("#14b8a6")),
-    ("teal-600", ColorResolution::BuiltinHex("#0d9488")),
-    ("teal-700", ColorResolution::BuiltinHex("#0f766e")),
-    ("teal-800", ColorResolution::BuiltinHex("#115e59")),
-    ("teal-900", ColorResolution::BuiltinHex("#134e4a")),
-    ("teal-950", ColorResolution::BuiltinHex("#042f2e")),
-    ("cyan-50", ColorResolution::BuiltinHex("#ecfeff")),
-    ("cyan-100", ColorResolution::BuiltinHex("#cffafe")),
-    ("cyan-200", ColorResolution::BuiltinHex("#a5f3fc")),
-    ("cyan-300", ColorResolution::BuiltinHex("#67e8f9")),
-    ("cyan-400", ColorResolution::BuiltinHex("#22d3ee")),
-    ("cyan-500", ColorResolution::BuiltinHex("#06b6d4")),
-    ("cyan-600", ColorResolution::BuiltinHex("#0891b2")),
-    ("cyan-700", ColorResolution::BuiltinHex("#0e7490")),
-    ("cyan-800", ColorResolution::BuiltinHex("#155e75")),
-    ("cyan-900", ColorResolution::BuiltinHex("#164e63")),
-    ("cyan-950", ColorResolution::BuiltinHex("#083344")),
-    ("sky-50", ColorResolution::BuiltinHex("#f0f9ff")),
-    ("sky-100", ColorResolution::BuiltinHex("#e0f2fe")),
-    ("sky-200", ColorResolution::BuiltinHex("#bae6fd")),
-    ("sky-300", ColorResolution::BuiltinHex("#7dd3fc")),
-    ("sky-400", ColorResolution::BuiltinHex("#38bdf8")),
-    ("sky-500", ColorResolution::BuiltinHex("#0ea5e9")),
-    ("sky-600", ColorResolution::BuiltinHex("#0284c7")),
-    ("sky-700", ColorResolution::BuiltinHex("#0369a1")),
-    ("sky-800", ColorResolution::BuiltinHex("#075985")),
-    ("sky-900", ColorResolution::BuiltinHex("#0c4a6e")),
-    ("sky-950", ColorResolution::BuiltinHex("#082f49")),
-    ("blue-50", ColorResolution::BuiltinHex("#eff6ff")),
-    ("blue-100", ColorResolution::BuiltinHex("#dbeafe")),
-    ("blue-200", ColorResolution::BuiltinHex("#bfdbfe")),
-    ("blue-300", ColorResolution::BuiltinHex("#93c5fd")),
-    ("blue-400", ColorResolution::BuiltinHex("#60a5fa")),
-    ("blue-500", ColorResolution::BuiltinHex("#3b82f6")),
-    ("blue-600", ColorResolution::BuiltinHex("#2563eb")),
-    ("blue-700", ColorResolution::BuiltinHex("#1d4ed8")),
-    ("blue-800", ColorResolution::BuiltinHex("#1e40af")),
-    ("blue-900", ColorResolution::BuiltinHex("#1e3a8a")),
-    ("blue-950", ColorResolution::BuiltinHex("#172554")),
-    ("indigo-50", ColorResolution::BuiltinHex("#eef2ff")),
-    ("indigo-100", ColorResolution::BuiltinHex("#e0e7ff")),
-    ("indigo-200", ColorResolution::BuiltinHex("#c7d2fe")),
-    ("indigo-300", ColorResolution::BuiltinHex("#a5b4fc")),
-    ("indigo-400", ColorResolution::BuiltinHex("#818cf8")),
-    ("indigo-500", ColorResolution::BuiltinHex("#6366f1")),
-    ("indigo-600", ColorResolution::BuiltinHex("#4f46e5")),
-    ("indigo-700", ColorResolution::BuiltinHex("#4338ca")),
-    ("indigo-800", ColorResolution::BuiltinHex("#3730a3")),
-    ("indigo-900", ColorResolution::BuiltinHex("#312e81")),
-    ("indigo-950", ColorResolution::BuiltinHex("#1e1b4b")),
-    ("violet-50", ColorResolution::BuiltinHex("#f5f3ff")),
-    ("violet-100", ColorResolution::BuiltinHex("#ede9fe")),
-    ("violet-200", ColorResolution::BuiltinHex("#ddd6fe")),
-    ("violet-300", ColorResolution::BuiltinHex("#c4b5fd")),
-    ("violet-400", ColorResolution::BuiltinHex("#a78bfa")),
-    ("violet-500", ColorResolution::BuiltinHex("#8b5cf6")),
-    ("violet-600", ColorResolution::BuiltinHex("#7c3aed")),
-    ("violet-700", ColorResolution::BuiltinHex("#6d28d9")),
-    ("violet-800", ColorResolution::BuiltinHex("#5b21b6")),
-    ("violet-900", ColorResolution::BuiltinHex("#4c1d95")),
-    ("violet-950", ColorResolution::BuiltinHex("#2e1065")),
-    ("purple-50", ColorResolution::BuiltinHex("#faf5ff")),
-    ("purple-100", ColorResolution::BuiltinHex("#f3e8ff")),
-    ("purple-200", ColorResolution::BuiltinHex("#e9d5ff")),
-    ("purple-300", ColorResolution::BuiltinHex("#d8b4fe")),
-    ("purple-400", ColorResolution::BuiltinHex("#c084fc")),
-    ("purple-500", ColorResolution::BuiltinHex("#a855f7")),
-    ("purple-600", ColorResolution::BuiltinHex("#9333ea")),
-    ("purple-700", ColorResolution::BuiltinHex("#7e22ce")),
-    ("purple-800", ColorResolution::BuiltinHex("#6b21a8")),
-    ("purple-900", ColorResolution::BuiltinHex("#581c87")),
-    ("purple-950", ColorResolution::BuiltinHex("#3b0764")),
-    ("fuchsia-50", ColorResolution::BuiltinHex("#fdf4ff")),
-    ("fuchsia-100", ColorResolution::BuiltinHex("#fae8ff")),
-    ("fuchsia-200", ColorResolution::BuiltinHex("#f5d0fe")),
-    ("fuchsia-300", ColorResolution::BuiltinHex("#f0abfc")),
-    ("fuchsia-400", ColorResolution::BuiltinHex("#e879f9")),
-    ("fuchsia-500", ColorResolution::BuiltinHex("#d946ef")),
-    ("fuchsia-600", ColorResolution::BuiltinHex("#c026d3")),
-    ("fuchsia-700", ColorResolution::BuiltinHex("#a21caf")),
-    ("fuchsia-800", ColorResolution::BuiltinHex("#86198f")),
-    ("fuchsia-900", ColorResolution::BuiltinHex("#701a75")),
-    ("fuchsia-950", ColorResolution::BuiltinHex("#4a044e")),
-    ("pink-50", ColorResolution::BuiltinHex("#fdf2f8")),
-    ("pink-100", ColorResolution::BuiltinHex("#fce7f3")),
-    ("pink-200", ColorResolution::BuiltinHex("#fbcfe8")),
-    ("pink-300", ColorResolution::BuiltinHex("#f9a8d4")),
-    ("pink-400", ColorResolution::BuiltinHex("#f472b6")),
-    ("pink-500", ColorResolution::BuiltinHex("#ec4899")),
-    ("pink-600", ColorResolution::BuiltinHex("#db2777")),
-    ("pink-700", ColorResolution::BuiltinHex("#be185d")),
-    ("pink-800", ColorResolution::BuiltinHex("#9d174d")),
-    ("pink-900", ColorResolution::BuiltinHex("#831843")),
-    ("pink-950", ColorResolution::BuiltinHex("#500724")),
-    ("rose-50", ColorResolution::BuiltinHex("#fff1f2")),
-    ("rose-100", ColorResolution::BuiltinHex("#ffe4e6")),
-    ("rose-200", ColorResolution::BuiltinHex("#fecdd3")),
-    ("rose-300", ColorResolution::BuiltinHex("#fda4af")),
-    ("rose-400", ColorResolution::BuiltinHex("#fb7185")),
-    ("rose-500", ColorResolution::BuiltinHex("#f43f5e")),
-    ("rose-600", ColorResolution::BuiltinHex("#e11d48")),
-    ("rose-700", ColorResolution::BuiltinHex("#be123c")),
-    ("rose-800", ColorResolution::BuiltinHex("#9f1239")),
-    ("rose-900", ColorResolution::BuiltinHex("#881337")),
-    ("rose-950", ColorResolution::BuiltinHex("#4c0519")),
-];
 
 struct TailwindTransformer {
     changed: bool,
@@ -511,13 +306,6 @@ fn apply_color_utility(
 
             style.set_prop(spec.color_prop, value);
         }
-        ColorResolution::BuiltinHex(hex) => {
-            if let Some(transparency_prop) = spec.transparency_prop {
-                style.remove_prop(transparency_prop);
-            }
-
-            style.set_prop(spec.color_prop, builtin_color_expression(hex));
-        }
         ColorResolution::Transparent => {
             if let Some(transparency_prop) = spec.transparency_prop {
                 style.remove_prop(spec.color_prop);
@@ -541,14 +329,6 @@ fn resolve_color_value(
     color_key: &str,
     token: &str,
 ) -> Option<ColorResolution> {
-    if let Some(value) = config.theme.colors.get(color_key) {
-        return Some(ColorResolution::Expression(value.clone()));
-    }
-
-    if let Some(value) = resolve_builtin_color(color_key) {
-        return Some(value);
-    }
-
     if matches!(color_key, "current" | "inherit") {
         diagnostics.push(unsupported_color_keyword_diagnostic(
             spec.theme_family,
@@ -558,22 +338,56 @@ fn resolve_color_value(
         return None;
     }
 
-    diagnostics.push(unknown_theme_key_diagnostic(spec.theme_family, color_key, token));
-    None
+    if color_key == "transparent" {
+        return Some(ColorResolution::Transparent);
+    }
+
+    let Some((color_name, shade)) = split_color_key(color_key) else {
+        diagnostics.push(unknown_theme_key_diagnostic(
+            spec.theme_family,
+            color_key,
+            token,
+        ));
+        return None;
+    };
+
+    let Some(value) = config
+        .theme
+        .colors
+        .get(color_name)
+        .and_then(|scale| scale.get(shade))
+    else {
+        diagnostics.push(unknown_theme_key_diagnostic(
+            spec.theme_family,
+            color_key,
+            token,
+        ));
+        return None;
+    };
+
+    Some(ColorResolution::Expression(value.clone()))
 }
 
-fn resolve_builtin_color(key: &str) -> Option<ColorResolution> {
-    BUILTIN_COLOR_PALETTE
-        .iter()
-        .find(|(builtin_key, _)| *builtin_key == key)
-        .map(|(_, value)| value.clone())
+fn split_color_key(key: &str) -> Option<(&str, &str)> {
+    let Some((name, shade)) = key.rsplit_once('-') else {
+        return Some((key, "500"));
+    };
+
+    if is_shade_token(shade) {
+        return Some((name, shade));
+    }
+
+    Some((key, "500"))
 }
 
-fn unsupported_color_keyword_diagnostic(
-    theme_family: &str,
-    key: &str,
-    token: &str,
-) -> Diagnostic {
+fn is_shade_token(value: &str) -> bool {
+    matches!(
+        value,
+        "50" | "100" | "200" | "300" | "400" | "500" | "600" | "700" | "800" | "900" | "950"
+    )
+}
+
+fn unsupported_color_keyword_diagnostic(theme_family: &str, key: &str, token: &str) -> Diagnostic {
     Diagnostic {
         level: "warning".to_owned(),
         code: "unsupported-color-key".to_owned(),
@@ -584,30 +398,12 @@ fn unsupported_color_keyword_diagnostic(
     }
 }
 
-fn builtin_color_expression(hex: &str) -> String {
-    let hex = hex.strip_prefix('#').unwrap_or(hex);
-    let expanded = match hex.len() {
-        3 => {
-            let mut out = String::with_capacity(6);
-            for ch in hex.chars() {
-                out.push(ch);
-                out.push(ch);
-            }
-            out
-        }
-        6 => hex.to_owned(),
-        _ => panic!("builtin color hex values must be 3 or 6 digits"),
-    };
-
-    let red = u8::from_str_radix(&expanded[0..2], 16).expect("builtin color red channel");
-    let green = u8::from_str_radix(&expanded[2..4], 16).expect("builtin color green channel");
-    let blue = u8::from_str_radix(&expanded[4..6], 16).expect("builtin color blue channel");
-
-    format!("Color3.fromRGB({red}, {green}, {blue})")
-}
-
 fn transform_impl(source: String, options: Option<TransformOptions>) -> TransformResult {
-    let config = parse_config(options.as_ref().and_then(|value| value.config_json.as_deref()));
+    let config = parse_config(
+        options
+            .as_ref()
+            .and_then(|value| value.config_json.as_deref()),
+    );
     let cm: Lrc<SourceMap> = Default::default();
     let fm = cm.new_source_file(FileName::Custom("input.tsx".into()).into(), source.clone());
     let mut recovered_errors = Vec::new();
@@ -680,9 +476,7 @@ fn transform_impl(source: String, options: Option<TransformOptions>) -> Transfor
         ir: transformer
             .ir
             .into_iter()
-            .map(|style| {
-                serde_json::to_string(&style).expect("style IR must serialize to JSON")
-            })
+            .map(|style| serde_json::to_string(&style).expect("style IR must serialize to JSON"))
             .collect(),
     }
 }
@@ -702,7 +496,8 @@ fn emit_module(cm: &Lrc<SourceMap>, module: &Module) -> Result<String, String> {
             .map_err(|error| format!("Failed to emit JS/TSX: {error:?}"))?;
     }
 
-    String::from_utf8(output).map_err(|error| format!("Generated output was not valid UTF-8: {error}"))
+    String::from_utf8(output)
+        .map_err(|error| format!("Generated output was not valid UTF-8: {error}"))
 }
 
 impl VisitMut for TailwindTransformer {
@@ -724,11 +519,9 @@ impl VisitMut for TailwindTransformer {
             return;
         }
 
-        let Some(lowered) = lower_class_name(
-            &element.opening.attrs,
-            &self.config,
-            &mut self.diagnostics,
-        ) else {
+        let Some(lowered) =
+            lower_class_name(&element.opening.attrs, &self.config, &mut self.diagnostics)
+        else {
             return;
         };
 
@@ -750,7 +543,14 @@ impl VisitMut for TailwindTransformer {
 
         if lowered.needs_runtime_host {
             self.runtime_import_needed = true;
-            attrs.extend(lowered.style_ir.base.props.into_iter().map(create_prop_attr));
+            attrs.extend(
+                lowered
+                    .style_ir
+                    .base
+                    .props
+                    .into_iter()
+                    .map(create_prop_attr),
+            );
             if !lowered.style_ir.runtime_rules.is_empty() {
                 attrs.push(create_prop_attr(PropEntry {
                     name: "__rbxtsTailwindRules",
@@ -767,7 +567,14 @@ impl VisitMut for TailwindTransformer {
                 DUMMY_SP,
             ));
         } else {
-            attrs.extend(lowered.style_ir.base.props.into_iter().map(create_prop_attr));
+            attrs.extend(
+                lowered
+                    .style_ir
+                    .base
+                    .props
+                    .into_iter()
+                    .map(create_prop_attr),
+            );
         }
 
         element.opening.attrs = attrs;
@@ -823,8 +630,7 @@ fn lower_class_name(
         Some(JSXAttrValue::Str(value)) => {
             let class_name = value.value.to_string_lossy().into_owned();
             let style = resolve_class_tokens(tokenize_class_name(&class_name), config, diagnostics);
-            let needs_runtime_host =
-                !style.runtime_rules.is_empty() || style.runtime_class_value;
+            let needs_runtime_host = !style.runtime_rules.is_empty() || style.runtime_class_value;
 
             Some(LoweredClassName {
                 style_ir: style,
@@ -1262,10 +1068,7 @@ fn resolve_numeric_spacing_value(key: &str) -> Option<String> {
         return None;
     }
 
-    Some(format!(
-        "new UDim(0, {})",
-        format_spacing_offset(offset_px)
-    ))
+    Some(format!("new UDim(0, {})", format_spacing_offset(offset_px)))
 }
 
 fn spacing_value_to_offset(value: &str) -> Option<String> {
@@ -1393,7 +1196,10 @@ fn parse_expression(value: &str) -> Box<Expr> {
 }
 
 fn tokenize_class_name(input: &str) -> Vec<&str> {
-    input.split_whitespace().filter(|token| !token.is_empty()).collect()
+    input
+        .split_whitespace()
+        .filter(|token| !token.is_empty())
+        .collect()
 }
 
 fn is_class_name_attr(name: &JSXAttrName) -> bool {
@@ -1420,8 +1226,18 @@ fn is_supported_host_element(name: &JSXElementName) -> bool {
 
 fn parse_config(config_json: Option<&str>) -> TailwindConfig {
     config_json
-        .and_then(|value| serde_json::from_str::<TailwindConfig>(value).ok())
+        .and_then(parse_config_json)
         .unwrap_or_else(default_config)
+}
+
+fn parse_config_json(value: &str) -> Option<TailwindConfig> {
+    serde_json::from_str::<TailwindConfig>(value)
+        .ok()
+        .or_else(|| {
+            serde_json::from_str::<TailwindConfigInput>(value)
+                .ok()
+                .map(|input| resolve_config_input(input, default_config_ref()))
+        })
 }
 
 fn default_config() -> TailwindConfig {
@@ -1430,13 +1246,137 @@ fn default_config() -> TailwindConfig {
 
 fn default_config_ref() -> &'static TailwindConfig {
     DEFAULT_CONFIG.get_or_init(|| {
-        serde_json::from_str(DEFAULT_CONFIG_JSON)
-            .expect("packages/config/src/defaults.json must be valid TailwindConfig-compatible JSON")
+        serde_json::from_str::<TailwindConfig>(DEFAULT_CONFIG_JSON)
+            .or_else(|_| {
+                serde_json::from_str::<TailwindConfigInput>(DEFAULT_CONFIG_JSON)
+                    .map(|input| resolve_config_input(input, &TailwindConfig::default()))
+            })
+            .expect(
+                "packages/config/src/defaults.json must be valid TailwindConfig-compatible JSON",
+            )
     })
 }
 
+fn resolve_config_input(input: TailwindConfigInput, base: &TailwindConfig) -> TailwindConfig {
+    let Some(theme) = input.theme else {
+        return base.clone();
+    };
+
+    let extend = theme.extend.unwrap_or_default();
+
+    TailwindConfig {
+        theme: ThemeConfig {
+            colors: resolve_color_input(
+                &base.theme.colors,
+                extend.colors.as_ref(),
+                theme.colors.as_ref(),
+            ),
+            radius: resolve_theme_scale(
+                &base.theme.radius,
+                extend.radius.as_ref(),
+                theme.radius.as_ref(),
+            ),
+            spacing: resolve_theme_scale(
+                &base.theme.spacing,
+                extend.spacing.as_ref(),
+                theme.spacing.as_ref(),
+            ),
+        },
+    }
+}
+
+fn resolve_color_input(
+    base: &ThemeColors,
+    extend: Option<&ColorInputMap>,
+    override_colors: Option<&ColorInputMap>,
+) -> ThemeColors {
+    let merged_defaults = merge_color_registry(base, extend);
+
+    override_colors
+        .map(normalize_color_registry)
+        .unwrap_or(merged_defaults)
+}
+
+fn merge_color_registry(base: &ThemeColors, extend: Option<&ColorInputMap>) -> ThemeColors {
+    let mut merged = base.clone();
+
+    let Some(extend) = extend else {
+        return merged;
+    };
+
+    for (name, value) in extend {
+        if let Some(base_scale) = merged.get(name) {
+            let mut next_scale = base_scale.clone();
+            for (shade, color) in explicit_color_values(value) {
+                next_scale.insert(shade, color);
+            }
+            merged.insert(name.clone(), next_scale);
+        } else if let Some(scale) = normalize_color_scale(value) {
+            merged.insert(name.clone(), scale);
+        }
+    }
+
+    merged
+}
+
+fn normalize_color_registry(colors: &ColorInputMap) -> ThemeColors {
+    colors
+        .iter()
+        .filter_map(|(name, value)| normalize_color_scale(value).map(|scale| (name.clone(), scale)))
+        .collect()
+}
+
+fn normalize_color_scale(value: &ColorScaleInput) -> Option<ColorScale> {
+    let source = explicit_color_values(value);
+    let seed = source.get("500").cloned().or_else(|| {
+        COLOR_SHADES
+            .iter()
+            .find_map(|shade| source.get(*shade).cloned())
+    })?;
+
+    Some(
+        COLOR_SHADES
+            .iter()
+            .map(|shade| {
+                (
+                    (*shade).to_owned(),
+                    source.get(*shade).cloned().unwrap_or_else(|| seed.clone()),
+                )
+            })
+            .collect(),
+    )
+}
+
+fn explicit_color_values(value: &ColorScaleInput) -> ColorScale {
+    match value {
+        ColorScaleInput::Literal(color) => BTreeMap::from([("500".to_owned(), color.clone())]),
+        ColorScaleInput::Scale(scale) => scale.clone(),
+    }
+}
+
+fn resolve_theme_scale(
+    base: &ThemeScale,
+    extend: Option<&ThemeScale>,
+    override_scale: Option<&ThemeScale>,
+) -> ThemeScale {
+    if let Some(override_scale) = override_scale {
+        return override_scale.clone();
+    }
+
+    let mut merged = base.clone();
+
+    if let Some(extend) = extend {
+        merged.extend(extend.clone());
+    }
+
+    merged
+}
+
 fn unsupported_utility_family_diagnostic(token: &str) -> Diagnostic {
-    let family = token.split_once('-').map(|(family, _)| family).unwrap_or(token);
+    let family = token
+        .split_once('-')
+        .map(|(family, _)| family)
+        .unwrap_or(token);
 
     Diagnostic {
         level: "warning".to_owned(),
@@ -1485,9 +1425,11 @@ fn parse_wasm_transform_options(options: JsValue) -> Result<Option<TransformOpti
         return Ok(None);
     }
 
-    serde_wasm_bindgen::from_value(options).map(Some).map_err(|error| {
-        JsValue::from_str(&format!(
-            "Failed to deserialize transform options from wasm input: {error}"
-        ))
-    })
+    serde_wasm_bindgen::from_value(options)
+        .map(Some)
+        .map_err(|error| {
+            JsValue::from_str(&format!(
+                "Failed to deserialize transform options from wasm input: {error}"
+            ))
+        })
 }
