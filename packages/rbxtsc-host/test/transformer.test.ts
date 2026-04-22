@@ -72,8 +72,8 @@ test("bridges compiler diagnostics into TypeScript diagnostics", () => {
 		diagnostics: [
 			{
 				level: "warning",
-				code: "unknown-utility",
-				message: "Unknown utility class",
+				code: "unknown-theme-key",
+				message: "Unknown theme key",
 				token: "bg-missing",
 			},
 		],
@@ -86,7 +86,7 @@ test("bridges compiler diagnostics into TypeScript diagnostics", () => {
 	expect(result.diagnostics[0]).toMatchObject({
 		category: ts.DiagnosticCategory.Warning,
 		code: 89000,
-		messageText: expect.stringContaining("unknown-utility"),
+		messageText: expect.stringContaining("unknown-theme-key"),
 	});
 	expect(result.diagnostics[0].file?.fileName).toBe("src/client/App.tsx");
 	expect(result.diagnostics[0].start).toBeGreaterThanOrEqual(0);

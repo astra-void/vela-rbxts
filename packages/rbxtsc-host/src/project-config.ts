@@ -154,19 +154,38 @@ function loadTypeScript(): TypeScriptModule {
 }
 
 function defineConfig(input: TailwindConfigInput = {}): TailwindConfig {
+	const extend = input.theme?.extend;
+
 	return {
 		theme: {
-			colors: {
-				surface:
-					input.theme?.colors?.surface ?? defaultConfig.theme.colors.surface,
-			},
-			radius: {
-				md: input.theme?.radius?.md ?? defaultConfig.theme.radius.md,
-			},
-			spacing: {
-				"4": input.theme?.spacing?.["4"] ?? defaultConfig.theme.spacing["4"],
-			},
+			colors: mergeThemeScale(
+				defaultConfig.theme.colors,
+				extend?.colors,
+				input.theme?.colors,
+			),
+			radius: mergeThemeScale(
+				defaultConfig.theme.radius,
+				extend?.radius,
+				input.theme?.radius,
+			),
+			spacing: mergeThemeScale(
+				defaultConfig.theme.spacing,
+				extend?.spacing,
+				input.theme?.spacing,
+			),
 		},
+	};
+}
+
+function mergeThemeScale(
+	base: Record<string, string>,
+	extend: Record<string, string> | undefined,
+	override: Record<string, string> | undefined,
+): Record<string, string> {
+	return {
+		...base,
+		...extend,
+		...override,
 	};
 }
 
@@ -199,12 +218,16 @@ function isTailwindConfig(value: unknown): value is TailwindConfig {
 	return (
 		isRecord(value) &&
 		isRecord(value.theme) &&
-		isRecord(value.theme.colors) &&
-		typeof value.theme.colors.surface === "string" &&
-		isRecord(value.theme.radius) &&
-		typeof value.theme.radius.md === "string" &&
-		isRecord(value.theme.spacing) &&
-		typeof value.theme.spacing["4"] === "string"
+		isThemeScale(value.theme.colors) &&
+		isThemeScale(value.theme.radius) &&
+		isThemeScale(value.theme.spacing)
+	);
+}
+
+function isThemeScale(value: unknown): value is Record<string, string> {
+	return (
+		isRecord(value) &&
+		Object.values(value).every((entry) => typeof entry === "string")
 	);
 }
 

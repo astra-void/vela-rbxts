@@ -22,8 +22,8 @@ vi.mock("@rbxts-tailwind/compiler", () => ({
 		diagnostics: [
 			{
 				level: "warning",
-				code: "unknown-utility",
-				message: "Unknown utility class",
+				code: "unknown-theme-key",
+				message: "Unknown theme key",
 				token: "bg-missing",
 			},
 		],
@@ -109,6 +109,17 @@ test("loads rbxtw.config.ts when present", () => {
 				spacing: {
 					"4": "new UDim(0, 10)",
 				},
+				extend: {
+					colors: {
+						primary: "Color3.fromRGB(99, 102, 241)",
+					},
+					radius: {
+						lg: "new UDim(0, 12)",
+					},
+					spacing: {
+						"6": "new UDim(0, 16)",
+					},
+				},
 			},
 		});`,
 	);
@@ -124,12 +135,15 @@ test("loads rbxtw.config.ts when present", () => {
 			theme: {
 				colors: {
 					surface: "Color3.fromRGB(1, 2, 3)",
+					primary: "Color3.fromRGB(99, 102, 241)",
 				},
 				radius: {
 					md: "new UDim(0, 6)",
+					lg: "new UDim(0, 12)",
 				},
 				spacing: {
 					"4": "new UDim(0, 10)",
+					"6": "new UDim(0, 16)",
 				},
 			},
 		}),
@@ -158,11 +172,11 @@ test("carries compiler diagnostics through the host diagnostic boundary", () => 
 		expect.objectContaining({
 			source: "compiler",
 			level: "warning",
-			code: "unknown-utility",
-			message: "Unknown utility class",
+			code: "unknown-theme-key",
+			message: "Unknown theme key",
 			token: "bg-missing",
 			compilerDiagnostic: expect.objectContaining({
-				code: "unknown-utility",
+				code: "unknown-theme-key",
 			}),
 		}),
 	]);
