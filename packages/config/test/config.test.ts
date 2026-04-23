@@ -5,27 +5,23 @@ import {
 	defaultConfig,
 	defineConfig,
 	resolveThemeColors,
-	SHADES,
 } from "../src/index";
 
-function expectNormalizedScale(
-	scale: Record<string | number, string>,
-	value: string,
+function expectPalette(
+	value: unknown,
+	entries: Record<string, string>,
 ) {
-	expect(scale).toEqual(
-		Object.fromEntries(SHADES.map((shade) => [shade, value])),
-	);
+	expect(value).toEqual(entries);
 }
 
-test("keeps defaults authoring-shaped and normalizes them in code", () => {
+test("keeps defaults authoring-shaped and preserves singleton colors", () => {
 	expect(defaultsInput.theme.colors.surface).toBe("Color3.fromRGB(40, 48, 66)");
-	expectNormalizedScale(
-		defaultConfig.theme.colors.surface,
+	expect(defaultConfig.theme.colors.surface).toBe(
 		"Color3.fromRGB(40, 48, 66)",
 	);
 });
 
-test("normalizes single literal color input", () => {
+test("preserves single literal color input as a singleton", () => {
 	const config = defineConfig({
 		theme: {
 			colors: {
@@ -35,10 +31,10 @@ test("normalizes single literal color input", () => {
 	});
 
 	expect(Object.keys(config.theme.colors)).toEqual(["brand"]);
-	expectNormalizedScale(config.theme.colors.brand, "Color3.fromRGB(1, 2, 3)");
+	expect(config.theme.colors.brand).toBe("Color3.fromRGB(1, 2, 3)");
 });
 
-test("normalizes partial shade input from the seed shade", () => {
+test("preserves explicit shade input as a palette", () => {
 	const config = defineConfig({
 		theme: {
 			colors: {
@@ -49,7 +45,9 @@ test("normalizes partial shade input from the seed shade", () => {
 		},
 	});
 
-	expectNormalizedScale(config.theme.colors.brand, "Color3.fromRGB(7, 8, 9)");
+	expectPalette(config.theme.colors.brand, {
+		700: "Color3.fromRGB(7, 8, 9)",
+	});
 });
 
 test("extend colors merge into existing families at shade depth", () => {
@@ -77,12 +75,16 @@ test("extend colors merge into existing families at shade depth", () => {
 		undefined,
 	);
 
-	expect(colors.slate[50]).toBe("Color3.fromRGB(1, 1, 1)");
-	expect(colors.slate[500]).toBe("Color3.fromRGB(9, 9, 9)");
-	expect(colors.slate[700]).toBe("Color3.fromRGB(3, 3, 3)");
+	expect(colors.slate).toEqual(
+		expect.objectContaining({
+			50: "Color3.fromRGB(1, 1, 1)",
+			500: "Color3.fromRGB(9, 9, 9)",
+			700: "Color3.fromRGB(3, 3, 3)",
+		}),
+	);
 });
 
-test("extend colors merge default families at shade depth", () => {
+test("extend colors preserve singleton defaults and shade palettes", () => {
 	const config = defineConfig({
 		theme: {
 			extend: {
@@ -95,8 +97,9 @@ test("extend colors merge default families at shade depth", () => {
 		},
 	});
 
-	expect(config.theme.colors.surface[500]).toBe("Color3.fromRGB(40, 48, 66)");
-	expect(config.theme.colors.surface[700]).toBe("Color3.fromRGB(7, 7, 7)");
+	expect(config.theme.colors.surface).toEqual({
+		700: "Color3.fromRGB(7, 7, 7)",
+	});
 });
 
 test("top-level colors replace the final family set", () => {
@@ -114,5 +117,5 @@ test("top-level colors replace the final family set", () => {
 	});
 
 	expect(Object.keys(config.theme.colors)).toEqual(["brand"]);
-	expectNormalizedScale(config.theme.colors.brand, "Color3.fromRGB(1, 2, 3)");
+	expect(config.theme.colors.brand).toBe("Color3.fromRGB(1, 2, 3)");
 });

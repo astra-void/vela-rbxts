@@ -7,11 +7,13 @@ export type Shade = (typeof SHADES)[number];
 
 export type ThemeScale = Record<string, string>;
 
-export type NormalizedColorScale = Record<Shade, string>;
+export type ColorPalette = Partial<Record<Shade, string>>;
 
-export type ThemeColors = Record<string, NormalizedColorScale>;
+export type ColorValue = string | ColorPalette;
 
-export type ColorScaleInput = string | Partial<NormalizedColorScale>;
+export type ThemeColors = Record<string, ColorValue>;
+
+export type ColorScaleInput = ColorValue;
 
 export type ColorInputMap = Record<string, ColorScaleInput>;
 
@@ -110,16 +112,13 @@ export function mergeColorRegistry(
 	}
 
 	for (const [name, value] of Object.entries(extend)) {
-		const baseScale = merged[name];
-		if (!baseScale) {
+		const baseColor = merged[name];
+		if (!baseColor) {
 			merged[name] = normalizeColorScale(value);
 			continue;
 		}
 
-		merged[name] = {
-			...baseScale,
-			...toExplicitColorScale(value),
-		};
+		merged[name] = mergeColorValues(baseColor, value);
 	}
 
 	return merged;
@@ -141,45 +140,29 @@ export function normalizeColorRegistry(
 	return normalized;
 }
 
-export function normalizeColorScale(
-	value: ColorScaleInput,
-): NormalizedColorScale {
-	const source = typeof value === "string" ? { 500: value } : value;
-	const seed = resolveSeedColorValue(source);
-	const normalized = {} as NormalizedColorScale;
-
-	for (const shade of SHADES) {
-		normalized[shade] = source[shade] ?? seed;
+export function normalizeColorScale(value: ColorScaleInput): ColorValue {
+	if (typeof value === "string") {
+		return value;
 	}
 
-	return normalized;
+	if (Object.keys(value).length === 0) {
+		throw new Error(
+			"Color palette normalization requires at least one shade value.",
+		);
+	}
+
+	return { ...value };
 }
 
-function toExplicitColorScale(
-	value: ColorScaleInput,
-): Partial<NormalizedColorScale> {
-	const source = typeof value === "string" ? { 500: value } : value;
-
-	resolveSeedColorValue(source);
-
-	return source;
-}
-
-function resolveSeedColorValue(source: Partial<NormalizedColorScale>): string {
-	if (typeof source[500] === "string") {
-		return source[500];
+function mergeColorValues(base: ColorValue, value: ColorScaleInput): ColorValue {
+	if (typeof base === "string" || typeof value === "string") {
+		return normalizeColorScale(value);
 	}
 
-	for (const shade of SHADES) {
-		const value = source[shade];
-		if (typeof value === "string") {
-			return value;
-		}
-	}
-
-	throw new Error(
-		"Color scale normalization requires at least one shade value.",
-	);
+	return {
+		...base,
+		...value,
+	};
 }
 
 function resolveThemeScale(
