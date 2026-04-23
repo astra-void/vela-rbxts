@@ -28,6 +28,7 @@ Completed in the current slice:
 - diagnostics for unsupported utility families, unsupported color keywords, and unknown theme keys
 - transformer entry points for `rbxtsc` and direct host use
 - automatic runtime-aware lowering for dynamic `ClassValue` expressions and supported Roblox-oriented variants
+- v1 editor integration through a TypeScript tsserver plugin backed by the native compiler query APIs
 
 Still incomplete:
 
@@ -44,6 +45,7 @@ Still incomplete:
 | `rbxts-tailwind/transformer` | CommonJS transformer entry point for `rbxtsc` and other TypeScript transformer consumers. |
 | `@rbxts-tailwind/compiler` | Native compiler implementation that resolves and lowers utility classes. |
 | `@rbxts-tailwind/rbxtsc-host` | Host adapter that filters eligible files, loads project config, and calls the compiler. |
+| `@vela-rbxts/ts-plugin` | Thin TypeScript Language Service Plugin adapter for completions, hover, and semantic diagnostics. |
 | `@rbxts-tailwind/config` | Tailwind-style config shape, defaults, and config composition helpers. |
 | `@rbxts-tailwind/core` | Semantic ownership boundary and supported host element tags. |
 | `@rbxts-tailwind/types` | Shared utility types used across packages and public exports. |
@@ -163,6 +165,40 @@ export default defineConfig({
     },
   },
 });
+```
+
+## Editor integration
+
+The v1 editor integration is a TypeScript Language Service Plugin. It does not run a standalone LSP server.
+
+The plugin keeps TypeScript-side responsibilities in TypeScript:
+
+- tsserver lifecycle integration
+- detecting supported TSX `className="..."` contexts
+- nearest `rbxtw.config.ts` resolution through the existing host config loader
+- translating compiler query results into TypeScript completions, quick info, and diagnostics
+
+The native compiler remains the semantic engine for token analysis, utility validation, completions, hover text, and diagnostics.
+
+To enable the local plugin in a project or harness `tsconfig.json`:
+
+```json
+{
+  "compilerOptions": {
+    "plugins": [
+      {
+        "name": "@vela-rbxts/ts-plugin"
+      }
+    ]
+  }
+}
+```
+
+When developing from this monorepo, build the compiler native binding and plugin package first:
+
+```bash
+pnpm --filter @vela-rbxts/compiler build
+pnpm --filter @vela-rbxts/ts-plugin build
 ```
 
 ## Example
