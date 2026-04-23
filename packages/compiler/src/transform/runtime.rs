@@ -226,14 +226,7 @@ fn apply_analyzed_token(
         }
         UtilityKind::Gap => {
             if let Some(spacing_key) = analysis.payload() {
-                apply_spacing_utility(
-                    style,
-                    config,
-                    diagnostics,
-                    spacing_key,
-                    &analysis.parsed.raw,
-                    &PaddingKind::All,
-                );
+                apply_gap_utility(style, config, diagnostics, spacing_key, &analysis.parsed.raw);
             }
         }
         UtilityKind::Width => {
@@ -335,6 +328,21 @@ fn apply_spacing_utility(
                 style.set_helper_prop("uipadding", "PaddingLeft", value);
             }
         }
+        return;
+    }
+
+    diagnostics.push(unknown_theme_key_diagnostic("spacing", spacing_key, token));
+}
+
+fn apply_gap_utility(
+    style: &mut StyleIr,
+    config: &TailwindConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+    spacing_key: &str,
+    token: &str,
+) {
+    if let Some(value) = resolve_spacing_value(config, spacing_key) {
+        style.set_helper_prop("uilistlayout", "Padding", value);
         return;
     }
 
