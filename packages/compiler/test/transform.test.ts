@@ -1,12 +1,9 @@
 import { implementationKind, transform } from "@vela-rbxts/compiler";
 import { expect, expectTypeOf, test } from "vitest";
-import { defaultConfig, defineConfig, SHADES } from "../../config/src/index";
+import { defaultConfig, defineConfig } from "../../config/src/index";
 
-function buildNormalizedColorScale(value: string) {
-	return Object.fromEntries(SHADES.map((shade) => [shade, value])) as Record<
-		string,
-		string
-	>;
+function buildColorPalette(entries: Record<string, string>) {
+	return entries;
 }
 
 test("applies theme.extend while top-level theme scales replace the family", () => {
@@ -33,7 +30,8 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 	expect(config).toEqual({
 		theme: {
 			colors: {
-				primary: buildNormalizedColorScale("Color3.fromRGB(99, 102, 241)"),
+				primary: "Color3.fromRGB(99, 102, 241)",
+				secondary: "Color3.fromRGB(16, 185, 129)",
 			},
 			radius: {
 				none: "new UDim(0, 0)",
@@ -59,18 +57,13 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 	const result = transform(source, { configJson: JSON.stringify(config) });
 
 	expect(result.changed).toBe(true);
-	expect(result.diagnostics).toEqual(
-		expect.arrayContaining([
-			expect.objectContaining({
-				level: "warning",
-				code: "unknown-theme-key",
-				token: "bg-secondary",
-			}),
-		]),
-	);
+	expect(result.diagnostics).toEqual([]);
 	expect(result.code.includes("className=")).toBe(false);
 	expect(result.code).toMatch(
 		/BackgroundColor3=\{Color3\.fromRGB\(99, 102, 241\)\}/,
+	);
+	expect(result.code).toMatch(
+		/BackgroundColor3=\{Color3\.fromRGB\(16, 185, 129\)\}/,
 	);
 	expect(result.code).toMatch(
 		/<uicorner\b[^>]*CornerRadius=\{new UDim\(0, 12\)\}[^>]*\/>/i,
@@ -87,23 +80,27 @@ test("resolves normalized shade tokens from config colors", () => {
 	const config = defineConfig({
 		theme: {
 			colors: {
+				surface: "Color3.fromRGB(40, 48, 66)",
 				slate: {
-					500: "Color3.fromRGB(1, 2, 3)",
+					50: "Color3.fromRGB(1, 2, 3)",
+					500: "Color3.fromRGB(4, 5, 6)",
 					700: "Color3.fromRGB(4, 5, 6)",
 				},
 			},
 		},
 	});
 
+	expect(config.theme.colors.surface).toBe("Color3.fromRGB(40, 48, 66)");
 	expect(config.theme.colors.slate).toEqual(
 		expect.objectContaining({
-			500: "Color3.fromRGB(1, 2, 3)",
+			50: "Color3.fromRGB(1, 2, 3)",
+			500: "Color3.fromRGB(4, 5, 6)",
 			700: "Color3.fromRGB(4, 5, 6)",
 		}),
 	);
 
 	const result = transform(
-		'<frame><frame className="bg-slate" /><frame className="bg-slate-700" /></frame>',
+		'<frame><frame className="bg-surface" /><frame className="bg-slate-700" /></frame>',
 		{
 			configJson: JSON.stringify(config),
 		},
@@ -113,27 +110,27 @@ test("resolves normalized shade tokens from config colors", () => {
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).not.toContain("className=");
 	expect(result.code).toContain(
-		"<frame BackgroundColor3={Color3.fromRGB(1, 2, 3)}/>",
+		"<frame BackgroundColor3={Color3.fromRGB(40, 48, 66)}/>",
 	);
 	expect(result.code).toContain(
 		"<frame BackgroundColor3={Color3.fromRGB(4, 5, 6)}/>",
 	);
 });
 
-test("merges extend colors into the normalized default palette", () => {
+test("merges extend colors without inventing fake singleton shades", () => {
 	const config = defineConfig({
 		theme: {
 			extend: {
 				colors: {
-					slate: {
+					slate: buildColorPalette({
 						500: "Color3.fromRGB(100, 116, 139)",
-					},
-					blue: {
+					}),
+					blue: buildColorPalette({
 						600: "Color3.fromRGB(37, 99, 235)",
-					},
-					rose: {
+					}),
+					rose: buildColorPalette({
 						400: "Color3.fromRGB(251, 113, 133)",
-					},
+					}),
 				},
 			},
 		},
@@ -150,7 +147,7 @@ test("merges extend colors into the normalized default palette", () => {
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).not.toContain("className=");
 	expect(result.code).toContain(
-		`<frame BackgroundColor3={${defaultConfig.theme.colors.surface[500]}}/>`,
+		`<frame BackgroundColor3={${defaultConfig.theme.colors.surface}}/>`,
 	);
 	expect(result.code).toContain(
 		"<frame BackgroundColor3={Color3.fromRGB(100, 116, 139)}/>",
@@ -163,39 +160,51 @@ test("merges extend colors into the normalized default palette", () => {
 	);
 });
 
-test("keeps the legacy unshaded token bridge on normalized palettes", () => {
+	test("rejects unshaded palette access and invalid singleton shade access", () => {
 	const config = defineConfig({
 		theme: {
 			colors: {
-				brand: {
+				brand: buildColorPalette({
 					500: "Color3.fromRGB(12, 34, 56)",
 					700: "Color3.fromRGB(78, 90, 123)",
-				},
+				}),
+				surface: "Color3.fromRGB(40, 48, 66)",
 			},
 		},
 	});
 
 	const result = transform(
-		'<frame><frame className="bg-brand" /><frame className="bg-brand-700" /></frame>',
+		'<frame><frame className="bg-brand" /><frame className="bg-brand-700" /><frame className="bg-surface-700" /></frame>',
 		{
 			configJson: JSON.stringify(config),
 		},
 	);
 
 	expect(result.changed).toBe(true);
-	expect(result.diagnostics).toEqual([]);
-	expect(result.code).not.toContain("className=");
-	expect(result.code).toContain(
-		"<frame BackgroundColor3={Color3.fromRGB(12, 34, 56)}/>",
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "color-missing-shade",
+				token: "bg-brand",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "color-invalid-shade",
+				token: "bg-surface-700",
+			}),
+		]),
 	);
+	expect(result.code).not.toContain("className=");
 	expect(result.code).toContain(
 		"<frame BackgroundColor3={Color3.fromRGB(78, 90, 123)}/>",
 	);
+	expect(result.code).not.toContain("Color3.fromRGB(12, 34, 56)");
 });
 
 test("resolves normalized default background colors and transparent keywords", () => {
 	const result = transform(
-		'<frame><frame className="bg-surface" /><frame className="bg-surface-500" /><frame className="bg-transparent" /></frame>',
+		'<frame><frame className="bg-surface" /><frame className="bg-transparent" /></frame>',
 	);
 
 	expect(result.changed).toBe(true);
@@ -203,9 +212,9 @@ test("resolves normalized default background colors and transparent keywords", (
 	expect(result.code).not.toContain("className=");
 	expect(
 		result.code.split(
-			`BackgroundColor3={${defaultConfig.theme.colors.surface[500]}}`,
+			`BackgroundColor3={${defaultConfig.theme.colors.surface}}`,
 		),
-	).toHaveLength(3);
+	).toHaveLength(2);
 	expect(result.code).toContain("<frame BackgroundTransparency={1}/>");
 });
 
@@ -1075,7 +1084,7 @@ test("retains the default config shape for compatibility", () => {
 	expect(defaultConfig).toEqual({
 		theme: {
 			colors: {
-				surface: buildNormalizedColorScale("Color3.fromRGB(40, 48, 66)"),
+				surface: "Color3.fromRGB(40, 48, 66)",
 			},
 			radius: {
 				none: "new UDim(0, 0)",

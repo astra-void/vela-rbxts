@@ -97,6 +97,9 @@ test("completes config-aware color radius and spacing keys", () => {
 			extend: {
 				colors: {
 					brand: "Color3.fromRGB(1, 2, 3)",
+					slate: {
+						700: "Color3.fromRGB(4, 5, 6)",
+					},
 				},
 				radius: {
 					card: "new UDim(0, 10)",
@@ -110,6 +113,7 @@ test("completes config-aware color radius and spacing keys", () => {
 
 	for (const [source, expected] of [
 		['<frame className="bg-" />', "bg-brand"],
+		['<frame className="bg-" />', "bg-slate-700"],
 		['<frame className="rounded-" />', "rounded-card"],
 		['<frame className="px-" />', "px-card"],
 	] as const) {
@@ -187,7 +191,7 @@ test("hovers include resolved config values when available", () => {
 
 test("reports editor diagnostics for unknown keys unsupported families and fit", () => {
 	const source =
-		'<frame><frame className="bg-card shadow-md w-fit" /><textbox className="placeholder-card" /></frame>';
+		'<frame><frame className="bg-card bg-surface-700 shadow-md w-fit" /><textbox className="placeholder-card" /></frame>';
 	const result = getDiagnostics({ source });
 
 	expect(result.diagnostics).toEqual(
@@ -195,6 +199,10 @@ test("reports editor diagnostics for unknown keys unsupported families and fit",
 			expect.objectContaining({
 				code: "unknown-theme-key",
 				token: "bg-card",
+			}),
+			expect.objectContaining({
+				code: "color-invalid-shade",
+				token: "bg-surface-700",
 			}),
 			expect.objectContaining({
 				code: "unsupported-utility-family",

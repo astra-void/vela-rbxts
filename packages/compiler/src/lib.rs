@@ -196,7 +196,15 @@ const DEFAULT_CONFIG_JSON: &str = include_str!("../../config/src/defaults.json")
 static DEFAULT_CONFIG: OnceLock<TailwindConfig> = OnceLock::new();
 
 type ThemeScale = BTreeMap<String, String>;
-type ThemeColors = BTreeMap<String, ColorScale>;
+type ThemeColors = BTreeMap<String, ColorValue>;
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(untagged)]
+enum ColorValue {
+    Literal(String),
+    Palette(ColorScale),
+}
+
 type ColorScale = BTreeMap<String, String>;
 
 #[derive(Clone, Deserialize, Default)]
@@ -219,18 +227,7 @@ struct ThemeConfigExtendInput {
     spacing: Option<ThemeScale>,
 }
 
-type ColorInputMap = BTreeMap<String, ColorScaleInput>;
-
-#[derive(Clone, Deserialize)]
-#[serde(untagged)]
-enum ColorScaleInput {
-    Literal(String),
-    Scale(ColorScale),
-}
-
-const COLOR_SHADES: [&str; 11] = [
-    "50", "100", "200", "300", "400", "500", "600", "700", "800", "900", "950",
-];
+type ColorInputMap = BTreeMap<String, ColorValue>;
 
 #[derive(Clone, Debug, Serialize)]
 struct PropEntry {
@@ -448,42 +445,78 @@ fn resolve_color_value(
         return Some(ColorResolution::Transparent);
     }
 
-    let Some((color_name, shade)) = split_color_key(color_key) else {
-        diagnostics.push(unknown_theme_key_diagnostic(
-            spec.theme_family,
-            color_key,
-            token,
-        ));
-        return None;
-    };
-
-    let Some(value) = config
-        .theme
-        .colors
-        .get(color_name)
-        .and_then(|scale| scale.get(shade))
-    else {
-        diagnostics.push(unknown_theme_key_diagnostic(
-            spec.theme_family,
-            color_key,
-            token,
-        ));
-        return None;
-    };
-
-    Some(ColorResolution::Expression(value.clone()))
+    match split_color_key(color_key) {
+        ColorKey::Semantic(color_name) => match config.theme.colors.get(color_name) {
+            Some(ColorValue::Literal(value)) => Some(ColorResolution::Expression(value.clone())),
+            Some(ColorValue::Palette(_)) => {
+                diagnostics.push(color_requires_shade_diagnostic(
+                    spec.theme_family,
+                    color_name,
+                    token,
+                ));
+                None
+            }
+            None => {
+                diagnostics.push(unknown_theme_key_diagnostic(
+                    spec.theme_family,
+                    color_key,
+                    token,
+                ));
+                None
+            }
+        },
+        ColorKey::Shaded { color_name, shade } => match config.theme.colors.get(color_name) {
+            Some(ColorValue::Literal(_)) => {
+                diagnostics.push(color_does_not_accept_shade_diagnostic(
+                    spec.theme_family,
+                    color_name,
+                    shade,
+                    token,
+                ));
+                None
+            }
+            Some(ColorValue::Palette(scale)) => match scale.get(shade) {
+                Some(value) => Some(ColorResolution::Expression(value.clone())),
+                None => {
+                    diagnostics.push(color_missing_shade_diagnostic(
+                        spec.theme_family,
+                        color_name,
+                        shade,
+                        token,
+                    ));
+                    None
+                }
+            },
+            None => {
+                diagnostics.push(unknown_theme_key_diagnostic(
+                    spec.theme_family,
+                    color_key,
+                    token,
+                ));
+                None
+            }
+        },
+    }
 }
 
-fn split_color_key(key: &str) -> Option<(&str, &str)> {
+enum ColorKey<'a> {
+    Semantic(&'a str),
+    Shaded { color_name: &'a str, shade: &'a str },
+}
+
+fn split_color_key(key: &str) -> ColorKey<'_> {
     let Some((name, shade)) = key.rsplit_once('-') else {
-        return Some((key, "500"));
+        return ColorKey::Semantic(key);
     };
 
     if is_shade_token(shade) {
-        return Some((name, shade));
+        return ColorKey::Shaded {
+            color_name: name,
+            shade,
+        };
     }
 
-    Some((key, "500"))
+    ColorKey::Semantic(key)
 }
 
 fn is_shade_token(value: &str) -> bool {
@@ -499,6 +532,53 @@ fn unsupported_color_keyword_diagnostic(theme_family: &str, key: &str, token: &s
         code: "unsupported-color-key".to_owned(),
         message: format!(
             "Unsupported color keyword \"{key}\" for {theme_family} utility in className literal."
+        ),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn color_requires_shade_diagnostic(
+    theme_family: &str,
+    key: &str,
+    token: &str,
+) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "color-missing-shade".to_owned(),
+        message: format!(
+            "Color palette \"{key}\" for {theme_family} utility requires an explicit shade such as \"{key}-500\" in className literal."
+        ),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn color_does_not_accept_shade_diagnostic(
+    theme_family: &str,
+    key: &str,
+    shade: &str,
+    token: &str,
+) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "color-invalid-shade".to_owned(),
+        message: format!(
+            "Color \"{key}\" for {theme_family} utility is a singleton semantic color and does not accept shade \"{shade}\" in className literal."
+        ),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn color_missing_shade_diagnostic(
+    theme_family: &str,
+    key: &str,
+    shade: &str,
+    token: &str,
+) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "color-invalid-shade".to_owned(),
+        message: format!(
+            "Color palette \"{key}\" for {theme_family} utility does not define shade \"{shade}\" in className literal."
         ),
         token: Some(token.to_owned()),
     }
@@ -1021,10 +1101,16 @@ const RUNTIME_VARIANTS: [&str; 8] = [
 
 fn color_completion_keys(config: &TailwindConfig) -> Vec<String> {
     let mut keys = Vec::new();
-    for (name, scale) in &config.theme.colors {
-        push_unique(&mut keys, name.clone());
-        for shade in scale.keys() {
-            push_unique(&mut keys, format!("{name}-{shade}"));
+    for (name, color) in &config.theme.colors {
+        match color {
+            ColorValue::Literal(_) => {
+                push_unique(&mut keys, name.clone());
+            }
+            ColorValue::Palette(scale) => {
+                for shade in scale.keys() {
+                    push_unique(&mut keys, format!("{name}-{shade}"));
+                }
+            }
         }
     }
     keys
@@ -2125,14 +2211,14 @@ fn merge_color_registry(base: &ThemeColors, extend: Option<&ColorInputMap>) -> T
     };
 
     for (name, value) in extend {
-        if let Some(base_scale) = merged.get(name) {
-            let mut next_scale = base_scale.clone();
-            for (shade, color) in explicit_color_values(value) {
-                next_scale.insert(shade, color);
-            }
-            merged.insert(name.clone(), next_scale);
-        } else if let Some(scale) = normalize_color_scale(value) {
-            merged.insert(name.clone(), scale);
+        let next = if let Some(base_value) = merged.get(name).cloned() {
+            merge_color_values(base_value, value)
+        } else {
+            normalize_color_value(value)
+        };
+
+        if let Some(color) = next {
+            merged.insert(name.clone(), color);
         }
     }
 
@@ -2142,35 +2228,36 @@ fn merge_color_registry(base: &ThemeColors, extend: Option<&ColorInputMap>) -> T
 fn normalize_color_registry(colors: &ColorInputMap) -> ThemeColors {
     colors
         .iter()
-        .filter_map(|(name, value)| normalize_color_scale(value).map(|scale| (name.clone(), scale)))
+        .filter_map(|(name, value)| normalize_color_value(value).map(|scale| (name.clone(), scale)))
         .collect()
 }
 
-fn normalize_color_scale(value: &ColorScaleInput) -> Option<ColorScale> {
-    let source = explicit_color_values(value);
-    let seed = source.get("500").cloned().or_else(|| {
-        COLOR_SHADES
-            .iter()
-            .find_map(|shade| source.get(*shade).cloned())
-    })?;
-
-    Some(
-        COLOR_SHADES
-            .iter()
-            .map(|shade| {
-                (
-                    (*shade).to_owned(),
-                    source.get(*shade).cloned().unwrap_or_else(|| seed.clone()),
-                )
-            })
-            .collect(),
-    )
+fn normalize_color_value(value: &ColorValue) -> Option<ColorValue> {
+    match value {
+        ColorValue::Literal(color) => Some(ColorValue::Literal(color.clone())),
+        ColorValue::Palette(scale) if scale.is_empty() => None,
+        ColorValue::Palette(scale) => Some(ColorValue::Palette(scale.clone())),
+    }
 }
 
-fn explicit_color_values(value: &ColorScaleInput) -> ColorScale {
-    match value {
-        ColorScaleInput::Literal(color) => BTreeMap::from([("500".to_owned(), color.clone())]),
-        ColorScaleInput::Scale(scale) => scale.clone(),
+fn merge_color_values(base: ColorValue, value: &ColorValue) -> Option<ColorValue> {
+    match (base, value) {
+        (ColorValue::Literal(_), ColorValue::Literal(color)) => {
+            Some(ColorValue::Literal(color.clone()))
+        }
+        (ColorValue::Literal(_), ColorValue::Palette(scale)) => {
+            Some(ColorValue::Palette(scale.clone()))
+        }
+        (ColorValue::Palette(_), ColorValue::Literal(color)) => {
+            Some(ColorValue::Literal(color.clone()))
+        }
+        (ColorValue::Palette(mut base_scale), ColorValue::Palette(scale)) => {
+            for (shade, color) in scale {
+                base_scale.insert(shade.clone(), color.clone());
+            }
+
+            Some(ColorValue::Palette(base_scale))
+        }
     }
 }
 
