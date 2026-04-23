@@ -9,6 +9,10 @@ export {
 	isTransformableHostFile,
 } from "./filter.js";
 export {
+	resolveProjectConfig,
+	resolveProjectConfigInfo,
+} from "./project-config.js";
+export {
 	type TransformSourceForHostOptions,
 	transformSourceForHost,
 } from "./transform.js";

@@ -1,4 +1,4 @@
-import type { Diagnostic as CompilerDiagnostic } from "@rbxts-tailwind/compiler";
+import type { Diagnostic as CompilerDiagnostic } from "@vela-rbxts/compiler";
 
 import type { HostDiagnostic, HostDiagnosticMapper } from "./types.js";
 

@@ -2,9 +2,9 @@ import type {
 	Diagnostic as CompilerDiagnostic,
 	TransformOptions as CompilerTransformOptions,
 	TransformResult as CompilerTransformResult,
-} from "@rbxts-tailwind/compiler";
-import type { TailwindConfig } from "@rbxts-tailwind/config";
-import type { StyleIR } from "@rbxts-tailwind/ir";
+} from "@vela-rbxts/compiler";
+import type { TailwindConfig } from "@vela-rbxts/config";
+import type { StyleIR } from "@vela-rbxts/ir";
 
 export type HostSourceFile = {
 	fileName: string;
@@ -87,7 +87,7 @@ export type RbxtscTransformerBridgeOptions = {
 };
 
 export type RbxtscTransformerBridge = {
-	name: "@rbxts-tailwind/rbxtsc-host";
+	name: "@vela-rbxts/rbxtsc-host";
 	getFileEligibility(sourceFile: HostSourceFile): HostFileEligibility;
 	shouldTransformFile(sourceFile: HostSourceFile): boolean;
 	transformSource(request: HostTransformRequest): HostTransformResult;

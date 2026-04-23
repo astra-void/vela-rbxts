@@ -62,8 +62,8 @@ function mapHostDiagnosticToTsDiagnostic(
 ): import("typescript").DiagnosticWithLocation {
 	const phase =
 		diagnostic.source === "compiler"
-			? "@rbxts-tailwind/compiler"
-			: "@rbxts-tailwind/rbxtsc-host";
+			? "@vela-rbxts/compiler"
+			: "@vela-rbxts/rbxtsc-host";
 	const span = findDiagnosticSpan(sourceFile.text, diagnostic.token);
 
 	return {

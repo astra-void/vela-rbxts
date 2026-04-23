@@ -13,7 +13,7 @@ export function createRbxtscTransformerBridge(
 		transformSourceForHost(request, options);
 
 	return {
-		name: "@rbxts-tailwind/rbxtsc-host",
+		name: "@vela-rbxts/rbxtsc-host",
 		getFileEligibility(sourceFile) {
 			return getHostFileEligibility(sourceFile, options.filter);
 		},

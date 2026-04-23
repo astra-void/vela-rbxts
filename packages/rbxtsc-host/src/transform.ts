@@ -1,5 +1,5 @@
-import { transform } from "@rbxts-tailwind/compiler";
-import type { TailwindConfig } from "@rbxts-tailwind/config";
+import { transform } from "@vela-rbxts/compiler";
+import type { TailwindConfig } from "@vela-rbxts/config";
 
 import {
 	createHostDiagnostic,
@@ -7,7 +7,6 @@ import {
 } from "./diagnostics.js";
 import { getHostFileEligibility } from "./filter.js";
 import { resolveProjectConfigInfo } from "./project-config.js";
-import { writeRuntimeArtifact } from "./runtime-artifact.js";
 import type {
 	HostCompiler,
 	HostCompilerResult,
@@ -55,18 +54,6 @@ export function transformSourceForHost(
 			configJson: JSON.stringify(config),
 		});
 		const normalizedCompilerResult = normalizeCompilerResult(compilerResult);
-		const runtimeRequired =
-			normalizedCompilerResult.ir?.some(
-				(style) =>
-					(style.runtimeRules?.length ?? 0) > 0 ||
-					style.runtimeClassValue === true,
-			) ?? false;
-		const runtimeRoot =
-			request.projectRoot ?? options.projectRoot ?? projectConfig.projectRoot;
-		const runtimeArtifact =
-			runtimeRequired && runtimeRoot
-				? writeRuntimeArtifact(runtimeRoot, config)
-				: undefined;
 
 		return {
 			fileName: request.fileName,
@@ -79,7 +66,6 @@ export function transformSourceForHost(
 			skipped: false,
 			eligibility,
 			compilerResult: normalizedCompilerResult,
-			runtimeArtifact,
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

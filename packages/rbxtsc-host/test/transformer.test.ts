@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { transform as compilerTransform } from "@rbxts-tailwind/compiler";
+import { transform as compilerTransform } from "@vela-rbxts/compiler";
 import ts from "typescript";
 import { beforeEach, expect, test, vi } from "vitest";
 
 import createRbxtsTailwindProgramTransformer from "../src/transformer";
 
-vi.mock("@rbxts-tailwind/compiler", () => ({
+vi.mock("@vela-rbxts/compiler", () => ({
 	transform: vi.fn(() => ({
 		code: "<frame BackgroundColor3={Color3.fromRGB(1, 2, 3)}><uicorner CornerRadius={new UDim(0, 6)} /></frame>",
 		diagnostics: [],
@@ -154,8 +154,9 @@ test("keeps host diagnostic failures visible in the rbxtsc lifecycle", () => {
 test("injects the runtime host when the compiler reports runtime-aware className usage", () => {
 	mockedCompilerTransform.mockReturnValueOnce({
 		code: [
-			'import { TailwindRuntimeHost as __rbxtsTailwindRuntimeHost } from "rbxts-tailwind/runtime-host";',
-			'<__rbxtsTailwindRuntimeHost __rbxtsTailwindTag="frame" __rbxtsTailwindRules={[{ condition: { kind: "width", alias: "md", minWidth: 768, maxWidth: null }, effects: { props: [{ name: "PaddingLeft", value: "new UDim(0, 12)" }], helpers: [] } }]} className={condition ? "px-4" : "px-2"} />',
+			'import { createTailwindRuntimeHost } from "@vela-rbxts/runtime";',
+			"const RbxtsTailwindRuntimeHost = createTailwindRuntimeHost({ theme: { colors: {}, radius: {}, spacing: {} } });",
+			'<RbxtsTailwindRuntimeHost __rbxtsTailwindTag="frame" __rbxtsTailwindRules={[{ condition: { kind: "width", alias: "md", minWidth: 768, maxWidth: null }, effects: { props: [{ name: "PaddingLeft", value: "new UDim(0, 12)" }], helpers: [] } }]} className={condition ? "px-4" : "px-2"} />',
 		].join("\n"),
 		diagnostics: [],
 		changed: true,
@@ -196,13 +197,14 @@ test("injects the runtime host when the compiler reports runtime-aware className
 	);
 
 	expect(result.transformedSource).toContain(
-		'__rbxtsTailwindRuntimeHost __rbxtsTailwindTag="frame"',
+		'RbxtsTailwindRuntimeHost __rbxtsTailwindTag="frame"',
 	);
+	expect(result.transformedSource).toContain("createTailwindRuntimeHost");
 	expect(result.transformedSource).toContain("__rbxtsTailwindRules");
 	expect(result.transformedSource).toContain(
 		'className={condition ? "px-4" : "px-2"}',
 	);
-	expect(fs.existsSync(project.runtimeArtifactPath)).toBe(true);
+	expect(fs.existsSync(project.runtimeArtifactPath)).toBe(false);
 
 	result.dispose();
 });

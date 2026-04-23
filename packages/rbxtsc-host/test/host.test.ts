@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { transform } from "@rbxts-tailwind/compiler";
+import { transform } from "@vela-rbxts/compiler";
 import { beforeEach, expect, test, vi } from "vitest";
 import { defaultConfig, defineConfig } from "../../config/src/index";
 import {
@@ -14,7 +14,7 @@ import {
 const mockTransformedCode =
 	"<frame BackgroundColor3={Color3.fromRGB(1, 2, 3)}><uicorner CornerRadius={new UDim(0, 6)}/><uipadding PaddingLeft={new UDim(0, 12)} PaddingRight={new UDim(0, 12)}/></frame>";
 
-vi.mock("@rbxts-tailwind/compiler", () => ({
+vi.mock("@vela-rbxts/compiler", () => ({
 	transform: vi.fn(() => ({
 		code: mockTransformedCode,
 		diagnostics: [
@@ -108,7 +108,7 @@ test("does not generate runtime artifacts for pure static files", () => {
 	expect(fs.existsSync(project.runtimeArtifactPath)).toBe(false);
 });
 
-test("writes a runtime artifact when the compiler reports runtime rules", () => {
+test("does not write a generated runtime artifact when runtime rules are reported", () => {
 	vi.mocked(transform).mockReturnValueOnce({
 		code: '<frame __rbxtsTailwindTag="frame" />',
 		diagnostics: [],
@@ -165,19 +165,8 @@ test("writes a runtime artifact when the compiler reports runtime rules", () => 
 		projectRoot: project.root,
 	});
 
-	expect(result.runtimeArtifact).toEqual(
-		expect.objectContaining({
-			fileName: project.runtimeArtifactPath,
-			moduleSpecifier: "rbxts-tailwind/runtime-host",
-		}),
-	);
-	expect(fs.existsSync(project.runtimeArtifactPath)).toBe(true);
-	expect(fs.readFileSync(project.runtimeArtifactPath, "utf8")).toContain(
-		"createTailwindRuntimeHost",
-	);
-	expect(fs.readFileSync(project.runtimeArtifactPath, "utf8")).toContain(
-		'"theme"',
-	);
+	expect(result.runtimeArtifact).toBeUndefined();
+	expect(fs.existsSync(project.runtimeArtifactPath)).toBe(false);
 });
 
 test("loads rbxtw.config.ts when present", () => {
@@ -305,7 +294,7 @@ test("carries compiler diagnostics through the host diagnostic boundary", () => 
 test("bridge exposes selection and transform entrypoints", () => {
 	const bridge = createRbxtscTransformerBridge();
 
-	expect(bridge.name).toBe("@rbxts-tailwind/rbxtsc-host");
+	expect(bridge.name).toBe("@vela-rbxts/rbxtsc-host");
 	expect(bridge.shouldTransformFile(sourceFile)).toBe(true);
 	expect(bridge.getFileEligibility(sourceFile)).toEqual({
 		eligible: true,

@@ -27,8 +27,8 @@ import type {
 	TailwindConfig,
 	TailwindConfigInput,
 	ThemeColors,
-} from "@rbxts-tailwind/config";
-import { defaultConfig, defineConfig, SHADES } from "@rbxts-tailwind/config";
+} from "@vela-rbxts/config";
+import { defaultConfig, defineConfig, SHADES } from "@vela-rbxts/config";
 
 type TypeScriptModule = typeof import("typescript");
 type ConfigLoader = (input?: TailwindConfigInput) => TailwindConfig;
