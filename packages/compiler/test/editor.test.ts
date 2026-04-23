@@ -63,6 +63,34 @@ test("completes runtime variants", () => {
 	);
 });
 
+test("does not return className completions outside supported context", () => {
+	const source = "const value = 'bg-'";
+	const result = getCompletions({
+		source,
+		position: source.length,
+	});
+
+	expect(result.isInClassNameContext).toBe(false);
+	expect(result.items).toEqual([]);
+});
+
+test("returns replacement spans for partial tokens in multi-token className", () => {
+	const source = '<frame className="rounded-md bg-su px-4" />';
+	const tokenStart = source.indexOf("bg-su");
+	const tokenEnd = tokenStart + "bg-su".length;
+	const result = getCompletions({
+		source,
+		position: tokenEnd,
+	});
+
+	const entry = result.items.find((item) => item.label === "bg-surface");
+	expect(entry).toBeDefined();
+	expect(entry?.replacement).toEqual({
+		start: tokenStart,
+		end: tokenEnd,
+	});
+});
+
 test("completes config-aware color radius and spacing keys", () => {
 	const config = defineConfig({
 		theme: {
@@ -131,6 +159,30 @@ test("hovers known tokens with Roblox lowering details", () => {
 			position: positionAfter(source, "gap-4") - 2,
 		}).contents?.display,
 	).toBe("`gap-4` -> UIListLayout.Padding");
+});
+
+test("hovers include resolved config values when available", () => {
+	const source = '<frame className="bg-brand" />';
+	const config = defineConfig({
+		theme: {
+			extend: {
+				colors: {
+					brand: "Color3.fromRGB(1, 2, 3)",
+				},
+			},
+		},
+	});
+
+	const hover = getHover({
+		source,
+		position: positionAfter(source, "bg-brand") - 1,
+		options: {
+			configJson: JSON.stringify(config),
+		},
+	});
+
+	expect(hover.contents?.display).toBe("`bg-brand` -> BackgroundColor3");
+	expect(hover.contents?.documentation).toContain("Color3.fromRGB(1, 2, 3)");
 });
 
 test("reports editor diagnostics for unknown keys unsupported families and fit", () => {

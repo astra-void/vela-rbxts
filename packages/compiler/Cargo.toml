@@ -1,8 +1,8 @@
 [package]
-name = "rbxts-tailwind-compiler"
+name = "vela-rbxts-compiler"
 version = "0.1.0"
 edition = "2024"
-description = "SWC/N-API compiler crate for @rbxts-tailwind/compiler."
+description = "SWC/N-API compiler crate for @vela-rbxts/compiler."
 
 [lib]
 crate-type = ["cdylib", "rlib"]

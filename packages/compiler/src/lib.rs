@@ -911,7 +911,7 @@ fn completion_candidates(config: &TailwindConfig, element_tag: &str) -> Vec<Comp
             "variant",
             "runtime variant",
             &format!(
-                "Apply the following rbxts-tailwind utility when the {variant} condition matches."
+                "Apply the following vela-rbxts utility when the {variant} condition matches."
             ),
         );
     }
