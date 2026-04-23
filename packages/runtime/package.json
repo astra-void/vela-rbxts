@@ -1,0 +1,27 @@
+{
+  "name": "@vela-rbxts/runtime",
+  "version": "0.1.0",
+  "types": "./runtime.d.ts",
+  "files": [
+    "default.project.json",
+    "runtime.luau",
+    "runtime.d.ts"
+  ],
+  "scripts": {
+    "build": "rbxtsc -p tsconfig.json",
+    "lint": "biome check .",
+    "lint:fix": "biome check . --fix --unsafe",
+    "clean": "node -e \"const fs=require('node:fs');fs.rmSync('roblox',{recursive:true,force:true});fs.rmSync('runtime.luau',{force:true});\""
+  },
+  "dependencies": {
+    "@rbxts/react": "^17.3.7-ts.1",
+    "@rbxts/services": "^1.6.0",
+    "@vela-rbxts/config": "workspace:*",
+    "@vela-rbxts/types": "workspace:*"
+  },
+  "devDependencies": {
+    "@rbxts/compiler-types": "^3.0.0-types.0",
+    "@rbxts/types": "^1.0.916",
+    "roblox-ts": "^3.0.0"
+  }
+}
