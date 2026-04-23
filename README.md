@@ -84,6 +84,7 @@ The compiler currently supports a narrow Tailwind-inspired slice that maps to Ro
 | --- | --- | --- |
 | Color | `bg-*`, `text-*`, `image-*`, `placeholder-*` | Resolve against config theme and the built-in palette. Palette colors need a shade such as `bg-slate-700`. Semantic singleton colors such as `bg-surface` work when defined in project config. `transparent` is supported where the target prop can express transparency. |
 | Radius | `rounded-*` | Maps to `UICorner.CornerRadius`. |
+| Stacking | `z-0`, `z-10`, `z-20`, `z-30`, `z-40`, `z-50` | Maps directly to Roblox `ZIndex`. |
 | Spacing | `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, `pl-*`, `gap-*` | Padding utilities map to `UIPadding`. `gap-*` lowers to a `UIListLayout` helper on supported Roblox host elements. |
 | Size | `w-*`, `h-*`, `size-*` | Maps to `Size` through Roblox-specific `UDim2` values. `w-px` and `h-px` become a one-pixel offset. `w-full` and `h-full` map to scale `1`. Supported fractions such as `1/2`, `3/4`, and `5/12` map to scale values. |
 | Spacing tokens | numeric spacing keys | Numeric spacing tokens resolve through the spacing theme first, then numeric fallback where allowed. |
@@ -95,7 +96,7 @@ These Tailwind-style families are not implemented yet and currently emit diagnos
 
 | Category | Not implemented yet | Notes |
 | --- | --- | --- |
-| Layout and positioning | `m-*`, `mx-*`, `my-*`, `mt-*`, `mr-*`, `mb-*`, `ml-*`, `absolute`, `relative`, `top-*`, `right-*`, `bottom-*`, `left-*`, `z-*` | Emits diagnostics instead of lowering. |
+| Layout and positioning | `m-*`, `mx-*`, `my-*`, `mt-*`, `mr-*`, `mb-*`, `ml-*`, `absolute`, `relative`, `top-*`, `right-*`, `bottom-*`, `left-*` | Emits diagnostics instead of lowering. |
 | Flex and grid | `flex-*`, `grid-*`, `items-*`, `justify-*`, `content-*`, `self-*`, `place-*` | Emits diagnostics instead of lowering. |
 | Borders and effects | `border-*`, `ring-*`, `shadow-*`, `opacity-*`, `blur-*` | Emits diagnostics instead of lowering. |
 | Typography and text formatting | `font-*`, `leading-*`, `tracking-*`, `uppercase`, `lowercase`, `capitalize`, and other non-color `text-*` utilities | Emits diagnostics instead of lowering. |
