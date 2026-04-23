@@ -66,10 +66,12 @@ pub(crate) fn analyze_class_token(token: &str) -> AnalyzedClassToken {
 
     let needs_config_lookup = utility.needs_config_lookup();
     let runtime_aware = runtime_condition.is_some();
+    let value = parsed.utility.payload.clone();
 
     AnalyzedClassToken {
         parsed,
         utility,
+        value,
         supported,
         needs_config_lookup,
         runtime_aware,

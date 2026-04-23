@@ -16,6 +16,7 @@ pub(crate) enum SemanticIssue {
 pub(crate) struct AnalyzedClassToken {
     pub(crate) parsed: ParsedClassToken,
     pub(crate) utility: UtilityKind,
+    pub(crate) value: Option<String>,
     pub(crate) supported: bool,
     pub(crate) needs_config_lookup: bool,
     pub(crate) runtime_aware: bool,
@@ -26,6 +27,6 @@ pub(crate) struct AnalyzedClassToken {
 
 impl AnalyzedClassToken {
     pub(crate) fn payload(&self) -> Option<&str> {
-        self.parsed.utility.payload.as_deref()
+        self.value.as_deref()
     }
 }

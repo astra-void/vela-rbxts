@@ -16,7 +16,6 @@ use crate::semantic::{
         resolve_size_axis_value, resolve_spacing_value, resolve_z_index_value,
     },
 };
-use crate::utilities::size::format_size_prop;
 
 pub(crate) fn resolve_class_tokens<T, I>(
     tokens: I,
@@ -340,4 +339,22 @@ fn apply_spacing_utility(
     }
 
     diagnostics.push(unknown_theme_key_diagnostic("spacing", spacing_key, token));
+}
+
+fn format_size_prop(width: Option<SizeAxisValue>, height: Option<SizeAxisValue>) -> String {
+    let width = width.unwrap_or_else(SizeAxisValue::zero);
+    let height = height.unwrap_or_else(SizeAxisValue::zero);
+
+    if width.scale == "0" && height.scale == "0" {
+        return format!("UDim2.fromOffset({}, {})", width.offset, height.offset);
+    }
+
+    if width.offset == "0" && height.offset == "0" {
+        return format!("UDim2.fromScale({}, {})", width.scale, height.scale);
+    }
+
+    format!(
+        "UDim2.new({}, {}, {}, {})",
+        width.scale, width.offset, height.scale, height.offset
+    )
 }

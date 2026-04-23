@@ -1,14 +1,15 @@
 use crate::api::{Diagnostic, EditorDiagnostic, EditorRange};
-use crate::semantic::{
-    token::parse_class_token, utility::is_utility_allowed_on_host as utility_kind_allowed_on_host,
+use crate::semantic::utility::{
+    UtilityKind, is_utility_allowed_on_host as utility_kind_allowed_on_host,
 };
 
 pub(crate) fn host_utility_diagnostic(
     element_tag: &str,
+    utility_kind: &UtilityKind,
     token: &str,
     range: EditorRange,
 ) -> Option<EditorDiagnostic> {
-    if utility_allowed_on_host(element_tag, token) {
+    if utility_kind_allowed_on_host(element_tag, utility_kind) {
         return None;
     }
 
@@ -55,9 +56,4 @@ pub(crate) fn filter_compiler_diagnostics(
             true
         })
         .collect()
-}
-
-fn utility_allowed_on_host(element_tag: &str, token: &str) -> bool {
-    let parsed = parse_class_token(token);
-    utility_kind_allowed_on_host(element_tag, &parsed.utility.kind)
 }

@@ -83,6 +83,49 @@ pub(crate) struct ParsedUtility {
     pub(crate) kind: UtilityKind,
 }
 
+pub(crate) fn color_completion_keys(config: &TailwindConfig) -> Vec<String> {
+    let mut keys = Vec::new();
+    for (name, color) in &config.theme.colors {
+        match color {
+            ColorValue::Literal(_) => {
+                push_unique(&mut keys, name.clone());
+            }
+            ColorValue::Palette(scale) => {
+                for shade in scale.keys() {
+                    push_unique(&mut keys, format!("{name}-{shade}"));
+                }
+            }
+        }
+    }
+    keys
+}
+
+pub(crate) fn radius_completion_keys(config: &TailwindConfig) -> Vec<String> {
+    config.theme.radius.keys().cloned().collect()
+}
+
+pub(crate) fn spacing_completion_keys(config: &TailwindConfig) -> Vec<String> {
+    let mut keys = config.theme.spacing.keys().cloned().collect::<Vec<_>>();
+    for key in [
+        "0", "0.5", "1", "1.5", "2", "3", "4", "6", "8", "12", "16", "20", "24", "32", "40", "64",
+        "80",
+    ] {
+        push_unique(&mut keys, key.to_owned());
+    }
+    keys
+}
+
+pub(crate) fn size_completion_keys(config: &TailwindConfig) -> Vec<String> {
+    let mut keys = spacing_completion_keys(config);
+    for key in [
+        "px", "full", "fit", "1/2", "1/3", "2/3", "1/4", "3/4", "1/5", "2/5", "3/5", "4/5", "1/6",
+        "5/6", "1/12", "5/12", "11/12",
+    ] {
+        push_unique(&mut keys, key.to_owned());
+    }
+    keys
+}
+
 impl UtilityKind {
     pub(crate) fn needs_config_lookup(&self) -> bool {
         matches!(
@@ -316,10 +359,7 @@ pub(crate) fn resolve_size_fraction_scale(key: &str) -> Option<String> {
         return None;
     }
 
-    Some(crate::utilities::spacing::format_fraction_scale(
-        numerator,
-        denominator,
-    ))
+    Some(format_fraction_scale(numerator, denominator))
 }
 
 pub(crate) fn resolve_z_index_value(
@@ -429,6 +469,25 @@ fn format_spacing_offset(value: f64) -> String {
     }
 
     value.to_string()
+}
+
+fn format_fraction_scale(numerator: u32, denominator: u32) -> String {
+    let value = numerator as f64 / denominator as f64;
+    let rounded = value.round();
+    if (value - rounded).abs() < 1e-9 {
+        return format!("{rounded:.0}");
+    }
+
+    format!("{value:.10}")
+        .trim_end_matches('0')
+        .trim_end_matches('.')
+        .to_owned()
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
 }
 
 #[cfg(test)]

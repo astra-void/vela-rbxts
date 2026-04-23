@@ -3,6 +3,7 @@ use crate::diagnostics::editor::{
     compiler_to_editor_diagnostic, filter_compiler_diagnostics, host_utility_diagnostic,
 };
 use crate::editor::{collect_class_name_contexts, tokenize_class_name_with_ranges};
+use crate::semantic::analyze::analyze_class_token;
 
 pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsResponse {
     let config = crate::editor::parse_editor_config(request.options.as_ref());
@@ -15,9 +16,14 @@ pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsRe
                 continue;
             }
 
-            if let Some(diagnostic) =
-                host_utility_diagnostic(&context.element_tag, &token.text, token.range.clone())
-            {
+            let analysis = analyze_class_token(&token.text);
+
+            if let Some(diagnostic) = host_utility_diagnostic(
+                &context.element_tag,
+                &analysis.utility,
+                &token.text,
+                token.range.clone(),
+            ) {
                 diagnostics.push(diagnostic);
             }
 
