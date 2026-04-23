@@ -71,12 +71,12 @@ function compilerHarnessApi(): Plugin {
 
 function loadCompiler(): CompilerBinding {
 	try {
-		return compilerRequire("@rbxts-tailwind/compiler") as CompilerBinding;
+		return compilerRequire("@vela-rbxts/compiler") as CompilerBinding;
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 
 		throw new Error(
-			`Failed to load @rbxts-tailwind/compiler native binding. Run "pnpm --filter @rbxts-tailwind/compiler build:native" and restart the harness. Original error: ${message}`,
+			`Failed to load @vela-rbxts/compiler native binding. Run "pnpm --filter @vela-rbxts/compiler build:native" and restart the harness. Original error: ${message}`,
 		);
 	}
 }

@@ -31,7 +31,7 @@ app.innerHTML = `
 		<header class="topbar">
 			<div>
 				<h1>compiler-harness</h1>
-				<p>@rbxts-tailwind/compiler preview</p>
+				<p>@vela-rbxts/compiler preview</p>
 			</div>
 			<div class="status-strip" aria-live="polite">
 				<span class="status-pill" data-status="idle" id="request-state">idle</span>
