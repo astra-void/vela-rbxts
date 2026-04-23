@@ -188,6 +188,30 @@ test("provides replacement spans for partial tokens inside multi-token className
 	});
 });
 
+test("provides replacement spans for variant-prefixed completions", () => {
+	const fileName = "/tmp/vela-rbxts-variant-replacement/src/view.tsx";
+	const source = 'const view = <frame className="md:bg-" />;';
+	const sourceFile = createSourceFile(fileName, source);
+	const plugin = createPlugin(fileName, sourceFile);
+
+	const tokenStart = source.indexOf("md:bg-");
+	const tokenEnd = tokenStart + "md:bg-".length;
+	const completions = plugin.getCompletionsAtPosition(
+		fileName,
+		positionAfter(source, "md:bg-"),
+		{},
+	);
+	const entry = completions?.entries.find(
+		(candidate) => candidate.name === "md:bg-surface",
+	);
+
+	expect(entry).toBeDefined();
+	expect(entry?.replacementSpan).toEqual({
+		start: tokenStart,
+		length: tokenEnd - tokenStart,
+	});
+});
+
 test("provides zero-length replacement spans at token boundaries and in empty className strings", () => {
 	const boundaryFileName = "/tmp/vela-rbxts-boundary/src/view.tsx";
 	const boundarySource =
