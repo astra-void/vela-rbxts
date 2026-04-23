@@ -9,6 +9,7 @@ pub(crate) mod config;
 pub(crate) mod diagnostics;
 pub(crate) mod editor;
 pub(crate) mod ir;
+pub(crate) mod semantic;
 pub(crate) mod swc;
 pub(crate) mod transform;
 pub(crate) mod utilities;

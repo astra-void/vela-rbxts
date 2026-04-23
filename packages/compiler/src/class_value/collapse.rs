@@ -106,10 +106,7 @@ pub(crate) fn collapse_class_value_expr(
             }))),
         },
         Expr::Cond(CondExpr {
-            test,
-            cons,
-            alt,
-            ..
+            test, cons, alt, ..
         }) => match evaluate_constant_truthiness(test, scopes) {
             Some(true) => collapse_class_value_expr(cons, scopes),
             Some(false) => collapse_class_value_expr(alt, scopes),
@@ -221,7 +218,10 @@ pub(crate) fn collapse_class_value_expr(
     }
 }
 
-pub(crate) fn evaluate_constant_truthiness(expr: &Expr, scopes: &ClassValueScopeStack) -> Option<bool> {
+pub(crate) fn evaluate_constant_truthiness(
+    expr: &Expr,
+    scopes: &ClassValueScopeStack,
+) -> Option<bool> {
     match expr {
         Expr::Paren(ParenExpr { expr, .. }) => evaluate_constant_truthiness(expr, scopes),
         Expr::Lit(Lit::Bool(value)) => Some(value.value),

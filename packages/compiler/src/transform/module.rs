@@ -1,10 +1,10 @@
 use crate::swc::builders::create_runtime_import_declaration;
 use crate::swc::parse::parse_module_items;
-use swc_core::{
-    ecma::ast::{JSXAttrName, JSXElementName, ModuleItem},
-};
+use swc_core::ecma::ast::{JSXAttrName, JSXElementName, ModuleItem};
 
-pub(crate) fn create_runtime_host_module_items(config: &crate::config::model::TailwindConfig) -> Vec<ModuleItem> {
+pub(crate) fn create_runtime_host_module_items(
+    config: &crate::config::model::TailwindConfig,
+) -> Vec<ModuleItem> {
     let config_json = serde_json::to_string(config).expect("runtime config must serialize to JSON");
     let source = format!(
         r#"import {{ createTailwindRuntimeHost }} from "@vela-rbxts/runtime";

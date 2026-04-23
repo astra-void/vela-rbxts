@@ -4,12 +4,10 @@ use crate::editor::{
     class_name_context_at_position, current_prefix, current_token_replacement,
     tokenize_class_name_with_ranges,
 };
+use crate::semantic::variant::RUNTIME_VARIANTS;
 use crate::utilities::{
-    color::color_completion_keys,
-    radius::radius_completion_keys,
-    size::size_completion_keys,
+    color::color_completion_keys, radius::radius_completion_keys, size::size_completion_keys,
     spacing::spacing_completion_keys,
-    variants::RUNTIME_VARIANTS,
 };
 
 pub(crate) fn get_completions_impl(request: CompletionRequest) -> CompletionResponse {
@@ -155,7 +153,6 @@ fn base_utility_candidates(config: &TailwindConfig) -> Vec<CompletionItem> {
 
     items
 }
-
 
 fn push_completion(
     items: &mut Vec<CompletionItem>,

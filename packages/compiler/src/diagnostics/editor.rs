@@ -1,4 +1,5 @@
 use crate::api::{Diagnostic, EditorDiagnostic, EditorRange};
+use crate::semantic::{token::parse_class_token, utility::UtilityKind};
 
 pub(crate) fn host_utility_diagnostic(
     element_tag: &str,
@@ -12,9 +13,7 @@ pub(crate) fn host_utility_diagnostic(
     Some(EditorDiagnostic {
         level: "warning".to_owned(),
         code: "unsupported-host-utility".to_owned(),
-        message: format!(
-            "Utility \"{token}\" is not valid on Roblox `{element_tag}` elements."
-        ),
+        message: format!("Utility \"{token}\" is not valid on Roblox `{element_tag}` elements."),
         token: Some(token.to_owned()),
         range: Some(range),
     })
@@ -33,7 +32,10 @@ pub(crate) fn compiler_to_editor_diagnostic(
     }
 }
 
-pub(crate) fn filter_compiler_diagnostics(token_text: &str, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+pub(crate) fn filter_compiler_diagnostics(
+    token_text: &str,
+    diagnostics: Vec<Diagnostic>,
+) -> Vec<Diagnostic> {
     diagnostics
         .into_iter()
         .filter(|diag| {
@@ -54,21 +56,12 @@ pub(crate) fn filter_compiler_diagnostics(token_text: &str, diagnostics: Vec<Dia
 }
 
 fn is_utility_allowed_on_host(element_tag: &str, token: &str) -> bool {
-    let Some((_, base_token)) = crate::utilities::variants::split_variant_prefixes(token) else {
-        return true;
-    };
+    let parsed = parse_class_token(token);
 
-    if base_token.starts_with("text-") {
-        return matches!(element_tag, "textlabel" | "textbutton" | "textbox");
+    match parsed.utility.kind {
+        UtilityKind::TextColor => matches!(element_tag, "textlabel" | "textbutton" | "textbox"),
+        UtilityKind::ImageColor => matches!(element_tag, "imagelabel" | "imagebutton"),
+        UtilityKind::PlaceholderColor => element_tag == "textbox",
+        _ => true,
     }
-
-    if base_token.starts_with("image-") {
-        return matches!(element_tag, "imagelabel" | "imagebutton");
-    }
-
-    if base_token.starts_with("placeholder-") {
-        return element_tag == "textbox";
-    }
-
-    true
 }

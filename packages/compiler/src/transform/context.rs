@@ -1,9 +1,11 @@
 use crate::api::Diagnostic;
 use crate::class_value::scope::ClassValueScopeStack;
 use crate::ir::model::{PropEntry, StyleIr};
-use crate::transform::jsx::lower_class_name;
-use crate::transform::module::{create_runtime_host_module_items, element_tag_name, is_supported_host_element};
 use crate::swc::builders::{create_helper_child, create_prop_attr};
+use crate::transform::jsx::lower_class_name;
+use crate::transform::module::{
+    create_runtime_host_module_items, element_tag_name, is_supported_host_element,
+};
 use swc_core::{
     common::DUMMY_SP,
     ecma::ast::{
@@ -53,7 +55,10 @@ impl VisitMut for TailwindTransformer {
                 continue;
             };
 
-            let Some(value) = crate::class_value::collapse::evaluate_constant_truthiness(init, &self.class_value_scopes) else {
+            let Some(value) = crate::class_value::collapse::evaluate_constant_truthiness(
+                init,
+                &self.class_value_scopes,
+            ) else {
                 continue;
             };
 

@@ -114,8 +114,8 @@ pub struct DiagnosticsResponse {
     pub diagnostics: Vec<EditorDiagnostic>,
 }
 
-pub mod transform;
 pub mod editor;
+pub mod transform;
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;

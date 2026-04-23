@@ -1,11 +1,11 @@
 use crate::config::model::TailwindConfig;
 use crate::diagnostics::compiler::{
-    unsupported_size_mode_diagnostic, unsupported_size_spacing_value_diagnostic,
-    unknown_theme_key_diagnostic,
+    unknown_theme_key_diagnostic, unsupported_size_mode_diagnostic,
+    unsupported_size_spacing_value_diagnostic,
 };
 use crate::ir::model::SizeAxisValue;
-use crate::utilities::spacing::{resolve_spacing_value, spacing_value_to_offset};
 use crate::utilities::spacing::format_fraction_scale;
+use crate::utilities::spacing::{resolve_spacing_value, spacing_value_to_offset};
 
 pub(crate) fn size_completion_keys(config: &TailwindConfig) -> Vec<String> {
     let mut keys = crate::utilities::spacing::spacing_completion_keys(config);
@@ -91,7 +91,10 @@ pub(crate) fn resolve_size_fraction_scale(key: &str) -> Option<String> {
     Some(format_fraction_scale(numerator, denominator))
 }
 
-pub(crate) fn format_size_prop(width: Option<SizeAxisValue>, height: Option<SizeAxisValue>) -> String {
+pub(crate) fn format_size_prop(
+    width: Option<SizeAxisValue>,
+    height: Option<SizeAxisValue>,
+) -> String {
     let width = width.unwrap_or_else(SizeAxisValue::zero);
     let height = height.unwrap_or_else(SizeAxisValue::zero);
 

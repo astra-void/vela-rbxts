@@ -2,8 +2,8 @@ use crate::api::HoverContent;
 use crate::config::model::{ColorValue, TailwindConfig};
 use crate::diagnostics::compiler::{
     color_does_not_accept_shade_diagnostic, color_missing_shade_diagnostic,
-    color_requires_shade_diagnostic, unsupported_color_keyword_diagnostic,
-    unknown_theme_key_diagnostic,
+    color_requires_shade_diagnostic, unknown_theme_key_diagnostic,
+    unsupported_color_keyword_diagnostic,
 };
 use crate::ir::model::StyleIr;
 

@@ -3,11 +3,7 @@ use crate::class_value::collapse::collapse_class_value_expr;
 use crate::class_value::scope::ClassValueScopeStack;
 use crate::ir::model::{StyleEffectBundle, StyleIr};
 use crate::transform::runtime::resolve_class_tokens;
-use swc_core::{
-    ecma::ast::{
-        JSXAttr, JSXAttrOrSpread, JSXAttrValue, JSXExpr, JSXExprContainer,
-    },
-};
+use swc_core::ecma::ast::{JSXAttr, JSXAttrOrSpread, JSXAttrValue, JSXExpr, JSXExprContainer};
 
 pub(crate) struct LoweredClassName {
     pub(crate) style_ir: StyleIr,
@@ -73,11 +69,7 @@ pub(crate) fn lower_class_name(
 
             let collapse = collapse_class_value_expr(expr, scopes);
             let runtime_class_value = collapse.is_dynamic();
-            let style = resolve_class_tokens(
-                collapse.static_tokens.clone(),
-                config,
-                diagnostics,
-            );
+            let style = resolve_class_tokens(collapse.static_tokens.clone(), config, diagnostics);
             let needs_runtime_host = !style.runtime_rules.is_empty() || runtime_class_value;
             let runtime_class_name = collapse.dynamic_expr.map(|expr| {
                 let mut runtime_attr = class_name_attr.clone();

@@ -3,8 +3,8 @@ pub(crate) mod diagnostics;
 pub(crate) mod hover;
 
 use crate::api::{EditorOptions, EditorRange};
+use crate::semantic::{token::parse_class_token, utility::UtilityKind};
 use crate::transform::module::{is_class_name_attr, is_supported_host_element};
-use crate::utilities::variants::split_variant_prefixes;
 use swc_core::{
     common::{FileName, SourceMap, sync::Lrc},
     ecma::{
@@ -66,14 +66,21 @@ impl Visit for ClassNameCollector<'_> {
     }
 }
 
-pub(crate) fn parse_editor_config(options: Option<&EditorOptions>) -> crate::config::model::TailwindConfig {
+pub(crate) fn parse_editor_config(
+    options: Option<&EditorOptions>,
+) -> crate::config::model::TailwindConfig {
     crate::config::resolve::parse_editor_config(options)
 }
 
-pub(crate) fn class_name_context_at_position(source: &str, position: u32) -> Option<ClassNameContext> {
+pub(crate) fn class_name_context_at_position(
+    source: &str,
+    position: u32,
+) -> Option<ClassNameContext> {
     collect_class_name_contexts(source)
         .into_iter()
-        .find(|context| position >= context.value_range.start && position <= context.value_range.end)
+        .find(|context| {
+            position >= context.value_range.start && position <= context.value_range.end
+        })
 }
 
 pub(crate) fn collect_class_name_contexts(source: &str) -> Vec<ClassNameContext> {
@@ -205,7 +212,11 @@ pub(crate) fn current_token_replacement(tokens: &[ClassToken], position: u32) ->
         })
 }
 
-pub(crate) fn current_prefix(tokens: &[ClassToken], replacement: &EditorRange, position: u32) -> String {
+pub(crate) fn current_prefix(
+    tokens: &[ClassToken],
+    replacement: &EditorRange,
+    position: u32,
+) -> String {
     let Some(token) = tokens
         .iter()
         .find(|token| token.range.start == replacement.start && token.range.end == replacement.end)
@@ -236,21 +247,16 @@ pub(crate) fn token_at_position(tokens: &[ClassToken], position: u32) -> Option<
 }
 
 pub(crate) fn is_utility_allowed_on_host(element_tag: &str, token: &str) -> bool {
-    let Some((_, base_token)) = split_variant_prefixes(token) else {
-        return true;
-    };
+    let parsed = parse_class_token(token);
 
-    if base_token.starts_with("text-") {
-        return matches!(element_tag, "textlabel" | "textbutton" | "textbox");
+    match parsed.utility.kind {
+        UtilityKind::TextColor => {
+            matches!(element_tag, "textlabel" | "textbutton" | "textbox")
+        }
+        UtilityKind::ImageColor => {
+            matches!(element_tag, "imagelabel" | "imagebutton")
+        }
+        UtilityKind::PlaceholderColor => element_tag == "textbox",
+        _ => true,
     }
-
-    if base_token.starts_with("image-") {
-        return matches!(element_tag, "imagelabel" | "imagebutton");
-    }
-
-    if base_token.starts_with("placeholder-") {
-        return element_tag == "textbox";
-    }
-
-    true
 }

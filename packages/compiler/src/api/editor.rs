@@ -1,4 +1,7 @@
-use crate::api::{CompletionRequest, CompletionResponse, DiagnosticsRequest, DiagnosticsResponse, HoverRequest, HoverResponse};
+use crate::api::{
+    CompletionRequest, CompletionResponse, DiagnosticsRequest, DiagnosticsResponse, HoverRequest,
+    HoverResponse,
+};
 
 pub(crate) fn get_completions_impl(request: CompletionRequest) -> CompletionResponse {
     crate::editor::completions::get_completions_impl(request)

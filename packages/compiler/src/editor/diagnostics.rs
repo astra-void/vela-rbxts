@@ -15,7 +15,9 @@ pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsRe
                 continue;
             }
 
-            if let Some(diagnostic) = host_utility_diagnostic(&context.element_tag, &token.text, token.range.clone()) {
+            if let Some(diagnostic) =
+                host_utility_diagnostic(&context.element_tag, &token.text, token.range.clone())
+            {
                 diagnostics.push(diagnostic);
             }
 

@@ -36,8 +36,7 @@ pub(crate) fn unsupported_arbitrary_z_index_diagnostic(token: &str) -> Diagnosti
     Diagnostic {
         level: "warning".to_owned(),
         code: "unsupported-arbitrary-z-index".to_owned(),
-        message: "Arbitrary z-index values are not supported yet on Roblox `ZIndex`."
-            .to_owned(),
+        message: "Arbitrary z-index values are not supported yet on Roblox `ZIndex`.".to_owned(),
         token: Some(token.to_owned()),
     }
 }
@@ -53,7 +52,11 @@ pub(crate) fn unsupported_z_index_value_diagnostic(value: &str, token: &str) -> 
     }
 }
 
-pub(crate) fn unknown_theme_key_diagnostic(theme_family: &str, key: &str, token: &str) -> Diagnostic {
+pub(crate) fn unknown_theme_key_diagnostic(
+    theme_family: &str,
+    key: &str,
+    token: &str,
+) -> Diagnostic {
     Diagnostic {
         level: "warning".to_owned(),
         code: "unknown-theme-key".to_owned(),
@@ -86,7 +89,11 @@ pub(crate) fn unsupported_size_mode_diagnostic(mode: &str, token: &str) -> Diagn
     }
 }
 
-pub(crate) fn unsupported_color_keyword_diagnostic(theme_family: &str, key: &str, token: &str) -> Diagnostic {
+pub(crate) fn unsupported_color_keyword_diagnostic(
+    theme_family: &str,
+    key: &str,
+    token: &str,
+) -> Diagnostic {
     Diagnostic {
         level: "warning".to_owned(),
         code: "unsupported-color-key".to_owned(),

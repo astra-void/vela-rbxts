@@ -1,6 +1,9 @@
 use crate::config::model::{ColorInputMap, ColorValue, TailwindConfig, ThemeColors, ThemeScale};
 
-pub(crate) fn merge_color_registry(base: &ThemeColors, extend: Option<&ColorInputMap>) -> ThemeColors {
+pub(crate) fn merge_color_registry(
+    base: &ThemeColors,
+    extend: Option<&ColorInputMap>,
+) -> ThemeColors {
     let mut merged = base.clone();
 
     let Some(extend) = extend else {
@@ -88,7 +91,10 @@ pub(crate) fn resolve_color_input(
         .unwrap_or(merged_defaults)
 }
 
-pub(crate) fn resolve_config_input(input: crate::config::model::TailwindConfigInput, base: &TailwindConfig) -> TailwindConfig {
+pub(crate) fn resolve_config_input(
+    input: crate::config::model::TailwindConfigInput,
+    base: &TailwindConfig,
+) -> TailwindConfig {
     let Some(theme) = input.theme else {
         return base.clone();
     };

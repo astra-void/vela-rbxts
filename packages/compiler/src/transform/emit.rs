@@ -1,6 +1,9 @@
 use swc_core::{
     common::{SourceMap, sync::Lrc},
-    ecma::{codegen::{Config as CodegenConfig, Emitter, text_writer::JsWriter}, ast::Module},
+    ecma::{
+        ast::Module,
+        codegen::{Config as CodegenConfig, Emitter, text_writer::JsWriter},
+    },
 };
 
 pub(crate) fn emit_module(cm: &Lrc<SourceMap>, module: &Module) -> Result<String, String> {
