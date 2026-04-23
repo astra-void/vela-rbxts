@@ -316,7 +316,7 @@ function normalizeColorRegistry(
 
 	for (const [key, value] of pairs(registry)) {
 		normalized[key] =
-			typeof value === "string" ? value : normalizeColorScale(value);
+			typeIs(value, "string") ? value : normalizeColorScale(value);
 	}
 
 	return normalized;
@@ -476,7 +476,7 @@ function resolveUtilityToken(
 		}
 
 		const value = theme.colors[colorName];
-		if (typeof value === "string") {
+		if (typeIs(value, "string")) {
 			if (shade !== undefined) {
 				return undefined;
 			}
