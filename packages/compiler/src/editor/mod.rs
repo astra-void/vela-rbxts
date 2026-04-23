@@ -3,7 +3,6 @@ pub(crate) mod diagnostics;
 pub(crate) mod hover;
 
 use crate::api::{EditorOptions, EditorRange};
-use crate::semantic::{token::parse_class_token, utility::UtilityKind};
 use crate::transform::module::{is_class_name_attr, is_supported_host_element};
 use swc_core::{
     common::{FileName, SourceMap, sync::Lrc},
@@ -244,19 +243,4 @@ pub(crate) fn token_at_position(tokens: &[ClassToken], position: u32) -> Option<
         .iter()
         .find(|token| position >= token.range.start && position <= token.range.end)
         .cloned()
-}
-
-pub(crate) fn is_utility_allowed_on_host(element_tag: &str, token: &str) -> bool {
-    let parsed = parse_class_token(token);
-
-    match parsed.utility.kind {
-        UtilityKind::TextColor => {
-            matches!(element_tag, "textlabel" | "textbutton" | "textbox")
-        }
-        UtilityKind::ImageColor => {
-            matches!(element_tag, "imagelabel" | "imagebutton")
-        }
-        UtilityKind::PlaceholderColor => element_tag == "textbox",
-        _ => true,
-    }
 }

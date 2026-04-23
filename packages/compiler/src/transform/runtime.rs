@@ -1,7 +1,8 @@
 use crate::api::Diagnostic;
 use crate::config::model::TailwindConfig;
 use crate::diagnostics::compiler::{
-    negative_z_index_diagnostic, unsupported_arbitrary_z_index_diagnostic,
+    negative_z_index_diagnostic, unknown_theme_key_diagnostic,
+    unsupported_arbitrary_z_index_diagnostic, unsupported_color_keyword_diagnostic,
     unsupported_size_mode_diagnostic, unsupported_utility_family_diagnostic,
     unsupported_z_index_auto_diagnostic, unsupported_z_index_value_diagnostic,
 };
@@ -9,44 +10,13 @@ use crate::ir::model::{RuntimeRule, SizeAxisValue, StyleIr};
 use crate::semantic::{
     analyze::analyze_class_token,
     result::{AnalyzedClassToken, SemanticIssue},
-    utility::{PaddingKind, UtilityKind},
+    utility::{
+        BACKGROUND_COLOR_FAMILY, ColorResolution, IMAGE_COLOR_FAMILY, PLACEHOLDER_COLOR_FAMILY,
+        PaddingKind, TEXT_COLOR_FAMILY, UtilityKind, resolve_color_value, resolve_radius_value,
+        resolve_size_axis_value, resolve_spacing_value, resolve_z_index_value,
+    },
 };
-use crate::utilities::color::{
-    BACKGROUND_COLOR_FAMILY, IMAGE_COLOR_FAMILY, PLACEHOLDER_COLOR_FAMILY, TEXT_COLOR_FAMILY,
-    apply_color_utility,
-};
-use crate::utilities::size::{format_size_prop, resolve_size_axis_value};
-use crate::utilities::spacing::resolve_spacing_value;
-
-pub(crate) const Z_INDEX_VALUES: [&str; 6] = ["0", "10", "20", "30", "40", "50"];
-
-pub(crate) fn resolve_z_index_value(
-    z_key: &str,
-    token: &str,
-    diagnostics: &mut Vec<Diagnostic>,
-) -> Option<String> {
-    if z_key == "auto" {
-        diagnostics.push(unsupported_z_index_auto_diagnostic(token));
-        return None;
-    }
-
-    if z_key.starts_with('[') && z_key.ends_with(']') {
-        diagnostics.push(unsupported_arbitrary_z_index_diagnostic(token));
-        return None;
-    }
-
-    if Z_INDEX_VALUES.contains(&z_key) {
-        return Some(z_key.to_owned());
-    }
-
-    if z_key.parse::<i32>().is_ok() {
-        diagnostics.push(unsupported_z_index_value_diagnostic(z_key, token));
-        return None;
-    }
-
-    diagnostics.push(unsupported_z_index_value_diagnostic(z_key, token));
-    None
-}
+use crate::utilities::size::format_size_prop;
 
 pub(crate) fn resolve_class_tokens<T, I>(
     tokens: I,
@@ -224,10 +194,10 @@ fn apply_analyzed_token(
         }
         UtilityKind::Radius => {
             if let Some(radius_key) = analysis.payload() {
-                if let Some(value) = config.theme.radius.get(radius_key) {
-                    style.set_helper_prop("uicorner", "CornerRadius", value.clone());
+                if let Some(value) = resolve_radius_value(config, radius_key) {
+                    style.set_helper_prop("uicorner", "CornerRadius", value);
                 } else {
-                    diagnostics.push(crate::diagnostics::compiler::unknown_theme_key_diagnostic(
+                    diagnostics.push(unknown_theme_key_diagnostic(
                         "radius",
                         radius_key,
                         &analysis.parsed.raw,
@@ -251,7 +221,7 @@ fn apply_analyzed_token(
                     diagnostics,
                     spacing_key,
                     &analysis.parsed.raw,
-                    &axis,
+                    axis,
                 );
             }
         }
@@ -289,6 +259,42 @@ fn apply_analyzed_token(
         }
         UtilityKind::Unknown => {
             diagnostics.push(unsupported_utility_family_diagnostic(&analysis.parsed.raw));
+        }
+    }
+}
+
+fn apply_color_utility(
+    style: &mut StyleIr,
+    config: &TailwindConfig,
+    diagnostics: &mut Vec<Diagnostic>,
+    spec: crate::semantic::utility::ColorFamilySpec,
+    color_key: &str,
+    token: &str,
+) {
+    let Some(resolution) = resolve_color_value(config, diagnostics, spec, color_key, token) else {
+        return;
+    };
+
+    match resolution {
+        ColorResolution::Expression(value) => {
+            if let Some(transparency_prop) = spec.transparency_prop {
+                style.remove_prop(transparency_prop);
+            }
+
+            style.set_prop(spec.color_prop, value);
+        }
+        ColorResolution::Transparent => {
+            if let Some(transparency_prop) = spec.transparency_prop {
+                style.remove_prop(spec.color_prop);
+                style.set_prop(transparency_prop, "1".to_owned());
+                return;
+            }
+
+            diagnostics.push(unsupported_color_keyword_diagnostic(
+                spec.theme_family,
+                color_key,
+                token,
+            ));
         }
     }
 }
@@ -333,9 +339,5 @@ fn apply_spacing_utility(
         return;
     }
 
-    diagnostics.push(crate::diagnostics::compiler::unknown_theme_key_diagnostic(
-        "spacing",
-        spacing_key,
-        token,
-    ));
+    diagnostics.push(unknown_theme_key_diagnostic("spacing", spacing_key, token));
 }

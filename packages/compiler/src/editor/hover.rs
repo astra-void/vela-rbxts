@@ -2,18 +2,15 @@ use crate::api::{HoverContent, HoverRequest, HoverResponse};
 use crate::editor::{
     class_name_context_at_position, token_at_position, tokenize_class_name_with_ranges,
 };
+use crate::ir::model::SizeAxisValue;
 use crate::semantic::{
     analyze::analyze_class_token,
-    utility::{PaddingKind, UtilityKind},
-};
-use crate::utilities::{
-    color::{
-        BACKGROUND_COLOR_FAMILY, IMAGE_COLOR_FAMILY, PLACEHOLDER_COLOR_FAMILY, TEXT_COLOR_FAMILY,
-        describe_color_token,
+    utility::{
+        BACKGROUND_COLOR_FAMILY, ColorResolution, IMAGE_COLOR_FAMILY, PLACEHOLDER_COLOR_FAMILY,
+        PaddingKind, TEXT_COLOR_FAMILY, UtilityKind, is_utility_allowed_on_host,
+        resolve_color_value, resolve_radius_value, resolve_size_axis_value, resolve_spacing_value,
+        resolve_z_index_value,
     },
-    radius::resolve_radius_value,
-    size::resolve_size_axis_value,
-    spacing::resolve_spacing_value,
 };
 
 pub(crate) fn get_hover_impl(request: HoverRequest) -> HoverResponse {
@@ -54,20 +51,9 @@ fn describe_token(
     element_tag: &str,
 ) -> Option<HoverContent> {
     let analysis = analyze_class_token(token);
-    let variant_prefix = if analysis.parsed.variants.is_empty() {
-        String::new()
-    } else {
-        let variant_label = analysis
-            .parsed
-            .variants
-            .iter()
-            .map(|variant| variant.raw.as_str())
-            .collect::<Vec<_>>()
-            .join(":");
-        format!("Runtime variant `{variant_label}`. ")
-    };
+    let variant_prefix = variant_prefix(&analysis);
 
-    if !crate::editor::is_utility_allowed_on_host(element_tag, token) {
+    if !is_utility_allowed_on_host(element_tag, &analysis.utility) {
         return Some(HoverContent {
             display: format!("`{token}`"),
             documentation: format!(
@@ -122,8 +108,7 @@ fn describe_token(
         UtilityKind::ZIndex => {
             let z_key = analysis.payload()?;
             let mut diagnostics = Vec::new();
-            let value =
-                crate::transform::runtime::resolve_z_index_value(z_key, token, &mut diagnostics)?;
+            let value = resolve_z_index_value(z_key, token, &mut diagnostics)?;
             Some(HoverContent {
                 display: format!("`{token}` -> ZIndex"),
                 documentation: format!("{variant_prefix}Sets `ZIndex` to `{value}`."),
@@ -131,15 +116,7 @@ fn describe_token(
         }
         UtilityKind::Padding(axis) => {
             let spacing_key = analysis.payload()?;
-            let target = match axis {
-                PaddingKind::All => "UIPadding",
-                PaddingKind::X => "UIPadding.PaddingLeft / PaddingRight",
-                PaddingKind::Y => "UIPadding.PaddingTop / PaddingBottom",
-                PaddingKind::Top => "UIPadding.PaddingTop",
-                PaddingKind::Right => "UIPadding.PaddingRight",
-                PaddingKind::Bottom => "UIPadding.PaddingBottom",
-                PaddingKind::Left => "UIPadding.PaddingLeft",
-            };
+            let target = padding_target(axis);
             let value = resolve_spacing_value(config, spacing_key)?;
             Some(HoverContent {
                 display: format!("`{token}` -> {target}"),
@@ -179,13 +156,7 @@ fn describe_token(
                 size_key,
                 &analysis.parsed.utility.raw,
             )?;
-            let resolved = if value.scale == "0" {
-                format!("offset {}", value.offset)
-            } else if value.offset == "0" {
-                format!("scale {}", value.scale)
-            } else {
-                format!("scale {} plus offset {}", value.scale, value.offset)
-            };
+            let resolved = describe_size_axis_value(&value);
 
             Some(HoverContent {
                 display: format!("`{token}` -> Roblox {target}"),
@@ -194,4 +165,66 @@ fn describe_token(
         }
         UtilityKind::Unknown => None,
     }
+}
+
+fn describe_color_token(
+    token: &str,
+    color_key: &str,
+    config: &crate::config::model::TailwindConfig,
+    spec: crate::semantic::utility::ColorFamilySpec,
+    prop: &str,
+    variant_prefix: String,
+) -> Option<HoverContent> {
+    let mut diagnostics = Vec::new();
+    let resolution = resolve_color_value(config, &mut diagnostics, spec, color_key, token)?;
+    let documentation = match resolution {
+        ColorResolution::Expression(value) => {
+            format!("{variant_prefix}Sets `{prop}` to `{value}`.")
+        }
+        ColorResolution::Transparent => {
+            format!("{variant_prefix}Sets the matching Roblox transparency prop for `{prop}`.")
+        }
+    };
+
+    Some(HoverContent {
+        display: format!("`{token}` -> {prop}"),
+        documentation,
+    })
+}
+
+fn describe_size_axis_value(value: &SizeAxisValue) -> String {
+    if value.scale == "0" {
+        format!("offset {}", value.offset)
+    } else if value.offset == "0" {
+        format!("scale {}", value.scale)
+    } else {
+        format!("scale {} plus offset {}", value.scale, value.offset)
+    }
+}
+
+fn padding_target(axis: &PaddingKind) -> &'static str {
+    match axis {
+        PaddingKind::All => "UIPadding",
+        PaddingKind::X => "UIPadding.PaddingLeft / PaddingRight",
+        PaddingKind::Y => "UIPadding.PaddingTop / PaddingBottom",
+        PaddingKind::Top => "UIPadding.PaddingTop",
+        PaddingKind::Right => "UIPadding.PaddingRight",
+        PaddingKind::Bottom => "UIPadding.PaddingBottom",
+        PaddingKind::Left => "UIPadding.PaddingLeft",
+    }
+}
+
+fn variant_prefix(analysis: &crate::semantic::result::AnalyzedClassToken) -> String {
+    if analysis.parsed.variants.is_empty() {
+        return String::new();
+    }
+
+    let variant_label = analysis
+        .parsed
+        .variants
+        .iter()
+        .map(|variant| variant.raw.as_str())
+        .collect::<Vec<_>>()
+        .join(":");
+    format!("Runtime variant `{variant_label}`. ")
 }

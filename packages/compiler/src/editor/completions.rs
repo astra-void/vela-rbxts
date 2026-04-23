@@ -4,7 +4,10 @@ use crate::editor::{
     class_name_context_at_position, current_prefix, current_token_replacement,
     tokenize_class_name_with_ranges,
 };
-use crate::semantic::variant::RUNTIME_VARIANTS;
+use crate::semantic::{
+    utility::{Z_INDEX_VALUES, is_utility_allowed_on_host},
+    variant::RUNTIME_VARIANTS,
+};
 use crate::utilities::{
     color::color_completion_keys, radius::radius_completion_keys, size::size_completion_keys,
     spacing::spacing_completion_keys,
@@ -53,13 +56,23 @@ fn completion_candidates(config: &TailwindConfig, element_tag: &str) -> Vec<Comp
     }
 
     for base in base_utility_candidates(config) {
-        if crate::editor::is_utility_allowed_on_host(element_tag, &base.label) {
+        if is_utility_allowed_on_host(
+            element_tag,
+            &crate::semantic::token::parse_class_token(&base.label)
+                .utility
+                .kind,
+        ) {
             push_completion_item(&mut items, base.clone());
         }
 
         for variant in RUNTIME_VARIANTS {
             let label = format!("{variant}:{}", base.label);
-            if crate::editor::is_utility_allowed_on_host(element_tag, &label) {
+            if is_utility_allowed_on_host(
+                element_tag,
+                &crate::semantic::token::parse_class_token(&label)
+                    .utility
+                    .kind,
+            ) {
                 push_completion(
                     &mut items,
                     &label,
@@ -111,7 +124,7 @@ fn base_utility_candidates(config: &TailwindConfig) -> Vec<CompletionItem> {
         );
     }
 
-    for key in crate::transform::runtime::Z_INDEX_VALUES {
+    for key in Z_INDEX_VALUES {
         push_completion(
             &mut items,
             &format!("z-{key}"),

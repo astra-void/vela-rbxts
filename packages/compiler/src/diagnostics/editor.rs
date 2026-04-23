@@ -1,12 +1,14 @@
 use crate::api::{Diagnostic, EditorDiagnostic, EditorRange};
-use crate::semantic::{token::parse_class_token, utility::UtilityKind};
+use crate::semantic::{
+    token::parse_class_token, utility::is_utility_allowed_on_host as utility_kind_allowed_on_host,
+};
 
 pub(crate) fn host_utility_diagnostic(
     element_tag: &str,
     token: &str,
     range: EditorRange,
 ) -> Option<EditorDiagnostic> {
-    if is_utility_allowed_on_host(element_tag, token) {
+    if utility_allowed_on_host(element_tag, token) {
         return None;
     }
 
@@ -55,13 +57,7 @@ pub(crate) fn filter_compiler_diagnostics(
         .collect()
 }
 
-fn is_utility_allowed_on_host(element_tag: &str, token: &str) -> bool {
+fn utility_allowed_on_host(element_tag: &str, token: &str) -> bool {
     let parsed = parse_class_token(token);
-
-    match parsed.utility.kind {
-        UtilityKind::TextColor => matches!(element_tag, "textlabel" | "textbutton" | "textbox"),
-        UtilityKind::ImageColor => matches!(element_tag, "imagelabel" | "imagebutton"),
-        UtilityKind::PlaceholderColor => element_tag == "textbox",
-        _ => true,
-    }
+    utility_kind_allowed_on_host(element_tag, &parsed.utility.kind)
 }
