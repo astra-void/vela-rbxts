@@ -10,11 +10,11 @@ use swc_core::{
             Expr, Ident, IdentName, ImportDecl, ImportNamedSpecifier, ImportSpecifier, JSXAttr,
             JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXClosingElement, JSXElement,
             JSXElementChild, JSXElementName, JSXExpr, JSXExprContainer, JSXOpeningElement, Module,
-            ModuleDecl, ModuleExportName, ModuleItem, Str,
+            ModuleDecl, ModuleItem, Str,
         },
         codegen::{Config as CodegenConfig, Emitter, text_writer::JsWriter},
         parser::{Syntax, TsSyntax, parse_file_as_expr, parse_file_as_module},
-        visit::{VisitMut, VisitMutWith},
+        visit::{Visit, VisitMut, VisitMutWith, VisitWith},
     },
 };
 
@@ -42,6 +42,94 @@ pub struct TransformResult {
     pub ir: Vec<String>,
 }
 
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditorOptions {
+    pub config_json: Option<String>,
+    pub file_name: Option<String>,
+    pub project_root: Option<String>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CompletionRequest {
+    pub source: String,
+    pub position: u32,
+    pub options: Option<EditorOptions>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HoverRequest {
+    pub source: String,
+    pub position: u32,
+    pub options: Option<EditorOptions>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DiagnosticsRequest {
+    pub source: String,
+    pub options: Option<EditorOptions>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct EditorRange {
+    pub start: u32,
+    pub end: u32,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CompletionItem {
+    pub label: String,
+    pub insert_text: String,
+    pub kind: String,
+    pub category: String,
+    pub documentation: String,
+    pub replacement: Option<EditorRange>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionResponse {
+    pub is_in_class_name_context: bool,
+    pub items: Vec<CompletionItem>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HoverContent {
+    pub display: String,
+    pub documentation: String,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HoverResponse {
+    pub contents: Option<HoverContent>,
+    pub range: Option<EditorRange>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct EditorDiagnostic {
+    pub level: String,
+    pub code: String,
+    pub message: String,
+    pub token: Option<String>,
+    pub range: Option<EditorRange>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DiagnosticsResponse {
+    pub diagnostics: Vec<EditorDiagnostic>,
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[napi(js_name = "implementationKind")]
 pub fn implementation_kind() -> String {
@@ -60,6 +148,24 @@ pub fn transform(source: String, options: Option<TransformOptions>) -> Transform
     transform_impl(source, options)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[napi(js_name = "getCompletions")]
+pub fn get_completions(request: CompletionRequest) -> CompletionResponse {
+    get_completions_impl(request)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[napi(js_name = "getHover")]
+pub fn get_hover(request: HoverRequest) -> HoverResponse {
+    get_hover_impl(request)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[napi(js_name = "getDiagnostics")]
+pub fn get_diagnostics(request: DiagnosticsRequest) -> DiagnosticsResponse {
+    get_diagnostics_impl(request)
+}
+
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = transform)]
 pub fn transform(source: String, options: JsValue) -> Result<JsValue, JsValue> {
@@ -70,13 +176,13 @@ pub fn transform(source: String, options: JsValue) -> Result<JsValue, JsValue> {
     })
 }
 
-#[derive(Clone, Deserialize, Default)]
+#[derive(Clone, Deserialize, Serialize, Default)]
 struct TailwindConfig {
     #[serde(default)]
     theme: ThemeConfig,
 }
 
-#[derive(Clone, Deserialize, Default)]
+#[derive(Clone, Deserialize, Serialize, Default)]
 struct ThemeConfig {
     #[serde(default)]
     colors: ThemeColors,
@@ -481,6 +587,695 @@ fn transform_impl(source: String, options: Option<TransformOptions>) -> Transfor
     }
 }
 
+#[derive(Clone)]
+struct ClassNameContext {
+    element_tag: String,
+    value: String,
+    value_range: EditorRange,
+}
+
+#[derive(Clone)]
+struct ClassToken {
+    text: String,
+    range: EditorRange,
+}
+
+struct ClassNameCollector<'a> {
+    source: &'a str,
+    source_base: u32,
+    contexts: Vec<ClassNameContext>,
+}
+
+impl Visit for ClassNameCollector<'_> {
+    fn visit_jsx_element(&mut self, element: &JSXElement) {
+        if let JSXElementName::Ident(ident) = &element.opening.name {
+            let element_tag = ident.sym.to_string();
+            if is_supported_host_element(&element.opening.name) {
+                for attr in &element.opening.attrs {
+                    let JSXAttrOrSpread::JSXAttr(attr) = attr else {
+                        continue;
+                    };
+
+                    if !is_class_name_attr(&attr.name) {
+                        continue;
+                    }
+
+                    let Some(JSXAttrValue::Str(value)) = &attr.value else {
+                        continue;
+                    };
+
+                    let (lo, hi) = span_range(value.span, self.source_base);
+                    let value_range = literal_content_range(self.source, lo, hi);
+                    self.contexts.push(ClassNameContext {
+                        element_tag: element_tag.clone(),
+                        value: value.value.to_string_lossy().into_owned(),
+                        value_range,
+                    });
+                }
+            }
+        }
+
+        element.visit_children_with(self);
+    }
+}
+
+fn get_completions_impl(request: CompletionRequest) -> CompletionResponse {
+    let config = parse_editor_config(request.options.as_ref());
+    let Some(context) = class_name_context_at_position(&request.source, request.position) else {
+        return CompletionResponse {
+            is_in_class_name_context: false,
+            items: Vec::new(),
+        };
+    };
+
+    let tokens = tokenize_class_name_with_ranges(&context.value, context.value_range.start);
+    let replacement = current_token_replacement(&tokens, request.position);
+    let prefix = current_prefix(&tokens, &replacement, request.position);
+    let items = completion_candidates(&config, &context.element_tag)
+        .into_iter()
+        .filter(|item| item.label.starts_with(&prefix))
+        .map(|mut item| {
+            item.replacement = Some(replacement.clone());
+            item
+        })
+        .collect();
+
+    CompletionResponse {
+        is_in_class_name_context: true,
+        items,
+    }
+}
+
+fn get_hover_impl(request: HoverRequest) -> HoverResponse {
+    let config = parse_editor_config(request.options.as_ref());
+    let Some(context) = class_name_context_at_position(&request.source, request.position) else {
+        return HoverResponse {
+            contents: None,
+            range: None,
+        };
+    };
+
+    let Some(token) = token_at_position(
+        &tokenize_class_name_with_ranges(&context.value, context.value_range.start),
+        request.position,
+    ) else {
+        return HoverResponse {
+            contents: None,
+            range: None,
+        };
+    };
+
+    let Some(contents) = describe_token(&token.text, &config, &context.element_tag) else {
+        return HoverResponse {
+            contents: None,
+            range: None,
+        };
+    };
+
+    HoverResponse {
+        contents: Some(contents),
+        range: Some(token.range),
+    }
+}
+
+fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsResponse {
+    let config = parse_editor_config(request.options.as_ref());
+    let contexts = collect_class_name_contexts(&request.source);
+    let mut diagnostics = Vec::new();
+
+    for context in contexts {
+        for token in tokenize_class_name_with_ranges(&context.value, context.value_range.start) {
+            if let Some(diagnostic) = host_utility_diagnostic(&context.element_tag, &token) {
+                diagnostics.push(diagnostic);
+            }
+
+            let mut compiler_diagnostics = Vec::new();
+            resolve_class_tokens(
+                vec![token.text.as_str()],
+                &config,
+                &mut compiler_diagnostics,
+            );
+            diagnostics.extend(compiler_diagnostics.into_iter().map(|diagnostic| {
+                EditorDiagnostic {
+                    level: diagnostic.level,
+                    code: diagnostic.code,
+                    message: diagnostic.message,
+                    token: diagnostic.token,
+                    range: Some(token.range.clone()),
+                }
+            }));
+        }
+    }
+
+    DiagnosticsResponse { diagnostics }
+}
+
+fn parse_editor_config(options: Option<&EditorOptions>) -> TailwindConfig {
+    parse_config(options.and_then(|value| value.config_json.as_deref()))
+}
+
+fn class_name_context_at_position(source: &str, position: u32) -> Option<ClassNameContext> {
+    collect_class_name_contexts(source)
+        .into_iter()
+        .find(|context| {
+            position >= context.value_range.start && position <= context.value_range.end
+        })
+}
+
+fn collect_class_name_contexts(source: &str) -> Vec<ClassNameContext> {
+    let cm: Lrc<SourceMap> = Default::default();
+    let fm = cm.new_source_file(
+        FileName::Custom("input.tsx".into()).into(),
+        source.to_owned(),
+    );
+    let mut recovered_errors = Vec::new();
+    let Ok(module) = parse_file_as_module(
+        &fm,
+        Syntax::Typescript(TsSyntax {
+            decorators: true,
+            tsx: true,
+            ..Default::default()
+        }),
+        Default::default(),
+        None,
+        &mut recovered_errors,
+    ) else {
+        return Vec::new();
+    };
+
+    if !recovered_errors.is_empty() {
+        return Vec::new();
+    }
+
+    let mut collector = ClassNameCollector {
+        source,
+        source_base: fm.start_pos.0,
+        contexts: Vec::new(),
+    };
+    module.visit_with(&mut collector);
+    collector.contexts
+}
+
+fn span_range(span: swc_core::common::Span, source_base: u32) -> (usize, usize) {
+    let start = span.lo.0.saturating_sub(source_base) as usize;
+    let end = span.hi.0.saturating_sub(source_base) as usize;
+    (start, end)
+}
+
+fn literal_content_range(source: &str, lo: usize, hi: usize) -> EditorRange {
+    let hi = hi.min(source.len());
+    let lo = lo.min(hi);
+    let snippet = &source[lo..hi];
+    let quote = snippet
+        .char_indices()
+        .find(|(_, ch)| matches!(ch, '"' | '\''));
+
+    if let Some((quote_index, quote_char)) = quote {
+        let content_start = lo + quote_index + quote_char.len_utf8();
+        let content_end = snippet
+            .char_indices()
+            .rev()
+            .find(|(_, ch)| *ch == quote_char)
+            .map(|(index, _)| lo + index)
+            .filter(|end| *end >= content_start)
+            .unwrap_or(hi);
+
+        return EditorRange {
+            start: byte_to_utf16_position(source, content_start),
+            end: byte_to_utf16_position(source, content_end),
+        };
+    }
+
+    EditorRange {
+        start: byte_to_utf16_position(source, lo),
+        end: byte_to_utf16_position(source, hi),
+    }
+}
+
+fn byte_to_utf16_position(source: &str, byte_index: usize) -> u32 {
+    source
+        .get(..byte_index.min(source.len()))
+        .unwrap_or_default()
+        .encode_utf16()
+        .count() as u32
+}
+
+fn utf16_len(value: &str) -> u32 {
+    value.encode_utf16().count() as u32
+}
+
+fn tokenize_class_name_with_ranges(input: &str, source_offset: u32) -> Vec<ClassToken> {
+    let mut tokens = Vec::new();
+    let mut token_start: Option<usize> = None;
+
+    for (index, ch) in input.char_indices() {
+        if ch.is_whitespace() {
+            if let Some(start) = token_start.take() {
+                tokens.push(ClassToken {
+                    text: input[start..index].to_owned(),
+                    range: EditorRange {
+                        start: source_offset + utf16_len(&input[..start]),
+                        end: source_offset + utf16_len(&input[..index]),
+                    },
+                });
+            }
+            continue;
+        }
+
+        if token_start.is_none() {
+            token_start = Some(index);
+        }
+    }
+
+    if let Some(start) = token_start {
+        tokens.push(ClassToken {
+            text: input[start..].to_owned(),
+            range: EditorRange {
+                start: source_offset + utf16_len(&input[..start]),
+                end: source_offset + utf16_len(input),
+            },
+        });
+    }
+
+    tokens
+}
+
+fn current_token_replacement(tokens: &[ClassToken], position: u32) -> EditorRange {
+    tokens
+        .iter()
+        .find(|token| position >= token.range.start && position <= token.range.end)
+        .map(|token| token.range.clone())
+        .unwrap_or(EditorRange {
+            start: position,
+            end: position,
+        })
+}
+
+fn current_prefix(tokens: &[ClassToken], replacement: &EditorRange, position: u32) -> String {
+    let Some(token) = tokens
+        .iter()
+        .find(|token| token.range.start == replacement.start && token.range.end == replacement.end)
+    else {
+        return String::new();
+    };
+
+    let wanted_len = position.saturating_sub(token.range.start);
+    let mut current_len = 0;
+    let mut end_index = 0;
+    for (index, ch) in token.text.char_indices() {
+        let next_len = current_len + ch.len_utf16() as u32;
+        if next_len > wanted_len {
+            break;
+        }
+        current_len = next_len;
+        end_index = index + ch.len_utf8();
+    }
+
+    token.text[..end_index].trim_start().to_owned()
+}
+
+fn token_at_position(tokens: &[ClassToken], position: u32) -> Option<ClassToken> {
+    tokens
+        .iter()
+        .find(|token| position >= token.range.start && position <= token.range.end)
+        .cloned()
+}
+
+fn completion_candidates(config: &TailwindConfig, element_tag: &str) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+
+    for variant in RUNTIME_VARIANTS {
+        push_completion(
+            &mut items,
+            &format!("{variant}:"),
+            "variant",
+            "runtime variant",
+            &format!(
+                "Apply the following rbxts-tailwind utility when the {variant} condition matches."
+            ),
+        );
+    }
+
+    for base in base_utility_candidates(config) {
+        if is_utility_allowed_on_host(element_tag, &base.label) {
+            push_completion_item(&mut items, base.clone());
+        }
+
+        for variant in RUNTIME_VARIANTS {
+            let label = format!("{variant}:{}", base.label);
+            if is_utility_allowed_on_host(element_tag, &label) {
+                push_completion(
+                    &mut items,
+                    &label,
+                    &base.category,
+                    &base.kind,
+                    &format!("Runtime variant of {}. {}", base.label, base.documentation),
+                );
+            }
+        }
+    }
+
+    items
+}
+
+fn base_utility_candidates(config: &TailwindConfig) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+
+    for (prefix, prop, category) in [
+        ("bg", "BackgroundColor3", "color"),
+        ("text", "TextColor3", "color"),
+        ("image", "ImageColor3", "color"),
+        ("placeholder", "PlaceholderColor3", "color"),
+    ] {
+        for color_key in color_completion_keys(config) {
+            push_completion(
+                &mut items,
+                &format!("{prefix}-{color_key}"),
+                category,
+                "utility",
+                &format!("Set Roblox {prop} from theme color `{color_key}`."),
+            );
+        }
+        push_completion(
+            &mut items,
+            &format!("{prefix}-transparent"),
+            category,
+            "utility",
+            &format!("Use the transparent keyword for Roblox {prop}."),
+        );
+    }
+
+    for key in config.theme.radius.keys() {
+        push_completion(
+            &mut items,
+            &format!("rounded-{key}"),
+            "radius",
+            "utility",
+            &format!("Set UICorner.CornerRadius from theme radius `{key}`."),
+        );
+    }
+
+    let spacing_keys = spacing_completion_keys(config);
+    for prefix in ["p", "px", "py", "pt", "pr", "pb", "pl", "gap"] {
+        for key in &spacing_keys {
+            let target = if prefix == "gap" {
+                "UIListLayout.Padding"
+            } else {
+                "UIPadding"
+            };
+            push_completion(
+                &mut items,
+                &format!("{prefix}-{key}"),
+                "spacing",
+                "utility",
+                &format!("Set Roblox {target} from spacing `{key}`."),
+            );
+        }
+    }
+
+    for prefix in ["w", "h", "size"] {
+        for key in size_completion_keys(config) {
+            push_completion(
+                &mut items,
+                &format!("{prefix}-{key}"),
+                "size",
+                "utility",
+                &format!("Set Roblox Size using `{prefix}-{key}`."),
+            );
+        }
+    }
+
+    items
+}
+
+const RUNTIME_VARIANTS: [&str; 8] = [
+    "sm",
+    "md",
+    "lg",
+    "portrait",
+    "landscape",
+    "touch",
+    "mouse",
+    "gamepad",
+];
+
+fn color_completion_keys(config: &TailwindConfig) -> Vec<String> {
+    let mut keys = Vec::new();
+    for (name, scale) in &config.theme.colors {
+        push_unique(&mut keys, name.clone());
+        for shade in scale.keys() {
+            push_unique(&mut keys, format!("{name}-{shade}"));
+        }
+    }
+    keys
+}
+
+fn spacing_completion_keys(config: &TailwindConfig) -> Vec<String> {
+    let mut keys = config.theme.spacing.keys().cloned().collect::<Vec<_>>();
+    for key in [
+        "0", "0.5", "1", "1.5", "2", "3", "4", "6", "8", "12", "16", "20", "24", "32", "40", "64",
+        "80",
+    ] {
+        push_unique(&mut keys, key.to_owned());
+    }
+    keys
+}
+
+fn size_completion_keys(config: &TailwindConfig) -> Vec<String> {
+    let mut keys = spacing_completion_keys(config);
+    for key in [
+        "px", "full", "fit", "1/2", "1/3", "2/3", "1/4", "3/4", "1/5", "2/5", "3/5", "4/5", "1/6",
+        "5/6", "1/12", "5/12", "11/12",
+    ] {
+        push_unique(&mut keys, key.to_owned());
+    }
+    keys
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
+fn push_completion(
+    items: &mut Vec<CompletionItem>,
+    label: &str,
+    category: &str,
+    kind: &str,
+    documentation: &str,
+) {
+    push_completion_item(
+        items,
+        CompletionItem {
+            label: label.to_owned(),
+            insert_text: label.to_owned(),
+            kind: kind.to_owned(),
+            category: category.to_owned(),
+            documentation: documentation.to_owned(),
+            replacement: None,
+        },
+    );
+}
+
+fn push_completion_item(items: &mut Vec<CompletionItem>, item: CompletionItem) {
+    if !items.iter().any(|existing| existing.label == item.label) {
+        items.push(item);
+    }
+}
+
+fn describe_token(token: &str, config: &TailwindConfig, element_tag: &str) -> Option<HoverContent> {
+    let (variants, base_token) = split_variant_prefixes(token)?;
+    let variant_prefix = if variants.is_empty() {
+        String::new()
+    } else {
+        format!("Runtime variant `{}`. ", variants.join(":"))
+    };
+
+    if !is_utility_allowed_on_host(element_tag, token) {
+        return Some(HoverContent {
+            display: format!("`{token}`"),
+            documentation: format!(
+                "{variant_prefix}This utility is not valid on Roblox `{element_tag}` elements."
+            ),
+        });
+    }
+
+    if let Some(color_key) = base_token.strip_prefix("bg-") {
+        return describe_color_token(
+            token,
+            color_key,
+            config,
+            BACKGROUND_COLOR_FAMILY,
+            "BackgroundColor3",
+            variant_prefix,
+        );
+    }
+    if let Some(color_key) = base_token.strip_prefix("text-") {
+        return describe_color_token(
+            token,
+            color_key,
+            config,
+            TEXT_COLOR_FAMILY,
+            "TextColor3",
+            variant_prefix,
+        );
+    }
+    if let Some(color_key) = base_token.strip_prefix("image-") {
+        return describe_color_token(
+            token,
+            color_key,
+            config,
+            IMAGE_COLOR_FAMILY,
+            "ImageColor3",
+            variant_prefix,
+        );
+    }
+    if let Some(color_key) = base_token.strip_prefix("placeholder-") {
+        return describe_color_token(
+            token,
+            color_key,
+            config,
+            PLACEHOLDER_COLOR_FAMILY,
+            "PlaceholderColor3",
+            variant_prefix,
+        );
+    }
+    if let Some(radius_key) = base_token.strip_prefix("rounded-") {
+        let value = config.theme.radius.get(radius_key)?;
+        return Some(HoverContent {
+            display: format!("`{token}` -> UICorner.CornerRadius"),
+            documentation: format!("{variant_prefix}Sets `UICorner.CornerRadius` to `{value}`."),
+        });
+    }
+
+    for (prefix, target) in [
+        ("p-", "UIPadding"),
+        ("px-", "UIPadding.PaddingLeft / PaddingRight"),
+        ("py-", "UIPadding.PaddingTop / PaddingBottom"),
+        ("pt-", "UIPadding.PaddingTop"),
+        ("pr-", "UIPadding.PaddingRight"),
+        ("pb-", "UIPadding.PaddingBottom"),
+        ("pl-", "UIPadding.PaddingLeft"),
+        ("gap-", "UIListLayout.Padding"),
+    ] {
+        if let Some(spacing_key) = base_token.strip_prefix(prefix) {
+            let value = resolve_spacing_value(config, spacing_key)?;
+            return Some(HoverContent {
+                display: format!("`{token}` -> {target}"),
+                documentation: format!("{variant_prefix}Sets `{target}` to `{value}`."),
+            });
+        }
+    }
+
+    for (prefix, target) in [("w-", "Size.X"), ("h-", "Size.Y"), ("size-", "Size")] {
+        if let Some(size_key) = base_token.strip_prefix(prefix) {
+            if size_key == "fit" {
+                return Some(HoverContent {
+                    display: format!("`{token}` -> recognized, not lowered"),
+                    documentation: format!(
+                        "{variant_prefix}`fit` needs Roblox automatic sizing semantics and is not lowered to `Size`."
+                    ),
+                });
+            }
+
+            let mut diagnostics = Vec::new();
+            let value = resolve_size_axis_value(config, &mut diagnostics, size_key, base_token)?;
+            let resolved = if value.scale == "0" {
+                format!("offset {}", value.offset)
+            } else if value.offset == "0" {
+                format!("scale {}", value.scale)
+            } else {
+                format!("scale {} plus offset {}", value.scale, value.offset)
+            };
+
+            return Some(HoverContent {
+                display: format!("`{token}` -> Roblox {target}"),
+                documentation: format!("{variant_prefix}Sets `{target}` using {resolved}."),
+            });
+        }
+    }
+
+    None
+}
+
+fn describe_color_token(
+    token: &str,
+    color_key: &str,
+    config: &TailwindConfig,
+    spec: ColorFamilySpec,
+    prop: &str,
+    variant_prefix: String,
+) -> Option<HoverContent> {
+    let mut diagnostics = Vec::new();
+    let resolution = resolve_color_value(config, &mut diagnostics, spec, color_key, token)?;
+    let documentation = match resolution {
+        ColorResolution::Expression(value) => {
+            format!("{variant_prefix}Sets `{prop}` to `{value}`.")
+        }
+        ColorResolution::Transparent => {
+            format!("{variant_prefix}Sets the matching Roblox transparency prop for `{prop}`.")
+        }
+    };
+
+    Some(HoverContent {
+        display: format!("`{token}` -> {prop}"),
+        documentation,
+    })
+}
+
+fn split_variant_prefixes(token: &str) -> Option<(Vec<String>, &str)> {
+    let mut variants = Vec::new();
+    let mut remainder = token;
+
+    while let Some((prefix, next)) = remainder.split_once(':') {
+        if parse_runtime_prefix(prefix).is_none() {
+            return None;
+        }
+        variants.push(prefix.to_owned());
+        remainder = next;
+    }
+
+    Some((variants, remainder))
+}
+
+fn host_utility_diagnostic(element_tag: &str, token: &ClassToken) -> Option<EditorDiagnostic> {
+    if is_utility_allowed_on_host(element_tag, &token.text) {
+        return None;
+    }
+
+    Some(EditorDiagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-host-utility".to_owned(),
+        message: format!(
+            "Utility \"{}\" is not valid on Roblox `{element_tag}` elements.",
+            token.text
+        ),
+        token: Some(token.text.clone()),
+        range: Some(token.range.clone()),
+    })
+}
+
+fn is_utility_allowed_on_host(element_tag: &str, token: &str) -> bool {
+    let Some((_, base_token)) = split_variant_prefixes(token) else {
+        return true;
+    };
+
+    if base_token.starts_with("text-") {
+        return matches!(element_tag, "textlabel" | "textbutton" | "textbox");
+    }
+
+    if base_token.starts_with("image-") {
+        return matches!(element_tag, "imagelabel" | "imagebutton");
+    }
+
+    if base_token.starts_with("placeholder-") {
+        return element_tag == "textbox";
+    }
+
+    true
+}
+
 fn emit_module(cm: &Lrc<SourceMap>, module: &Module) -> Result<String, String> {
     let mut output = Vec::new();
     {
@@ -505,10 +1300,9 @@ impl VisitMut for TailwindTransformer {
         module.visit_mut_children_with(self);
 
         if self.runtime_import_needed {
-            module.body.insert(
-                0,
-                ModuleItem::ModuleDecl(create_runtime_import_declaration()),
-            );
+            let mut runtime_items = create_runtime_host_module_items(&self.config);
+            runtime_items.append(&mut module.body);
+            module.body = runtime_items;
         }
     }
 
@@ -563,7 +1357,7 @@ impl VisitMut for TailwindTransformer {
                 value: format!("\"{}\"", element_tag_name(&element.opening.name)),
             }));
             element.opening.name = JSXElementName::Ident(Ident::new_no_ctxt(
-                "__rbxtsTailwindRuntimeHost".into(),
+                "RbxtsTailwindRuntimeHost".into(),
                 DUMMY_SP,
             ));
         } else {
@@ -1126,27 +1920,53 @@ fn create_prop_attr(prop: PropEntry) -> JSXAttrOrSpread {
     })
 }
 
+fn create_runtime_host_module_items(config: &TailwindConfig) -> Vec<ModuleItem> {
+    let config_json = serde_json::to_string(config).expect("runtime config must serialize to JSON");
+    parse_module_items(&format!(
+        r#"import {{ createTailwindRuntimeHost }} from "@vela-rbxts/runtime";
+const RbxtsTailwindRuntimeHost = createTailwindRuntimeHost({config_json});"#
+    ))
+}
+
 fn create_runtime_import_declaration() -> ModuleDecl {
     ModuleDecl::Import(ImportDecl {
         span: DUMMY_SP,
         specifiers: vec![ImportSpecifier::Named(ImportNamedSpecifier {
             span: DUMMY_SP,
-            local: Ident::new_no_ctxt("__rbxtsTailwindRuntimeHost".into(), DUMMY_SP),
-            imported: Some(ModuleExportName::Ident(Ident::new_no_ctxt(
-                "TailwindRuntimeHost".into(),
-                DUMMY_SP,
-            ))),
+            local: Ident::new_no_ctxt("createTailwindRuntimeHost".into(), DUMMY_SP),
+            imported: None,
             is_type_only: false,
         })],
         src: Box::new(Str {
             span: DUMMY_SP,
-            value: "rbxts-tailwind/runtime-host".into(),
+            value: "@vela-rbxts/runtime".into(),
             raw: None,
         }),
         type_only: false,
         with: None,
         phase: Default::default(),
     })
+}
+
+fn parse_module_items(source: &str) -> Vec<ModuleItem> {
+    let cm: Lrc<SourceMap> = Default::default();
+    let fm = cm.new_source_file(FileName::Anon.into(), source.to_owned());
+    let mut recovered_errors = Vec::new();
+
+    match parse_file_as_module(
+        &fm,
+        Syntax::Typescript(TsSyntax {
+            decorators: true,
+            tsx: true,
+            ..Default::default()
+        }),
+        Default::default(),
+        None,
+        &mut recovered_errors,
+    ) {
+        Ok(module) if recovered_errors.is_empty() => module.body,
+        _ => vec![ModuleItem::ModuleDecl(create_runtime_import_declaration())],
+    }
 }
 
 fn element_tag_name(name: &JSXElementName) -> String {

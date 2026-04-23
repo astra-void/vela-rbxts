@@ -1,4 +1,4 @@
-import { implementationKind, transform } from "@rbxts-tailwind/compiler";
+import { implementationKind, transform } from "@vela-rbxts/compiler";
 import { expect, expectTypeOf, test } from "vitest";
 import { defaultConfig, defineConfig, SHADES } from "../../config/src/index";
 
@@ -970,7 +970,13 @@ test("rewrites dynamic ClassValue expressions through the runtime wrapper", () =
 
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
-	expect(result.code).toContain("__rbxtsTailwindRuntimeHost");
+	expect(result.code).toContain(
+		'import { createTailwindRuntimeHost } from "@vela-rbxts/runtime";',
+	);
+	expect(result.code).toContain("const RbxtsTailwindRuntimeHost =");
+	expect(result.code).toContain("<RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("rbxts-tailwind/runtime-host");
+	expect(result.code).not.toContain("__rbxtsTailwindRuntimeHost");
 	expect(result.code).toContain("className={[");
 	expect(result.code).toContain('active && "rounded-md"');
 	expect(result.code).not.toContain("unsupported-classname-expression");
@@ -994,7 +1000,13 @@ test("lifts variant-prefixed literal utilities into runtime rules", () => {
 
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
-	expect(result.code).toContain("__rbxtsTailwindRuntimeHost");
+	expect(result.code).toContain(
+		'import { createTailwindRuntimeHost } from "@vela-rbxts/runtime";',
+	);
+	expect(result.code).toContain("const RbxtsTailwindRuntimeHost =");
+	expect(result.code).toContain("<RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("rbxts-tailwind/runtime-host");
+	expect(result.code).not.toContain("__rbxtsTailwindRuntimeHost");
 	expect(result.code).toContain("__rbxtsTailwindRules");
 	expect(result.code).not.toContain(
 		'className="rounded-md md:px-4 portrait:w-80"',
