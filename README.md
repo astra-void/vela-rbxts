@@ -80,38 +80,26 @@ These variants can be used in static literals and are also resolved at runtime w
 
 The compiler currently supports a narrow Tailwind-inspired slice that maps to Roblox UI props.
 
-Implemented classes:
-
-- color utilities: `bg-*`, `text-*`, `image-*`, and `placeholder-*`
-- radius utilities: `rounded-*`
-- spacing utilities: `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, `pl-*`, and `gap-*`
-- size utilities: `w-*`, `h-*`, and `size-*`
-
-Behavior notes:
-
-- color utilities resolve against the config theme and the built-in default palette
-- palette colors require an explicit shade such as `bg-slate-700`
-- semantic singleton colors such as `bg-surface` work when they are defined in project config
-- `transparent` is supported where the Roblox target prop can express transparency
-- `rounded-*` maps to `UICorner.CornerRadius`
-- padding utilities map to `UIPadding`
-- `gap-*` lowers to a `UIListLayout` helper and sets its `Padding` property on supported Roblox host elements
-- `w-*`, `h-*`, and `size-*` lower to `Size` through Roblox-specific `UDim2` values
-- `w-px` and `h-px` map to a one-pixel offset
-- `w-full` and `h-full` map to scale `1` on the relevant axis
-- supported fractions such as `1/2`, `3/4`, and `5/12` map to scale values on the relevant axis
-- spacing-backed numeric tokens resolve through the spacing theme first, then numeric fallback where allowed
-- `fit` is recognized but not lowered; the compiler warns instead of pretending to model Roblox automatic sizing
+| Category | Implemented classes | Notes |
+| --- | --- | --- |
+| Color | `bg-*`, `text-*`, `image-*`, `placeholder-*` | Resolve against config theme and the built-in palette. Palette colors need a shade such as `bg-slate-700`. Semantic singleton colors such as `bg-surface` work when defined in project config. `transparent` is supported where the target prop can express transparency. |
+| Radius | `rounded-*` | Maps to `UICorner.CornerRadius`. |
+| Spacing | `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, `pl-*`, `gap-*` | Padding utilities map to `UIPadding`. `gap-*` lowers to a `UIListLayout` helper on supported Roblox host elements. |
+| Size | `w-*`, `h-*`, `size-*` | Maps to `Size` through Roblox-specific `UDim2` values. `w-px` and `h-px` become a one-pixel offset. `w-full` and `h-full` map to scale `1`. Supported fractions such as `1/2`, `3/4`, and `5/12` map to scale values. |
+| Spacing tokens | numeric spacing keys | Numeric spacing tokens resolve through the spacing theme first, then numeric fallback where allowed. |
+| Special case | `fit` | Recognized but not lowered; the compiler warns instead of pretending to model Roblox automatic sizing. |
 
 ### Not Yet Implemented
 
 These Tailwind-style families are not implemented yet and currently emit diagnostics instead of being lowered.
 
-- layout and positioning: `m-*`, `mx-*`, `my-*`, `mt-*`, `mr-*`, `mb-*`, `ml-*`, `absolute`, `relative`, `top-*`, `right-*`, `bottom-*`, `left-*`, `z-*`
-- flex and grid: `flex-*`, `grid-*`, `items-*`, `justify-*`, `content-*`, `self-*`, `place-*`
-- borders and effects: `border-*`, `ring-*`, `shadow-*`, `opacity-*`, `blur-*`
-- typography and text formatting: `font-*`, `leading-*`, `tracking-*`, `uppercase`, `lowercase`, `capitalize`, and other non-color `text-*` utilities
-- motion and transforms: `transition-*`, `duration-*`, `ease-*`, `animate-*`, `transform`, `scale-*`, `rotate-*`, `translate-*`, `skew-*`
+| Category | Not implemented yet | Notes |
+| --- | --- | --- |
+| Layout and positioning | `m-*`, `mx-*`, `my-*`, `mt-*`, `mr-*`, `mb-*`, `ml-*`, `absolute`, `relative`, `top-*`, `right-*`, `bottom-*`, `left-*`, `z-*` | Emits diagnostics instead of lowering. |
+| Flex and grid | `flex-*`, `grid-*`, `items-*`, `justify-*`, `content-*`, `self-*`, `place-*` | Emits diagnostics instead of lowering. |
+| Borders and effects | `border-*`, `ring-*`, `shadow-*`, `opacity-*`, `blur-*` | Emits diagnostics instead of lowering. |
+| Typography and text formatting | `font-*`, `leading-*`, `tracking-*`, `uppercase`, `lowercase`, `capitalize`, and other non-color `text-*` utilities | Emits diagnostics instead of lowering. |
+| Motion and transforms | `transition-*`, `duration-*`, `ease-*`, `animate-*`, `transform`, `scale-*`, `rotate-*`, `translate-*`, `skew-*` | Emits diagnostics instead of lowering. |
 
 Notes:
 
