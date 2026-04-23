@@ -76,34 +76,51 @@ Supported variants:
 
 These variants can be used in static literals and are also resolved at runtime when a file needs the runtime path.
 
-### Current Utility Behavior
+### Supported Utility Classes
 
-The compiler currently supports a narrow Tailwind-inspired utility slice that maps to the implemented theme families and Roblox UI props.
+The compiler currently supports a narrow Tailwind-inspired slice that maps to Roblox UI props.
 
-Examples:
+Implemented classes:
 
-- shared color utilities map to Roblox color props through the config's preserved color entry shape
-- built-in palette colors such as `bg-slate-700` and `bg-blue-600` resolve directly from the default theme
-- custom singleton colors such as `bg-surface` stay opt-in and resolve only when you define them in project config
-- palette colors require an explicit shade token such as `bg-slate-700`
-- `rounded-*` utilities map to `UICorner.CornerRadius`
-- padding utilities `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, and `pl-*` map to `UIPadding`
+- color utilities: `bg-*`, `text-*`, `image-*`, and `placeholder-*`
+- radius utilities: `rounded-*`
+- spacing utilities: `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, `pl-*`, and `gap-*`
+- size utilities: `w-*`, `h-*`, and `size-*`
+
+Behavior notes:
+
+- color utilities resolve against the config theme and the built-in default palette
+- palette colors require an explicit shade such as `bg-slate-700`
+- semantic singleton colors such as `bg-surface` work when they are defined in project config
+- `transparent` is supported where the Roblox target prop can express transparency
+- `rounded-*` maps to `UICorner.CornerRadius`
+- padding utilities map to `UIPadding`
 - `gap-*` lowers to a `UIListLayout` helper and sets its `Padding` property on supported Roblox host elements
-- sizing utilities `w-*`, `h-*`, and `size-*` map to the direct `Size` prop through offset- or scale-based `UDim2` values
+- `w-*`, `h-*`, and `size-*` lower to `Size` through Roblox-specific `UDim2` values
 - `w-px` and `h-px` map to a one-pixel offset
 - `w-full` and `h-full` map to scale `1` on the relevant axis
-- fraction utilities such as `1/2`, `3/4`, and `5/12` map to scale values on the relevant axis
+- supported fractions such as `1/2`, `3/4`, and `5/12` map to scale values on the relevant axis
+- spacing-backed numeric tokens resolve through the spacing theme first, then numeric fallback where allowed
 - `fit` is recognized but not lowered; the compiler warns instead of pretending to model Roblox automatic sizing
-- spacing-backed numeric tokens continue to resolve through the spacing theme first, then numeric fallback where allowed
-- static arbitrary values are supported only when they are literal and safe, such as `w-[320]`, `h-[48]`, and `rounded-[12]`
 
-### Limits And Warnings
+### Not Yet Implemented
+
+These Tailwind-style families are not implemented yet and currently emit diagnostics instead of being lowered.
+
+- layout and positioning: `m-*`, `mx-*`, `my-*`, `mt-*`, `mr-*`, `mb-*`, `ml-*`, `absolute`, `relative`, `top-*`, `right-*`, `bottom-*`, `left-*`, `z-*`
+- flex and grid: `flex-*`, `grid-*`, `items-*`, `justify-*`, `content-*`, `self-*`, `place-*`
+- borders and effects: `border-*`, `ring-*`, `shadow-*`, `opacity-*`, `blur-*`
+- typography and text formatting: `font-*`, `leading-*`, `tracking-*`, `uppercase`, `lowercase`, `capitalize`, and other non-color `text-*` utilities
+- motion and transforms: `transition-*`, `duration-*`, `ease-*`, `animate-*`, `transform`, `scale-*`, `rotate-*`, `translate-*`, `skew-*`
+
+Notes:
 
 - unsupported utility families emit warnings and are not lowered
 - unknown theme keys emit warnings
 - unsupported `className` patterns still emit diagnostics instead of being silently dropped
-- `gap-*` is currently implemented as a `UIListLayout` helper on supported Roblox host elements, not as a general-purpose CSS gap model
-- width, height, and size utilities are Roblox-specific `UDim2` lowerings, so `fit` is not translated into automatic layout behavior
+- `text-*` color utilities are only valid on `textlabel`, `textbutton`, and `textbox`
+- `image-*` color utilities are only valid on `imagelabel` and `imagebutton`
+- `placeholder-*` color utilities are only valid on `textbox`
 - `className` support is for TSX/React-style usage in the roblox-ts toolchain, not plain Lua
 
 ## Configuration
