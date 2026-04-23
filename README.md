@@ -80,7 +80,12 @@ The current config model supports these theme families:
 - `theme.extend.*` merges into the built-in defaults
 - top-level `theme.*` replaces the final scale for that family
 
-Color families are normalized internally to shade-based palette entries before the compiler sees them. A single literal color is still accepted for authoring, but it is expanded into a normalized palette during config resolution.
+Color families now preserve their authoring shape:
+
+- singleton semantic colors stay single values, such as `surface`, `background`, `foreground`, `muted`, and `card`
+- palette colors stay shade maps, such as `slate`, `gray`, `blue`, and `rose`
+
+That means `bg-surface` resolves directly from a singleton color, while `bg-slate-700` resolves through an explicit palette entry.
 
 ### Supported host elements
 
@@ -113,8 +118,9 @@ The compiler currently supports a narrow Tailwind-inspired utility slice that ma
 
 Examples:
 
-- shared color utilities map to Roblox color props through normalized palette lookup in config output
-- unshaded color tokens such as `bg-surface` use shade `500` as the compatibility bridge
+- shared color utilities map to Roblox color props through the config's preserved color entry shape
+- singleton colors such as `bg-surface` resolve directly without fake shade expansion
+- palette colors require an explicit shade token such as `bg-slate-700`
 - `rounded-*` utilities map to `UICorner.CornerRadius`
 - padding utilities `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, and `pl-*` map to `UIPadding`
 - `gap-*` lowers to a `UIListLayout` helper and sets its `Padding` property on supported Roblox host elements
@@ -158,9 +164,15 @@ import { defineConfig } from "vela-rbxts";
 
 export default defineConfig({
   theme: {
+    colors: {
+      surface: "Color3.fromRGB(40, 48, 66)",
+    },
     extend: {
       colors: {
-        primary: "Color3.fromRGB(99, 102, 241)",
+        slate: {
+          500: "Color3.fromRGB(100, 116, 139)",
+          700: "Color3.fromRGB(71, 85, 105)",
+        },
       },
     },
   },
