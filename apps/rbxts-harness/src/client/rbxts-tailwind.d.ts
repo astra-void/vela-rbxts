@@ -1,1 +1,1 @@
-import "rbxts-tailwind";
+import "vela-rbxts";

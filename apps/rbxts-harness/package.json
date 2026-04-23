@@ -14,12 +14,13 @@
 		"clean": "node -e \"const fs=require('node:fs');fs.rmSync('out',{recursive:true,force:true});\""
 	},
 	"dependencies": {
+		"vela-rbxts": "workspace:*",
+		"@vela-rbxts/runtime": "workspace:*",
 		"@rbxts/react": "^17.3.7-ts.1",
 		"@rbxts/react-roblox": "^17.3.7-ts.1",
 		"@rbxts/services": "^1.6.0"
 	},
 	"devDependencies": {
-		"vela-rbxts": "workspace:*",
 		"@rbxts/compiler-types": "^3.0.0-types.0",
 		"@rbxts/types": "^1.0.916",
 		"roblox-ts": "^3.0.0",

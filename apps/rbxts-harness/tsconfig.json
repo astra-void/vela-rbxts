@@ -15,11 +15,11 @@
 		"skipLibCheck": true,
 		"strict": true,
 		"target": "ESNext",
-		"typeRoots": ["node_modules/@rbxts"],
+		"typeRoots": ["node_modules/@rbxts", "node_modules/@vela-rbxts"],
 		"types": ["types", "compiler-types"],
 		"plugins": [
 			{
-				"transform": "rbxts-tailwind/transformer",
+				"transform": "vela-rbxts/transformer",
 				"type": "program"
 			}
 		],
@@ -27,9 +27,6 @@
 		"rootDir": "src",
 		"outDir": "out",
 		"baseUrl": "src",
-		"paths": {
-			"rbxts-tailwind/runtime-host": ["client/rbxts-tailwind-runtime-host.d.ts"]
-		},
 		"incremental": true,
 		"tsBuildInfoFile": "out/tsconfig.tsbuildinfo"
 	},
