@@ -1,71 +1,37 @@
 # vela-rbxts
 
-`vela-rbxts` is the Tailwind CSS integration layer for [roblox-ts](https://roblox-ts.com/).
-This monorepo contains the compiler, host adapter, shared config/types, and the main consumer package that exposes the public API.
+`vela-rbxts` is a Tailwind-style `className` integration layer for [roblox-ts](https://roblox-ts.com/).
+This monorepo contains the native compiler, the `rbxtsc` host adapter, shared config and type packages, the runtime host, a TypeScript language service plugin, and two harness apps.
 
-## What is implemented now
+## Current Scope
 
-The current utility-class implementation is a focused baseline for Roblox UI styling, not full Tailwind parity.
+The implementation is intentionally narrow and focuses on Roblox UI styling rather than full Tailwind parity.
 
-The current implementation is centered on `className`-driven utility classes for Roblox UI elements.
+- `className?: ClassValue` is added to `React.Attributes` through `vela-rbxts`.
+- Supported TSX files are lowered by the `rbxtsc` transformer when they target supported Roblox host elements.
+- Dynamic `ClassValue` expressions and supported Roblox-oriented variants are rewritten to a generated runtime host when needed.
+- The TypeScript plugin provides completions, hover, and diagnostics in editors.
+- Unsupported utility families and unknown theme keys produce diagnostics instead of being silently ignored.
 
-- `vela-rbxts` augments `React.Attributes` so TSX can accept `className?: ClassValue`.
-- `vela-rbxts/transformer` exposes the TypeScript transformer entry point for `rbxtsc`.
-- `@vela-rbxts/rbxtsc-host` decides which TSX files should be transformed and bridges compiler diagnostics into the host.
-- `@vela-rbxts/compiler` lowers supported utility classes into Roblox UI props and removes the original `className`.
-- `@vela-rbxts/config` provides the default config and `defineConfig()` helper.
-- `@vela-rbxts/core` owns the semantic boundary and supported host element contracts.
-- `@vela-rbxts/types` provides shared public types such as `ClassValue` and `StylableProps`.
+## Packages And Apps
 
-### Implementation progress
-
-Completed in the current slice:
-
-- `className` support on TSX `React.Attributes`
-- host file filtering for `.tsx`, JSX presence, and `className` presence
-- nearest `rbxtw.config.ts` loading with `defineConfig()` support
-- lowering for shared color utilities (`bg-*`, `text-*`, `image-*`, and `placeholder-*`), `rounded-*`, spacing-backed padding utilities, `gap-*` on list-layout helpers, and spacing-backed sizing utilities
-- diagnostics for unsupported utility families, unsupported color keywords, and unknown theme keys
-- transformer entry points for `rbxtsc` and direct host use
-- automatic runtime-aware lowering for dynamic `ClassValue` expressions and supported Roblox-oriented variants
-- v1 editor integration through a TypeScript tsserver plugin backed by the native compiler query APIs
-
-Still incomplete:
-
-- broader Tailwind utility families beyond the current theme-backed slice
-- arbitrary embedded expressions inside bracket literals
-- fuller CSS parity across Roblox UI styling
-- more host-aware lowering rules beyond the current supported element set
-
-## Package responsibilities
-
-| Package | Responsibility |
+| Path | What it does |
 | --- | --- |
-| `vela-rbxts` | Main public package. Re-exports config helpers, the transformer bridge, and shared types. |
-| `vela-rbxts/transformer` | CommonJS transformer entry point for `rbxtsc` and other TypeScript transformer consumers. |
-| `@vela-rbxts/compiler` | Native compiler implementation that resolves and lowers utility classes. |
-| `@vela-rbxts/rbxtsc-host` | Host adapter that filters eligible files, loads project config, and calls the compiler. |
-| `@vela-rbxts/ts-plugin` | Thin TypeScript Language Service Plugin adapter for completions, hover, and semantic diagnostics. |
-| `@vela-rbxts/config` | Tailwind-style config shape, defaults, and config composition helpers. |
-| `@vela-rbxts/core` | Semantic ownership boundary and supported host element tags. |
-| `@vela-rbxts/types` | Shared utility types used across packages and public exports. |
+| `packages/vela-rbxts` | Main public package. Re-exports config helpers, `createTransformer`, shared types, and the `./runtime` and `./transformer` subpath exports. |
+| `packages/compiler` | Native compiler implementation that resolves, validates, and lowers utility classes. |
+| `packages/rbxtsc-host` | Host adapter that filters eligible files, loads project config, and bridges compiler diagnostics into `rbxtsc`. |
+| `packages/ts-plugin` | TypeScript Language Service Plugin for completions, hover, and diagnostics. |
+| `packages/runtime` | Runtime host bundle used when class values need runtime evaluation. |
+| `packages/config` | Config schema, defaults, and `defineConfig()` helper. |
+| `packages/core` | Semantic boundary and supported host element contracts. |
+| `packages/ir` | Internal shared IR and supporting types. |
+| `packages/types` | Shared public utility types such as `ClassValue` and `StylableProps`. |
+| `apps/rbxts-harness` | Roblox-ts consumer harness that exercises the transformer in a real project. |
+| `apps/compiler-harness` | Browser-based preview for the compiler API and diagnostics. |
 
-## Utility class flow
+## Supported Surface
 
-1. A TSX file uses `className` on a supported Roblox host element.
-2. The host adapter checks that the file is eligible:
-   - file extension must be `.tsx`
-   - `.d.ts` and `.d.tsx` files are skipped
-   - `node_modules` files are skipped by default
-   - the source must contain `className`
-   - the source must contain JSX syntax
-3. The host loads the nearest `rbxtw.config.ts` file if one exists, otherwise it falls back to the default config.
-4. The compiler lowers supported static utility classes into Roblox props and strips the original `className` attribute.
-5. If a file uses dynamic `ClassValue` input or supported runtime variants, the host generates an include-scoped runtime artifact and the compiler rewrites the file to use it automatically.
-
-## Supported surface
-
-### Supported theme axes
+### Theme Axes
 
 The current config model supports these theme families:
 
@@ -75,19 +41,19 @@ The current config model supports these theme families:
 
 `spacing` feeds padding, gap, and sizing utilities in the current compiler slice.
 
-`defineConfig()` follows Tailwind-style behavior for the current version:
+`defineConfig()` follows Tailwind-style merge behavior for the current version:
 
 - `theme.extend.*` merges into the built-in defaults
 - top-level `theme.*` replaces the final scale for that family
 
-Color families now preserve their authoring shape:
+Color families preserve their authoring shape:
 
 - singleton semantic colors stay single values, such as `surface`, `background`, `foreground`, `muted`, and `card`
 - palette colors stay shade maps, such as `slate`, `gray`, `blue`, and `rose`
 
 That means `bg-surface` resolves directly from a singleton color, while `bg-slate-700` resolves through an explicit palette entry.
 
-### Supported host elements
+### Supported Host Elements
 
 The semantic boundary currently recognizes these Roblox elements:
 
@@ -100,9 +66,7 @@ The semantic boundary currently recognizes these Roblox elements:
 - `imagelabel`
 - `imagebutton`
 
-### Runtime-aware variants
-
-The first runtime-aware variant slice is Roblox-oriented, not web Tailwind parity.
+### Runtime-Aware Variants
 
 Supported variants:
 
@@ -112,7 +76,7 @@ Supported variants:
 
 These variants can be used in static literals and are also resolved at runtime when a file needs the runtime path.
 
-### Current utility behavior
+### Current Utility Behavior
 
 The compiler currently supports a narrow Tailwind-inspired utility slice that maps to the implemented theme families and Roblox UI props.
 
@@ -132,25 +96,14 @@ Examples:
 - spacing-backed numeric tokens continue to resolve through the spacing theme first, then numeric fallback where allowed
 - static arbitrary values are supported only when they are literal and safe, such as `w-[320]`, `h-[48]`, and `rounded-[12]`
 
-### Static and runtime split
+### Limits And Warnings
 
-The compiler keeps the fast path for pure static literals:
-
-- fully static `className` strings are lowered at compile time as before
-- files that only use static literals do not receive runtime helper injection
-
-When the `className` value is dynamic or contains supported runtime variants:
-
-- the file is rewritten automatically to use the generated runtime host
-- no new user import, wrapper, or setup file is required
-- the generated runtime artifact is placed under `include/vela-rbxts`
-
-Supported behavior includes:
-
-- built-in radius presets such as `rounded-none`, `rounded-sm`, `rounded-md`, `rounded-lg`, `rounded-xl`, `rounded-2xl`, and `rounded-full`
-- numeric spacing fallback for valid spacing values, including spacing-backed size and gap utilities when the resolved spacing value is offset-only
-- explicit theme overrides through config
-- last relevant token wins per axis for width and height utilities
+- unsupported utility families emit warnings and are not lowered
+- unknown theme keys emit warnings
+- unsupported `className` patterns still emit diagnostics instead of being silently dropped
+- `gap-*` is currently implemented as a `UIListLayout` helper on supported Roblox host elements, not as a general-purpose CSS gap model
+- width, height, and size utilities are Roblox-specific `UDim2` lowerings, so `fit` is not translated into automatic layout behavior
+- `className` support is for TSX/React-style usage in the roblox-ts toolchain, not plain Lua
 
 ## Configuration
 
@@ -179,7 +132,7 @@ export default defineConfig({
 });
 ```
 
-## Editor integration
+## Editor Integration
 
 The v1 editor integration is a TypeScript Language Service Plugin. It does not run a standalone LSP server.
 
@@ -235,18 +188,6 @@ export function Example() {
 ```
 
 After transformation, supported utility classes are lowered into Roblox UI props and `className` is removed from the output.
-
-## Limits and warnings
-
-The current implementation is intentionally narrow.
-
-- Unsupported utility families emit warnings and are not lowered.
-- Unknown theme keys emit warnings.
-- truly unsupported `className` patterns still emit diagnostics instead of being silently dropped
-- `gap-*` is currently implemented as a `UIListLayout` helper on supported Roblox host elements, not as a general-purpose CSS gap model.
-- Width, height, and size utilities are Roblox-specific `UDim2` lowerings, so `fit` is not translated into automatic layout behavior.
-- The compiler is still centered on UI element styling, not general CSS parity.
-- `className` support is for TSX/React-style usage in the roblox-ts toolchain, not plain Lua.
 
 ## Commands
 
