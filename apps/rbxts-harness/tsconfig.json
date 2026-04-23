@@ -19,8 +19,7 @@
 		"types": ["types", "compiler-types"],
 		"plugins": [
 			{
-				"transform": "vela-rbxts/transformer",
-				"type": "program"
+				"transform": "vela-rbxts/transformer"
 			}
 		],
 
