@@ -94,11 +94,13 @@ export function resolveThemeColors(
 	override: ColorInputMap | undefined,
 ): ThemeColors {
 	// Tailwind-style rule for v0.1:
-	// - `theme.extend.*` augments the built-in defaults.
-	// - top-level `theme.*` replaces the final scale for that family.
-	const mergedDefaults = mergeColorRegistry(base, extend);
+	// - `theme.colors` replaces the final family set.
+	// - `theme.extend.colors` only augments the inherited defaults.
+	if (override) {
+		return normalizeColorRegistry(override);
+	}
 
-	return override ? normalizeColorRegistry(override) : mergedDefaults;
+	return mergeColorRegistry(base, extend);
 }
 
 export function mergeColorRegistry(
