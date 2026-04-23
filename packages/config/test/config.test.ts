@@ -7,9 +7,22 @@ function expectPalette(value: unknown, entries: Record<string, string>) {
 	expect(value).toEqual(entries);
 }
 
-test("keeps defaults authoring-shaped and preserves singleton colors", () => {
-	expect(defaultsInput.theme.colors.surface).toBe("Color3.fromRGB(40, 48, 66)");
-	expect(defaultConfig.theme.colors.surface).toBe("Color3.fromRGB(40, 48, 66)");
+test("keeps defaults authoring-shaped and uses a Tailwind-style palette", () => {
+	expect(defaultsInput.theme.colors.slate).toEqual(
+		expect.objectContaining({
+			50: "Color3.fromRGB(248, 250, 252)",
+			500: "Color3.fromRGB(98, 116, 142)",
+			950: "Color3.fromRGB(2, 6, 24)",
+		}),
+	);
+	expect(defaultConfig.theme.colors.slate).toEqual(
+		expect.objectContaining({
+			50: "Color3.fromRGB(248, 250, 252)",
+			500: "Color3.fromRGB(98, 116, 142)",
+			950: "Color3.fromRGB(2, 6, 24)",
+		}),
+	);
+	expect(defaultConfig.theme.colors.surface).toBeUndefined();
 });
 
 test("preserves single literal color input as a singleton", () => {
@@ -75,12 +88,13 @@ test("extend colors merge into existing families at shade depth", () => {
 	);
 });
 
-test("extend colors preserve singleton defaults and shade palettes", () => {
+test("extend colors preserve singleton inputs and shade palettes", () => {
 	const config = defineConfig({
 		theme: {
 			extend: {
 				colors: {
-					surface: {
+					surface: "Color3.fromRGB(7, 7, 7)",
+					slate: {
 						700: "Color3.fromRGB(7, 7, 7)",
 					},
 				},
@@ -88,9 +102,12 @@ test("extend colors preserve singleton defaults and shade palettes", () => {
 		},
 	});
 
-	expect(config.theme.colors.surface).toEqual({
-		700: "Color3.fromRGB(7, 7, 7)",
-	});
+	expect(config.theme.colors.surface).toBe("Color3.fromRGB(7, 7, 7)");
+	expect(config.theme.colors.slate).toEqual(
+		expect.objectContaining({
+			700: "Color3.fromRGB(7, 7, 7)",
+		}),
+	);
 });
 
 test("top-level colors replace the final family set", () => {
