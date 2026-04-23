@@ -1,7 +1,7 @@
 # vela-rbxts
 
 `vela-rbxts` is a Tailwind-style `className` integration layer for [roblox-ts](https://roblox-ts.com/).
-This monorepo contains the native compiler, the `rbxtsc` host adapter, shared config and type packages, the runtime host, a TypeScript language service plugin, and two harness apps.
+This monorepo contains the native compiler, the `rbxtsc` host adapter, shared config and type packages, the runtime host, a TypeScript language service plugin, a standalone Rust LSP adapter, and two harness apps.
 
 ## Current Scope
 
@@ -11,6 +11,7 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 - Supported TSX files are lowered by the `rbxtsc` transformer when they target supported Roblox host elements.
 - Dynamic `ClassValue` expressions and supported Roblox-oriented variants are rewritten to a generated runtime host when needed.
 - The TypeScript plugin provides completions, hover, and diagnostics in editors.
+- A standalone Rust LSP server is being introduced under `packages/lsp` as the long-term editor tooling path.
 - Unsupported utility families and unknown theme keys produce diagnostics instead of being silently ignored.
 
 ## Packages And Apps
@@ -19,6 +20,7 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 | --- | --- |
 | `packages/vela-rbxts` | Main public package. Re-exports config helpers, `createTransformer`, shared types, and the `./runtime` and `./transformer` subpath exports. |
 | `packages/compiler` | Native compiler implementation that resolves, validates, and lowers utility classes. |
+| `packages/lsp` | Early standalone Rust stdio LSP server that adapts compiler editor APIs for completions, hover, and diagnostics. |
 | `packages/rbxtsc-host` | Host adapter that filters eligible files, loads project config, and bridges compiler diagnostics into `rbxtsc`. |
 | `packages/ts-plugin` | TypeScript Language Service Plugin for completions, hover, and diagnostics. |
 | `packages/runtime` | Runtime host bundle used when class values need runtime evaluation. |
@@ -143,6 +145,8 @@ export default defineConfig({
 
 The v1 editor integration is a TypeScript Language Service Plugin. It does not run a standalone LSP server.
 
+The new LSP path lives in `packages/lsp` and is intentionally minimal for now. It reuses the native compiler as the semantic engine and only handles transport, document state, and editor protocol translation.
+
 The plugin keeps TypeScript-side responsibilities in TypeScript:
 
 - tsserver lifecycle integration
@@ -171,6 +175,13 @@ When developing from this monorepo, build the compiler native binding and plugin
 ```bash
 pnpm --filter @vela-rbxts/compiler build
 pnpm --filter @vela-rbxts/ts-plugin build
+```
+
+To run the early Rust LSP server directly:
+
+```bash
+cd packages/lsp
+cargo run
 ```
 
 ## Example
