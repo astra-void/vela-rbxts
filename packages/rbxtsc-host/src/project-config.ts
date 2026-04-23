@@ -23,7 +23,7 @@ const { createRequire } = require("node:module") as {
 import type {
 	ColorInputMap,
 	ColorScaleInput,
-	NormalizedColorScale,
+	ColorPalette,
 	TailwindConfig,
 	TailwindConfigInput,
 	ThemeColors,
@@ -204,13 +204,21 @@ function isTailwindConfig(value: unknown): value is TailwindConfig {
 function isThemeColors(value: unknown): value is ThemeColors {
 	return (
 		isRecord(value) &&
-		Object.values(value).every((entry) => isNormalizedColorScale(entry))
+		Object.values(value).every((entry) => isColorValue(entry))
 	);
 }
 
-function isNormalizedColorScale(value: unknown): value is NormalizedColorScale {
+function isColorValue(value: unknown): value is string | ColorPalette {
+	return typeof value === "string" || isColorPalette(value);
+}
+
+function isColorPalette(value: unknown): value is ColorPalette {
 	return (
-		isRecord(value) && SHADES.every((shade) => typeof value[shade] === "string")
+		isRecord(value) &&
+		Object.keys(value).length > 0 &&
+		Object.entries(value).every(
+			([shade, entry]) => SHADES.includes(Number(shade) as (typeof SHADES)[number]) && typeof entry === "string",
+		)
 	);
 }
 
@@ -256,8 +264,7 @@ function isOptionalColorInputMap(
 function isColorScaleInput(value: unknown): value is ColorScaleInput {
 	return (
 		typeof value === "string" ||
-		(isRecord(value) &&
-			Object.values(value).every((entry) => typeof entry === "string"))
+		isColorPalette(value)
 	);
 }
 
