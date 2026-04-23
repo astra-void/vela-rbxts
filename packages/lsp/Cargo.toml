@@ -1,0 +1,12 @@
+[package]
+name = "vela-rbxts-lsp"
+version = "0.1.0"
+edition = "2024"
+description = "Standalone stdio LSP adapter over the vela-rbxts compiler APIs."
+publish = false
+
+[dependencies]
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std"] }
+vela-rbxts-compiler = { path = "../compiler" }
+
