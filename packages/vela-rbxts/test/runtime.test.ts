@@ -38,6 +38,39 @@ vi.mock("@rbxts/services", () => ({
 
 beforeEach(() => {
 	vi.resetModules();
+	Object.defineProperty(String.prototype, "size", {
+		value() {
+			return this.length;
+		},
+		configurable: true,
+	});
+	Object.defineProperty(Array.prototype, "size", {
+		value() {
+			return this.length;
+		},
+		configurable: true,
+	});
+	vi.stubGlobal("string", {
+		sub: (value: string, start: number, stop?: number) =>
+			value.slice(start - 1, stop),
+	});
+	vi.stubGlobal("tonumber", (value: string) => {
+		const numeric = Number(value);
+		return Number.isFinite(numeric) ? numeric : undefined;
+	});
+	vi.stubGlobal("tostring", (value: unknown) => String(value));
+	vi.stubGlobal("typeOf", (value: unknown) => {
+		if (value === undefined) {
+			return "nil";
+		}
+		if (Array.isArray(value) || typeof value === "object") {
+			return "table";
+		}
+		return typeof value;
+	});
+	vi.stubGlobal("pairs", (value: Record<string, unknown>) =>
+		Object.entries(value),
+	);
 	vi.stubGlobal("Color3", {
 		fromRGB: vi.fn((red, green, blue) => ({ red, green, blue })),
 	});

@@ -1,8 +1,8 @@
 import React from "@rbxts/react";
 import { UserInputService, Workspace } from "@rbxts/services";
 
-import type { TailwindConfig } from "@rbxts-tailwind/config";
-import type { ClassValue } from "@rbxts-tailwind/types";
+import type { TailwindConfig } from "@vela-rbxts/config";
+import type { ClassValue } from "@vela-rbxts/types";
 
 type Color3 = object;
 
@@ -23,6 +23,7 @@ declare class UDim2 {
 }
 
 interface RBXScriptConnection {
+	Connected: boolean;
 	Disconnect(): void;
 }
 
@@ -34,6 +35,22 @@ interface Vector2 {
 	X: number;
 	Y: number;
 }
+
+declare const string:
+	| {
+			sub(value: string, start: number, stop?: number): string;
+	  }
+	| undefined;
+declare const tonumber: ((value: string) => number | undefined) | undefined;
+declare const tostring: ((value: unknown) => string) | undefined;
+declare const math:
+	| {
+			abs(value: number): number;
+			floor(value: number): number;
+			round(value: number): number;
+	  }
+	| undefined;
+declare function typeOf(value: unknown): string;
 
 interface RuntimeCamera {
 	ViewportSize: Vector2;
@@ -148,15 +165,12 @@ export type TailwindRuntimeHostProps = {
 export function createTailwindRuntimeHost(config: TailwindConfig) {
 	const theme = normalizeTheme(config);
 
-	return function TailwindRuntimeHost(props: TailwindRuntimeHostProps) {
+	return (props: TailwindRuntimeHostProps) => {
 		const environment = useRuntimeEnvironment();
-		const {
-			__rbxtsTailwindTag,
-			__rbxtsTailwindRules = [],
-			className,
-			children,
-			...rest
-		} = props;
+		const __rbxtsTailwindTag = props.__rbxtsTailwindTag;
+		const __rbxtsTailwindRules = props.__rbxtsTailwindRules ?? [];
+		const className = props.className;
+		const children = props.children;
 
 		const resolution = resolveRuntimeResolution(
 			theme,
@@ -164,20 +178,32 @@ export function createTailwindRuntimeHost(config: TailwindConfig) {
 			__rbxtsTailwindRules as RuntimeRule[],
 			className,
 		);
-		const hostProps: Record<string, unknown> = {
-			...rest,
-			...resolution.props,
-		};
+		const hostProps: Record<string, unknown> = {};
+		for (const [name, value] of pairs(props as Record<string, unknown>)) {
+			if (
+				name !== "__rbxtsTailwindTag" &&
+				name !== "__rbxtsTailwindRules" &&
+				name !== "className" &&
+				name !== "children"
+			) {
+				hostProps[name] = value;
+			}
+		}
+		for (const [name, value] of pairs(resolution.props)) {
+			hostProps[name] = value;
+		}
 		const runtimeChildren = resolution.helpers.map((helper) =>
 			React.createElement(helper.tag, helperToProps(helper.props)),
 		);
+		const allChildren: React.ReactNode[] = [];
+		for (const child of runtimeChildren) {
+			allChildren.push(child);
+		}
+		for (const child of normalizeChildren(children)) {
+			allChildren.push(child);
+		}
 
-		return React.createElement(
-			__rbxtsTailwindTag,
-			hostProps,
-			...runtimeChildren,
-			...normalizeChildren(children),
-		);
+		return React.createElement(__rbxtsTailwindTag, hostProps, ...allChildren);
 	};
 }
 
@@ -190,7 +216,8 @@ function useRuntimeEnvironment(): RuntimeEnvironment {
 	);
 
 	React.useEffect(() => {
-		const updateCamera = () => setCamera(Workspace.CurrentCamera);
+		const updateCamera = () =>
+			setCamera(Workspace.CurrentCamera as RuntimeCamera | undefined);
 		const connection =
 			Workspace.GetPropertyChangedSignal("CurrentCamera").Connect(updateCamera);
 
@@ -274,8 +301,8 @@ function normalizeColorRegistry(
 ): Record<string, RuntimeColorScale> {
 	const normalized: Record<string, RuntimeColorScale> = {};
 
-	for (const key in registry) {
-		normalized[key] = normalizeColorScale(registry[key]);
+	for (const [key, value] of pairs(registry)) {
+		normalized[key] = normalizeColorScale(value);
 	}
 
 	return normalized;
@@ -284,8 +311,8 @@ function normalizeColorRegistry(
 function normalizeColorScale(scale: Record<string, string>): RuntimeColorScale {
 	const normalized: RuntimeColorScale = {};
 
-	for (const key in scale) {
-		const value = parseColor3(scale[key]);
+	for (const [key, entry] of pairs(scale)) {
+		const value = parseColor3(entry);
 		if (value) {
 			normalized[key] = value;
 		}
@@ -299,8 +326,8 @@ function normalizeRadiusScale(
 ): Record<string, UDim> {
 	const normalized: Record<string, UDim> = {};
 
-	for (const key in scale) {
-		normalized[key] = parseUDim(scale[key]) ?? new UDim(0, 0);
+	for (const [key, value] of pairs(scale)) {
+		normalized[key] = parseUDim(value) ?? new UDim(0, 0);
 	}
 
 	return normalized;
@@ -311,8 +338,8 @@ function normalizeSpacingScale(
 ): Record<string, UDim> {
 	const normalized: Record<string, UDim> = {};
 
-	for (const key in scale) {
-		normalized[key] = parseUDim(scale[key]) ?? new UDim(0, 0);
+	for (const [key, value] of pairs(scale)) {
+		normalized[key] = parseUDim(value) ?? new UDim(0, 0);
 	}
 
 	return normalized;
@@ -352,7 +379,7 @@ function applyToken(
 		return;
 	}
 
-	const segments = token.split(":");
+	const segments = splitBy(token, ":");
 	const utility = segments.pop();
 	if (!utility) {
 		return;
@@ -424,8 +451,8 @@ function resolveUtilityToken(
 	theme: RuntimeTheme,
 	token: string,
 ): RuntimeResolvedEffectBundle | undefined {
-	if (token.startsWith("bg-")) {
-		const key = token.slice(3);
+	if (startsWith(token, "bg-")) {
+		const key = substring(token, 3);
 		const [colorName, shade] = splitColorKey(key);
 		if (colorName === "transparent") {
 			return {
@@ -445,8 +472,8 @@ function resolveUtilityToken(
 		};
 	}
 
-	if (token.startsWith("rounded-")) {
-		const key = token.slice("rounded-".length);
+	if (startsWith(token, "rounded-")) {
+		const key = substring(token, stringLength("rounded-"));
 		const value = resolveRadiusValue(theme, key);
 		if (!value) {
 			return undefined;
@@ -463,8 +490,8 @@ function resolveUtilityToken(
 		};
 	}
 
-	if (token.startsWith("p-")) {
-		const key = token.slice(2);
+	if (startsWith(token, "p-")) {
+		const key = substring(token, 2);
 		const value = resolveSpacingValue(theme, key);
 		if (!value) {
 			return undefined;
@@ -486,8 +513,8 @@ function resolveUtilityToken(
 		};
 	}
 
-	if (token.startsWith("px-")) {
-		const key = token.slice(3);
+	if (startsWith(token, "px-")) {
+		const key = substring(token, 3);
 		const value = resolveSpacingValue(theme, key);
 		if (!value) {
 			return undefined;
@@ -507,8 +534,8 @@ function resolveUtilityToken(
 		};
 	}
 
-	if (token.startsWith("py-")) {
-		const key = token.slice(3);
+	if (startsWith(token, "py-")) {
+		const key = substring(token, 3);
 		const value = resolveSpacingValue(theme, key);
 		if (!value) {
 			return undefined;
@@ -528,8 +555,8 @@ function resolveUtilityToken(
 		};
 	}
 
-	if (token.startsWith("pt-")) {
-		const key = token.slice(3);
+	if (startsWith(token, "pt-")) {
+		const key = substring(token, 3);
 		const value = resolveSpacingValue(theme, key);
 		if (!value) {
 			return undefined;
@@ -546,8 +573,8 @@ function resolveUtilityToken(
 		};
 	}
 
-	if (token.startsWith("pr-")) {
-		const key = token.slice(3);
+	if (startsWith(token, "pr-")) {
+		const key = substring(token, 3);
 		const value = resolveSpacingValue(theme, key);
 		if (!value) {
 			return undefined;
@@ -564,8 +591,8 @@ function resolveUtilityToken(
 		};
 	}
 
-	if (token.startsWith("pb-")) {
-		const key = token.slice(3);
+	if (startsWith(token, "pb-")) {
+		const key = substring(token, 3);
 		const value = resolveSpacingValue(theme, key);
 		if (!value) {
 			return undefined;
@@ -582,8 +609,8 @@ function resolveUtilityToken(
 		};
 	}
 
-	if (token.startsWith("pl-")) {
-		const key = token.slice(3);
+	if (startsWith(token, "pl-")) {
+		const key = substring(token, 3);
 		const value = resolveSpacingValue(theme, key);
 		if (!value) {
 			return undefined;
@@ -600,8 +627,8 @@ function resolveUtilityToken(
 		};
 	}
 
-	if (token.startsWith("gap-")) {
-		const key = token.slice(4);
+	if (startsWith(token, "gap-")) {
+		const key = substring(token, 4);
 		const value = resolveSpacingValue(theme, key);
 		if (!value) {
 			return undefined;
@@ -618,34 +645,34 @@ function resolveUtilityToken(
 		};
 	}
 
-	if (token.startsWith("w-")) {
-		const key = token.slice(2);
+	if (startsWith(token, "w-")) {
+		const key = substring(token, 2);
 		const value = resolveSizeAxisValue(theme, key);
 		if (!value) {
 			return undefined;
 		}
 
 		return {
-			props: [{ name: "Size", value: formatSizeProp(value, null) }],
+			props: [{ name: "Size", value: formatSizeProp(value, undefined) }],
 			helpers: [],
 		};
 	}
 
-	if (token.startsWith("h-")) {
-		const key = token.slice(2);
+	if (startsWith(token, "h-")) {
+		const key = substring(token, 2);
 		const value = resolveSizeAxisValue(theme, key);
 		if (!value) {
 			return undefined;
 		}
 
 		return {
-			props: [{ name: "Size", value: formatSizeProp(null, value) }],
+			props: [{ name: "Size", value: formatSizeProp(undefined, value) }],
 			helpers: [],
 		};
 	}
 
-	if (token.startsWith("size-")) {
-		const key = token.slice("size-".length);
+	if (startsWith(token, "size-")) {
+		const key = substring(token, stringLength("size-"));
 		const value = resolveSizeAxisValue(theme, key);
 		if (!value) {
 			return undefined;
@@ -661,14 +688,14 @@ function resolveUtilityToken(
 }
 
 function splitColorKey(key: string): [string, string] {
-	const lastDash = key.lastIndexOf("-");
+	const lastDash = lastIndexOf(key, "-");
 	if (lastDash === -1) {
 		return [key, "500"];
 	}
 
-	const suffix = key.slice(lastDash + 1);
+	const suffix = substring(key, lastDash + 1);
 	if (isColorShade(suffix)) {
-		return [key.slice(0, lastDash), suffix];
+		return [substring(key, 0, lastDash), suffix];
 	}
 
 	return [key, "500"];
@@ -762,12 +789,12 @@ function resolveArbitrarySizeValue(
 }
 
 function resolveNumericSpacingValue(key: string): UDim | undefined {
-	if (key.startsWith("-") || key.startsWith("+")) {
+	if (startsWith(key, "-") || startsWith(key, "+")) {
 		return undefined;
 	}
 
-	const numeric = Number(key);
-	if (!Number.isFinite(numeric) || numeric < 0) {
+	const numeric = toNumber(key);
+	if (numeric === undefined || numeric < 0) {
 		return undefined;
 	}
 
@@ -779,14 +806,14 @@ function resolveNumericSpacingValue(key: string): UDim | undefined {
 }
 
 function resolveFractionScale(key: string): number | undefined {
-	const [numeratorText, denominatorText] = key.split("/");
+	const [numeratorText, denominatorText] = splitOnce(key, "/");
 	if (denominatorText === undefined) {
 		return undefined;
 	}
 
-	const numerator = Number(numeratorText);
-	const denominator = Number(denominatorText);
-	if (!Number.isFinite(numerator) || !Number.isFinite(denominator)) {
+	const numerator = toNumber(numeratorText);
+	const denominator = toNumber(denominatorText);
+	if (numerator === undefined || denominator === undefined) {
 		return undefined;
 	}
 
@@ -794,8 +821,8 @@ function resolveFractionScale(key: string): number | undefined {
 		return undefined;
 	}
 
-	const wholeNumerator = Math.floor(numerator);
-	const wholeDenominator = Math.floor(denominator);
+	const wholeNumerator = mathFloor(numerator);
+	const wholeDenominator = mathFloor(denominator);
 	const isSupported =
 		(wholeDenominator === 2 && wholeNumerator === 1) ||
 		(wholeDenominator === 3 &&
@@ -819,8 +846,8 @@ function resolveFractionScale(key: string): number | undefined {
 }
 
 function formatSizeProp(
-	width: { scale: number; offset: number } | null,
-	height: { scale: number; offset: number } | null,
+	width: { scale: number; offset: number } | undefined,
+	height: { scale: number; offset: number } | undefined,
 ): UDim2 {
 	const resolvedWidth = width ?? { scale: 0, offset: 0 };
 	const resolvedHeight = height ?? { scale: 0, offset: 0 };
@@ -842,13 +869,13 @@ function formatSizeProp(
 }
 
 function parseBracketNumericValue(key: string): number | undefined {
-	if (!key.startsWith("[") || !key.endsWith("]")) {
+	if (!startsWith(key, "[") || !endsWith(key, "]")) {
 		return undefined;
 	}
 
-	const value = key.slice(1, -1);
-	const numeric = Number(value);
-	if (!Number.isFinite(numeric) || numeric < 0) {
+	const value = substring(key, 1, -1);
+	const numeric = toNumber(value);
+	if (numeric === undefined || numeric < 0) {
 		return undefined;
 	}
 
@@ -856,18 +883,21 @@ function parseBracketNumericValue(key: string): number | undefined {
 }
 
 function parseColor3(value: string): Color3 | undefined {
-	const match = value.match(
-		/^Color3\.fromRGB\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/,
-	);
-	if (!match) {
+	const args = parseCallArguments(value, "Color3.fromRGB(", ")");
+	if (!args || arraySize(args) !== 3) {
 		return undefined;
 	}
 
-	const red = Number(match[1]);
-	const green = Number(match[2]);
-	const blue = Number(match[3]);
+	const red = toNumber(args[0]);
+	const green = toNumber(args[1]);
+	const blue = toNumber(args[2]);
 
-	if (![red, green, blue].every((channel) => channel >= 0 && channel <= 255)) {
+	if (
+		red === undefined ||
+		green === undefined ||
+		blue === undefined ||
+		![red, green, blue].every((channel) => channel >= 0 && channel <= 255)
+	) {
 		return undefined;
 	}
 
@@ -875,47 +905,45 @@ function parseColor3(value: string): Color3 | undefined {
 }
 
 function parseUDim(value: string): UDim | undefined {
-	const match = value.match(
-		/^new UDim\(\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*\)$/,
-	);
-	if (!match) {
+	const args = parseCallArguments(value, "new UDim(", ")");
+	if (!args || arraySize(args) !== 2) {
 		return undefined;
 	}
 
-	return new UDim(Number(match[1]) || 0, Number(match[2]) || 0);
+	return new UDim(toNumber(args[0]) ?? 0, toNumber(args[1]) ?? 0);
 }
 
 function normalizeClassValue(value: ClassValue | undefined): string[] {
 	const tokens: string[] = [];
 
 	const visit = (entry: ClassValue | undefined): void => {
-		if (entry === undefined || entry === null || entry === false) {
+		if (entry === undefined || entry === false) {
 			return;
 		}
 
-		if (typeof entry === "string" || typeof entry === "number") {
-			for (const token of String(entry).split(/\s+/)) {
-				if (token.length > 0) {
+		if (typeOf(entry) === "string" || typeOf(entry) === "number") {
+			for (const token of splitWhitespace(toText(entry as string | number))) {
+				if (stringLength(token) > 0) {
 					tokens.push(token);
 				}
 			}
 			return;
 		}
 
-		if (typeof entry === "boolean") {
+		if (typeOf(entry) === "boolean") {
 			return;
 		}
 
-		if (Array.isArray(entry)) {
-			for (const item of entry) {
+		if (isArrayValue(entry)) {
+			for (const item of entry as ClassValue[]) {
 				visit(item as ClassValue);
 			}
 			return;
 		}
 
-		if (typeof entry === "object") {
-			for (const key in entry as Record<string, unknown>) {
-				if ((entry as Record<string, unknown>)[key]) {
+		if (typeOf(entry) === "table") {
+			for (const [key, value] of pairs(entry as Record<string, unknown>)) {
+				if (value) {
 					tokens.push(key);
 				}
 			}
@@ -929,7 +957,7 @@ function normalizeClassValue(value: ClassValue | undefined): string[] {
 function normalizeChildren(
 	children: React.ReactNode | undefined,
 ): React.ReactNode[] {
-	if (children === undefined || children === null || children === false) {
+	if (children === undefined || children === false) {
 		return [];
 	}
 
@@ -937,10 +965,12 @@ function normalizeChildren(
 		return [];
 	}
 
-	if (Array.isArray(children)) {
+	if (isArrayValue(children)) {
 		const flattened: React.ReactNode[] = [];
-		for (const child of children) {
-			flattened.push(...normalizeChildren(child));
+		for (const child of children as React.ReactNode[]) {
+			for (const normalizedChild of normalizeChildren(child)) {
+				flattened.push(normalizedChild);
+			}
 		}
 		return flattened;
 	}
@@ -1049,7 +1079,7 @@ function helperToProps(props: RuntimeHelperProp[]): Record<string, unknown> {
 }
 
 function parseRuntimePropValue(value: string): RuntimePropValue {
-	const trimmed = value.trim();
+	const trimmed = trim(value);
 
 	const color = parseColor3(trimmed);
 	if (color) {
@@ -1074,8 +1104,8 @@ function parseRuntimePropValue(value: string): RuntimePropValue {
 		return false;
 	}
 
-	const numeric = Number(trimmed);
-	if (Number.isFinite(numeric) && trimmed.length > 0) {
+	const numeric = toNumber(trimmed);
+	if (numeric !== undefined && stringLength(trimmed) > 0) {
 		return numeric;
 	}
 
@@ -1083,42 +1113,204 @@ function parseRuntimePropValue(value: string): RuntimePropValue {
 }
 
 function parseUDim2(value: string): UDim2 | undefined {
-	const fromOffset = value.match(
-		/^UDim2\.fromOffset\(\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*\)$/,
-	);
-	if (fromOffset) {
+	const fromOffset = parseCallArguments(value, "UDim2.fromOffset(", ")");
+	if (fromOffset && arraySize(fromOffset) === 2) {
 		return UDim2.fromOffset(
-			Number(fromOffset[1]) || 0,
-			Number(fromOffset[2]) || 0,
+			toNumber(fromOffset[0]) ?? 0,
+			toNumber(fromOffset[1]) ?? 0,
 		);
 	}
 
-	const fromScale = value.match(
-		/^UDim2\.fromScale\(\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*\)$/,
-	);
-	if (fromScale) {
+	const fromScale = parseCallArguments(value, "UDim2.fromScale(", ")");
+	if (fromScale && arraySize(fromScale) === 2) {
 		return UDim2.fromScale(
-			Number(fromScale[1]) || 0,
-			Number(fromScale[2]) || 0,
+			toNumber(fromScale[0]) ?? 0,
+			toNumber(fromScale[1]) ?? 0,
 		);
 	}
 
-	const constructed = value.match(
-		/^UDim2\.new\(\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+))\s*\)$/,
-	);
-	if (!constructed) {
+	const constructed = parseCallArguments(value, "UDim2.new(", ")");
+	if (!constructed || arraySize(constructed) !== 4) {
 		return undefined;
 	}
 
 	return new UDim2(
-		Number(constructed[1]) || 0,
-		Number(constructed[2]) || 0,
-		Number(constructed[3]) || 0,
-		Number(constructed[4]) || 0,
+		toNumber(constructed[0]) ?? 0,
+		toNumber(constructed[1]) ?? 0,
+		toNumber(constructed[2]) ?? 0,
+		toNumber(constructed[3]) ?? 0,
 	);
 }
 
 function isWholeNumber(value: number): boolean {
-	const rounded = Math.round(value);
-	return Math.abs(value - rounded) < 1e-9;
+	const rounded = mathRound(value);
+	return mathAbs(value - rounded) < 1e-9;
+}
+
+function stringLength(value: string): number {
+	return (value as unknown as { size(): number }).size();
+}
+
+function startsWith(value: string, prefix: string): boolean {
+	return substring(value, 0, stringLength(prefix)) === prefix;
+}
+
+function endsWith(value: string, suffix: string): boolean {
+	const suffixLength = stringLength(suffix);
+	return substring(value, stringLength(value) - suffixLength) === suffix;
+}
+
+function substring(value: string, start: number, stop?: number): string {
+	const resolvedStop =
+		stop === undefined
+			? undefined
+			: stop < 0
+				? stringLength(value) + stop
+				: stop;
+	if (string) {
+		return string.sub(value, start + 1, resolvedStop);
+	}
+
+	return value;
+}
+
+function lastIndexOf(value: string, needle: string): number {
+	for (
+		let index = stringLength(value) - stringLength(needle);
+		index >= 0;
+		index--
+	) {
+		if (substring(value, index, index + stringLength(needle)) === needle) {
+			return index;
+		}
+	}
+
+	return -1;
+}
+
+function trim(value: string): string {
+	let start = 0;
+	let stop = stringLength(value);
+
+	while (start < stop && isWhitespace(substring(value, start, start + 1))) {
+		start++;
+	}
+
+	while (stop > start && isWhitespace(substring(value, stop - 1, stop))) {
+		stop--;
+	}
+
+	return substring(value, start, stop);
+}
+
+function splitWhitespace(value: string): string[] {
+	const tokens: string[] = [];
+	let tokenStart: number | undefined;
+	const length = stringLength(value);
+
+	for (let index = 0; index < length; index++) {
+		const character = substring(value, index, index + 1);
+		if (isWhitespace(character)) {
+			if (tokenStart !== undefined) {
+				tokens.push(substring(value, tokenStart, index));
+				tokenStart = undefined;
+			}
+		} else if (tokenStart === undefined) {
+			tokenStart = index;
+		}
+	}
+
+	if (tokenStart !== undefined) {
+		tokens.push(substring(value, tokenStart));
+	}
+
+	return tokens;
+}
+
+function splitBy(value: string, separator: string): string[] {
+	const pieces: string[] = [];
+	let pieceStart = 0;
+	const length = stringLength(value);
+	const separatorLength = stringLength(separator);
+
+	for (let index = 0; index <= length - separatorLength; index++) {
+		if (substring(value, index, index + separatorLength) === separator) {
+			pieces.push(substring(value, pieceStart, index));
+			pieceStart = index + separatorLength;
+			index = pieceStart - 1;
+		}
+	}
+
+	pieces.push(substring(value, pieceStart));
+	return pieces;
+}
+
+function splitOnce(
+	value: string,
+	separator: string,
+): [string, string | undefined] {
+	const separatorLength = stringLength(separator);
+	for (let index = 0; index <= stringLength(value) - separatorLength; index++) {
+		if (substring(value, index, index + separatorLength) === separator) {
+			return [
+				substring(value, 0, index),
+				substring(value, index + separatorLength),
+			];
+		}
+	}
+
+	return [value, undefined];
+}
+
+function parseCallArguments(
+	value: string,
+	prefix: string,
+	suffix: string,
+): string[] | undefined {
+	if (!startsWith(value, prefix) || !endsWith(value, suffix)) {
+		return undefined;
+	}
+
+	const body = substring(value, stringLength(prefix), -stringLength(suffix));
+	return splitBy(body, ",").map((entry) => trim(entry));
+}
+
+function isWhitespace(value: string): boolean {
+	return value === " " || value === "\t" || value === "\n" || value === "\r";
+}
+
+function toText(value: string | number): string {
+	return tostring?.(value) ?? "";
+}
+
+function toNumber(value: string): number | undefined {
+	const numeric = tonumber?.(value);
+
+	if (numeric === undefined || Number.isNaN(numeric)) {
+		return undefined;
+	}
+
+	return numeric;
+}
+
+function mathAbs(value: number): number {
+	return value < 0 ? -value : value;
+}
+
+function mathFloor(value: number): number {
+	const remainder = value % 1;
+	const truncated = value - remainder;
+	return value < 0 && remainder !== 0 ? truncated - 1 : truncated;
+}
+
+function mathRound(value: number): number {
+	return mathFloor(value + 0.5);
+}
+
+function isArrayValue(value: unknown): boolean {
+	return typeOf(value) === "table" && arraySize(value as unknown[]) > 0;
+}
+
+function arraySize<T>(value: T[]): number {
+	return (value as unknown as { size(): number }).size();
 }

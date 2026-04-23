@@ -1,18 +1,17 @@
-import type { ClassValue } from "@rbxts-tailwind/types";
+import type { ClassValue } from "@vela-rbxts/types";
 
 export {
 	defaultConfig,
 	defineConfig,
 	type TailwindConfig,
 	type TailwindConfigInput,
-} from "@rbxts-tailwind/config";
+} from "@vela-rbxts/config";
 
-export { createRbxtscTransformerBridge as createTransformer } from "@rbxts-tailwind/rbxtsc-host";
-
+export { createRbxtscTransformerBridge as createTransformer } from "@vela-rbxts/rbxtsc-host";
 export type {
 	ClassValue,
 	StylableProps,
-} from "@rbxts-tailwind/types";
+} from "@vela-rbxts/types";
 
 declare global {
 	namespace React {

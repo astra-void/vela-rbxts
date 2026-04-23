@@ -1,6 +1,6 @@
 import {
 	createRbxtsTailwindProgramTransformer,
-} from "@rbxts-tailwind/rbxtsc-host";
+} from "@vela-rbxts/rbxtsc-host";
 
 export {
 	createRbxtsTailwindProgramTransformer as createTransformer,
