@@ -1,0 +1,31 @@
+{
+  "name": "@vela-rbxts/ts-plugin",
+  "version": "0.1.0",
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "lint": "biome check .",
+    "lint:fix": "biome check . --fix --unsafe",
+    "test": "vitest run test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});\""
+  },
+  "dependencies": {
+    "@vela-rbxts/compiler": "workspace:*",
+    "@vela-rbxts/config": "workspace:*",
+    "@vela-rbxts/core": "workspace:*",
+    "@vela-rbxts/rbxtsc-host": "workspace:*"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  }
+}
