@@ -307,7 +307,8 @@ test("returns vela completion details only for branded completion entries", () =
 		{
 			__velaRbxts: true,
 			label: "bg-slate-500",
-			documentation: "Set Roblox BackgroundColor3 from theme color `slate-500`.",
+			documentation:
+				"Set Roblox BackgroundColor3 from theme color `slate-500`.",
 		} as unknown as ts.CompletionEntryData,
 	);
 
