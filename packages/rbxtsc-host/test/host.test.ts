@@ -319,7 +319,7 @@ function createProject(configFileText?: string): {
 	root: string;
 	runtimeArtifactPath: string;
 } {
-	const root = fs.mkdtempSync(path.join(os.tmpdir(), "rbxtw-host-"));
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "vela-rbxts-host-"));
 	const sourceFile = path.join(root, "src", "client", "App.tsx");
 	fs.mkdirSync(path.dirname(sourceFile), { recursive: true });
 
@@ -337,7 +337,7 @@ function createProject(configFileText?: string): {
 		runtimeArtifactPath: path.join(
 			root,
 			"include",
-			"rbxts-tailwind",
+			"vela-rbxts",
 			"runtime-host.ts",
 		),
 	};

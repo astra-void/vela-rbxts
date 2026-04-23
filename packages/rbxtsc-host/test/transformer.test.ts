@@ -223,7 +223,7 @@ function createProject(): {
 		runtimeArtifactPath: path.join(
 			root,
 			"include",
-			"rbxts-tailwind",
+			"vela-rbxts",
 			"runtime-host.ts",
 		),
 	};
