@@ -1,7 +1,7 @@
-import type { TailwindConfig } from "@rbxts-tailwind/config";
-import type { StyleIR } from "@rbxts-tailwind/ir";
+import type { TailwindConfig } from "@vela-rbxts/config";
+import type { StyleIR } from "@vela-rbxts/ir";
 
-export const SEMANTIC_OWNER_PACKAGE = "@rbxts-tailwind/compiler" as const;
+export const SEMANTIC_OWNER_PACKAGE = "@vela-rbxts/compiler" as const;
 export const SEMANTIC_OWNER_RUNTIME = "rust-swc-napi" as const;
 
 export type SemanticOwnership = {
@@ -11,7 +11,7 @@ export type SemanticOwnership = {
 };
 
 // Core declares shared semantic boundaries only.
-// Executable semantic resolution lives exclusively in @rbxts-tailwind/compiler.
+// Executable semantic resolution lives exclusively in @vela-rbxts/compiler.
 export const semanticOwnership: SemanticOwnership = {
 	ownerPackage: SEMANTIC_OWNER_PACKAGE,
 	runtime: SEMANTIC_OWNER_RUNTIME,
