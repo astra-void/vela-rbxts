@@ -7,25 +7,28 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "paths": {
-      "@rbxts-tailwind/config": [
+      "@vela-rbxts/config": [
         "./packages/config/src/index.ts"
       ],
-      "rbxts-tailwind": [
-        "./packages/rbxts-tailwind/src/index.ts"
+      "vela-rbxts": [
+        "./packages/vela-rbxts/src/index.ts"
       ],
-      "@rbxts-tailwind/core": [
+      "vela-rbxts/runtime": [
+        "./packages/vela-rbxts/src/runtime.ts"
+      ],
+      "@vela-rbxts/core": [
         "./packages/core/src/index.ts"
       ],
-      "@rbxts-tailwind/compiler": [
+      "@vela-rbxts/compiler": [
         "./packages/compiler"
       ],
-      "@rbxts-tailwind/ir": [
+      "@vela-rbxts/ir": [
         "./packages/ir/src/index.ts"
       ],
-      "@rbxts-tailwind/rbxtsc-host": [
+      "@vela-rbxts/rbxtsc-host": [
         "./packages/rbxtsc-host/src/index.ts"
       ],
-      "@rbxts-tailwind/types": [
+      "@vela-rbxts/types": [
         "./packages/types/src/index.ts"
       ]
     },

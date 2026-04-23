@@ -7,6 +7,7 @@
       ],
       "outputs": [
         "dist/**",
+        "out/**",
         "!dist/.tsbuildinfo"
       ]
     },
