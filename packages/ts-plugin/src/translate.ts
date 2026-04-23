@@ -5,6 +5,29 @@ import type {
 } from "@vela-rbxts/compiler";
 import type ts from "typescript/lib/tsserverlibrary";
 
+export const VELA_RBXTS_COMPLETION_SOURCE = "vela-rbxts";
+
+type VelaRbxtsCompletionData = {
+	__velaRbxts: true;
+	label: string;
+	documentation: string;
+};
+
+export function isVelaRbxtsCompletionData(
+	value: unknown,
+): value is VelaRbxtsCompletionData {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		"__velaRbxts" in value &&
+		(value as { __velaRbxts?: unknown }).__velaRbxts === true &&
+		"label" in value &&
+		typeof (value as { label?: unknown }).label === "string" &&
+		"documentation" in value &&
+		typeof (value as { documentation?: unknown }).documentation === "string"
+	);
+}
+
 export function toCompletionEntry(
 	typescript: typeof ts,
 	item: CompletionItem,
@@ -18,8 +41,10 @@ export function toCompletionEntry(
 		replacementSpan: item.replacement
 			? toTextSpan(item.replacement.start, item.replacement.end)
 			: undefined,
-		source: "rbxts-tailwind",
+		source: VELA_RBXTS_COMPLETION_SOURCE,
 		data: {
+			__velaRbxts: true,
+			label: item.label,
 			documentation: item.documentation,
 		} as unknown as ts.CompletionEntryData,
 	};
@@ -94,7 +119,7 @@ export function toTsDiagnostic(
 				? typescript.DiagnosticCategory.Error
 				: typescript.DiagnosticCategory.Warning,
 		code: diagnosticCode(diagnostic.code),
-		source: "rbxts-tailwind",
+		source: VELA_RBXTS_COMPLETION_SOURCE,
 		messageText: diagnostic.message,
 	};
 }
