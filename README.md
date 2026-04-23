@@ -46,12 +46,12 @@ The current config model supports these theme families:
 - `theme.extend.*` merges into the built-in defaults
 - top-level `theme.*` replaces the final scale for that family
 
-Color families preserve their authoring shape:
+Built-in color defaults follow Tailwind-style palettes.
 
-- singleton semantic colors stay single values, such as `surface`, `background`, `foreground`, `muted`, and `card`
-- palette colors stay shade maps, such as `slate`, `gray`, `blue`, and `rose`
+- palette families stay shade maps, such as `slate`, `gray`, `blue`, and `rose`
+- custom singleton semantic colors can still be defined in `theme.colors` or `theme.extend.colors`
 
-That means `bg-surface` resolves directly from a singleton color, while `bg-slate-700` resolves through an explicit palette entry.
+That means `bg-slate-700` resolves from the built-in palette, while `bg-surface` only resolves after you define `surface` in your config.
 
 ### Supported Host Elements
 
@@ -83,7 +83,8 @@ The compiler currently supports a narrow Tailwind-inspired utility slice that ma
 Examples:
 
 - shared color utilities map to Roblox color props through the config's preserved color entry shape
-- singleton colors such as `bg-surface` resolve directly without fake shade expansion
+- built-in palette colors such as `bg-slate-700` and `bg-blue-600` resolve directly from the default theme
+- custom singleton colors such as `bg-surface` stay opt-in and resolve only when you define them in project config
 - palette colors require an explicit shade token such as `bg-slate-700`
 - `rounded-*` utilities map to `UICorner.CornerRadius`
 - padding utilities `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, and `pl-*` map to `UIPadding`
@@ -122,9 +123,9 @@ export default defineConfig({
     },
     extend: {
       colors: {
-        slate: {
-          500: "Color3.fromRGB(100, 116, 139)",
-          700: "Color3.fromRGB(71, 85, 105)",
+        brand: {
+          500: "Color3.fromRGB(59, 130, 246)",
+          700: "Color3.fromRGB(29, 78, 216)",
         },
       },
     },
@@ -179,7 +180,7 @@ export default defineConfig();
 // src/client/App.tsx
 export function Example() {
   return (
-    <frame className="bg-surface rounded-md px-4 py-3 w-80 h-27 gap-4">
+    <frame className="bg-slate-700 rounded-md px-4 py-3 w-80 h-27 gap-4">
       <textlabel Text="rbxts consumer harness" TextScaled TextWrapped />
       <textlabel Text="layout and spacing baseline" TextScaled TextWrapped />
     </frame>
