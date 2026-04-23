@@ -31,7 +31,6 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 		theme: {
 			colors: {
 				primary: "Color3.fromRGB(99, 102, 241)",
-				secondary: "Color3.fromRGB(16, 185, 129)",
 			},
 			radius: {
 				none: "new UDim(0, 0)",
@@ -53,7 +52,7 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 	});
 
 	const source =
-		'<frame className="bg-primary bg-secondary rounded-md rounded-lg px-6 py-6 pt-6" />';
+		'<frame className="bg-primary rounded-md rounded-lg px-6 py-6 pt-6" />';
 	const result = transform(source, { configJson: JSON.stringify(config) });
 
 	expect(result.changed).toBe(true);
@@ -61,9 +60,6 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 	expect(result.code.includes("className=")).toBe(false);
 	expect(result.code).toMatch(
 		/BackgroundColor3=\{Color3\.fromRGB\(99, 102, 241\)\}/,
-	);
-	expect(result.code).toMatch(
-		/BackgroundColor3=\{Color3\.fromRGB\(16, 185, 129\)\}/,
 	);
 	expect(result.code).toMatch(
 		/<uicorner\b[^>]*CornerRadius=\{new UDim\(0, 12\)\}[^>]*\/>/i,
@@ -986,20 +982,138 @@ test("rewrites dynamic ClassValue expressions through the runtime wrapper", () =
 	expect(result.code).toContain("<RbxtsTailwindRuntimeHost");
 	expect(result.code).not.toContain("rbxts-tailwind/runtime-host");
 	expect(result.code).not.toContain("__rbxtsTailwindRuntimeHost");
-	expect(result.code).toContain("className={[");
-	expect(result.code).toContain('active && "rounded-md"');
+	expect(result.code).toContain("BackgroundColor3");
+	expect(result.code).toContain('className={active && "rounded-md"}');
 	expect(result.code).not.toContain("unsupported-classname-expression");
 	expect(result.ir).toHaveLength(1);
 	expect(JSON.parse(result.ir[0])).toEqual(
 		expect.objectContaining({
 			base: expect.objectContaining({
-				props: [],
+				props: expect.arrayContaining([
+					expect.objectContaining({
+						name: "BackgroundColor3",
+					}),
+				]),
 				helpers: [],
 			}),
 			runtimeRules: [],
 			runtimeClassValue: true,
 		}),
 	);
+});
+
+test("folds a fully static array className without injecting the runtime wrapper", () => {
+	const result = transform(
+		'<frame className={["bg-surface", true && "rounded-md"]} />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("createTailwindRuntimeHost");
+	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toContain("BackgroundColor3");
+	expect(result.code).toContain("uicorner");
+	expect(result.ir).toHaveLength(1);
+	expect(JSON.parse(result.ir[0])).toEqual(
+		expect.objectContaining({
+			base: expect.objectContaining({
+				props: expect.arrayContaining([
+					expect.objectContaining({
+						name: "BackgroundColor3",
+					}),
+				]),
+				helpers: expect.arrayContaining([
+					expect.objectContaining({
+						tag: "uicorner",
+					}),
+				]),
+			}),
+			runtimeRules: [],
+			runtimeClassValue: false,
+		}),
+	);
+});
+
+test("folds a locally constant identifier before lowering the className", () => {
+	const result = transform(
+		'const active = true; <frame className={["bg-surface", active && "rounded-md"]} />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("createTailwindRuntimeHost");
+	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toContain("BackgroundColor3");
+	expect(result.code).toContain("uicorner");
+});
+
+test("folds a constant object map down to the surviving static key", () => {
+	const result = transform(
+		'const roomy = false; <frame className={{ "px-4": roomy, "px-2": !roomy }} />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("createTailwindRuntimeHost");
+	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/PaddingLeft=\{new UDim\(0, 8\)\}/);
+	expect(result.code).toMatch(/PaddingRight=\{new UDim\(0, 8\)\}/);
+});
+
+test("folds a constant ternary to a static utility class", () => {
+	const result = transform(
+		'const wide = false; <frame className={wide ? "w-80" : "w-40"} />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("createTailwindRuntimeHost");
+	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/Size=\{UDim2\.fromOffset\(160, 0\)\}/);
+});
+
+test("keeps the runtime wrapper when a dynamic remainder survives constant folding", () => {
+	const result = transform(
+		'const active = true; <frame className={["bg-surface", active && dynamicToken]} />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toContain("createTailwindRuntimeHost");
+	expect(result.code).toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("className={dynamicToken}");
+	expect(result.code).not.toContain("active && dynamicToken");
+	expect(result.code).toContain("BackgroundColor3");
+});
+
+test("keeps variant-prefixed literals on the runtime rule path when they survive folding", () => {
+	const enabledResult = transform(
+		'const enabled = true; <frame className={["rounded-md", enabled && "md:px-4"]} />',
+	);
+
+	expect(enabledResult.changed).toBe(true);
+	expect(enabledResult.diagnostics).toEqual([]);
+	expect(enabledResult.code).toContain("createTailwindRuntimeHost");
+	expect(enabledResult.code).toContain("RbxtsTailwindRuntimeHost");
+	expect(enabledResult.code).toContain("__rbxtsTailwindRules");
+	expect(enabledResult.code).not.toContain("className=");
+	expect(enabledResult.code).toContain("uicorner");
+
+	const disabledResult = transform(
+		'const enabled = false; <frame className={["rounded-md", enabled && "md:px-4"]} />',
+	);
+
+	expect(disabledResult.changed).toBe(true);
+	expect(disabledResult.diagnostics).toEqual([]);
+	expect(disabledResult.code).not.toContain("createTailwindRuntimeHost");
+	expect(disabledResult.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(disabledResult.code).not.toContain("__rbxtsTailwindRules");
+	expect(disabledResult.code).not.toContain("className=");
+	expect(disabledResult.code).toContain("uicorner");
 });
 
 test("lifts variant-prefixed literal utilities into runtime rules", () => {

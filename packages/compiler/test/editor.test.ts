@@ -28,6 +28,92 @@ test("completes background color utilities inside className", () => {
 	);
 });
 
+test("completes semantic and palette color tokens with variant-aware prefixes", () => {
+	const config = defineConfig({
+		theme: {
+			extend: {
+				colors: {
+					surface: "Color3.fromRGB(40, 48, 66)",
+					slate: {
+						500: "Color3.fromRGB(100, 116, 139)",
+						700: "Color3.fromRGB(71, 85, 105)",
+					},
+				},
+			},
+		},
+	});
+
+	const semanticResult = getCompletions({
+		source: '<frame className="bg-" />',
+		position: positionAfter('<frame className="bg-" />', "bg-"),
+		options: {
+			configJson: JSON.stringify(config),
+		},
+	});
+
+	expect(semanticResult.items).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				label: "bg-surface",
+			}),
+			expect.objectContaining({
+				label: "bg-slate-500",
+			}),
+		]),
+	);
+
+	const paletteResult = getCompletions({
+		source: '<frame className="bg-slate-" />',
+		position: positionAfter('<frame className="bg-slate-" />', "bg-slate-"),
+		options: {
+			configJson: JSON.stringify(config),
+		},
+	});
+
+	expect(paletteResult.items.some((item) => item.label === "bg-surface")).toBe(
+		false,
+	);
+	expect(paletteResult.items).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				label: "bg-slate-500",
+			}),
+		]),
+	);
+
+	const variantColorResult = getCompletions({
+		source: '<frame className="md:bg-" />',
+		position: positionAfter('<frame className="md:bg-" />', "md:bg-"),
+		options: {
+			configJson: JSON.stringify(config),
+		},
+	});
+
+	expect(variantColorResult.items).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				label: "md:bg-surface",
+			}),
+		]),
+	);
+
+	const variantSizeResult = getCompletions({
+		source: '<frame className="portrait:w-" />',
+		position: positionAfter('<frame className="portrait:w-" />', "portrait:w-"),
+		options: {
+			configJson: JSON.stringify(config),
+		},
+	});
+
+	expect(variantSizeResult.items).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				label: "portrait:w-full",
+			}),
+		]),
+	);
+});
+
 test("completes radius utilities inside className", () => {
 	const source = '<textbutton className="rounded-" />';
 	const result = getCompletions({
@@ -165,6 +251,20 @@ test("hovers known tokens with Roblox lowering details", () => {
 	).toBe("`gap-4` -> UIListLayout.Padding");
 });
 
+test("hovers variant-prefixed tokens on the active token only", () => {
+	const source = '<frame className="md:bg-surface px-4" />';
+	const hover = getHover({
+		source,
+		position: positionAfter(source, "md:bg-surface") - 1,
+	});
+
+	expect(hover.contents?.display).toBe("`md:bg-surface` -> BackgroundColor3");
+	expect(hover.range).toEqual({
+		start: source.indexOf("md:bg-surface"),
+		end: source.indexOf("md:bg-surface") + "md:bg-surface".length,
+	});
+});
+
 test("hovers include resolved config values when available", () => {
 	const source = '<frame className="bg-brand" />';
 	const config = defineConfig({
@@ -218,6 +318,57 @@ test("reports editor diagnostics for unknown keys unsupported families and fit",
 			}),
 		]),
 	);
+});
+
+test("keeps diagnostics precise for palette and singleton color mismatches", () => {
+	const config = defineConfig({
+		theme: {
+			extend: {
+				colors: {
+					surface: "Color3.fromRGB(40, 48, 66)",
+					slate: {
+						500: "Color3.fromRGB(100, 116, 139)",
+					},
+				},
+			},
+		},
+	});
+	const source =
+		'<frame className="bg-sla bg-slate bg-slate-500 bg-surface-500 md:bg- rounded- px-4" />';
+	const result = getDiagnostics({
+		source,
+		options: {
+			configJson: JSON.stringify(config),
+		},
+	});
+
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				code: "color-missing-shade",
+				token: "bg-slate",
+			}),
+			expect.objectContaining({
+				code: "color-invalid-shade",
+				token: "bg-surface-500",
+			}),
+		]),
+	);
+	expect(
+		result.diagnostics.some((diagnostic) => diagnostic.token === "bg-sla"),
+	).toBe(false);
+	expect(
+		result.diagnostics.some((diagnostic) => diagnostic.token === "md:bg-"),
+	).toBe(false);
+	expect(
+		result.diagnostics.some((diagnostic) => diagnostic.token === "rounded-"),
+	).toBe(false);
+	// The valid token should stay quiet even when surrounded by invalid fragments.
+	expect(
+		result.diagnostics.some(
+			(diagnostic) => diagnostic.token === "bg-slate-500",
+		),
+	).toBe(false);
 });
 
 test("reports host-specific invalid utility use when knowable", () => {

@@ -12,8 +12,11 @@ const source = fs.readFileSync(appLuauPath, "utf8");
 
 const requiredFragments = [
 	"BackgroundColor3 = Color3.fromRGB(",
+	"BackgroundColor3 = Color3.fromRGB(40, 48, 66)",
 	"Size = UDim2.fromOffset(320, 108)",
 	'React.createElement("uicorner"',
+	"PaddingLeft = UDim.new(0, 8)",
+	"PaddingRight = UDim.new(0, 8)",
 	"CornerRadius = UDim.new(0, 6)",
 	'React.createElement("uipadding"',
 	"PaddingLeft = UDim.new(0, 16)",
@@ -31,6 +34,9 @@ const forbiddenFragments = [
 	'React.createElement("RbxtsTailwindRuntimeHost"',
 	"__rbxtsTailwindRuntimeHost",
 	"rbxts-tailwind/runtime-host",
+	'className = { "bg-surface", active and "rounded-md" }',
+	'["px-4"] = roomy',
+	'["px-2"] = not roomy',
 ];
 
 const failures = [];

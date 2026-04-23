@@ -7,10 +7,12 @@ use swc_core::{
     common::{DUMMY_SP, FileName, SourceMap, sync::Lrc},
     ecma::{
         ast::{
-            Expr, Ident, IdentName, ImportDecl, ImportNamedSpecifier, ImportSpecifier, JSXAttr,
-            JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXClosingElement, JSXElement,
-            JSXElementChild, JSXElementName, JSXExpr, JSXExprContainer, JSXOpeningElement, Module,
-            ModuleDecl, ModuleItem, Str,
+            ArrayLit, BinExpr, BinaryOp, BlockStmt, Bool, CondExpr, Expr, ExprOrSpread, Ident,
+            IdentName, ImportDecl, ImportNamedSpecifier, ImportSpecifier, JSXAttr, JSXAttrName,
+            JSXAttrOrSpread, JSXAttrValue, JSXClosingElement, JSXElement, JSXElementChild,
+            JSXElementName, JSXExpr, JSXExprContainer, JSXOpeningElement, KeyValueProp, Lit,
+            Module, ModuleDecl, ModuleItem, ObjectLit, ParenExpr, Pat, Prop, PropName,
+            PropOrSpread, Str, UnaryExpr, UnaryOp, VarDecl, VarDeclKind,
         },
         codegen::{Config as CodegenConfig, Emitter, text_writer::JsWriter},
         parser::{Syntax, TsSyntax, parse_file_as_expr, parse_file_as_module},
@@ -380,6 +382,7 @@ struct TailwindTransformer {
     diagnostics: Vec<Diagnostic>,
     ir: Vec<StyleIr>,
     runtime_import_needed: bool,
+    class_value_scopes: ClassValueScopeStack,
 }
 
 struct LoweredClassName {
@@ -387,6 +390,80 @@ struct LoweredClassName {
     preserved_attrs: Vec<JSXAttrOrSpread>,
     runtime_class_name: Option<JSXAttr>,
     needs_runtime_host: bool,
+}
+
+#[derive(Clone, Default)]
+struct ClassValueCollapse {
+    static_tokens: Vec<String>,
+    dynamic_expr: Option<Box<Expr>>,
+}
+
+impl ClassValueCollapse {
+    fn static_only(tokens: Vec<String>) -> Self {
+        Self {
+            static_tokens: tokens,
+            dynamic_expr: None,
+        }
+    }
+
+    fn dynamic(expr: Box<Expr>) -> Self {
+        Self {
+            static_tokens: Vec::new(),
+            dynamic_expr: Some(expr),
+        }
+    }
+
+    fn is_dynamic(&self) -> bool {
+        self.dynamic_expr.is_some()
+    }
+
+    fn into_expr(self) -> Box<Expr> {
+        match self.dynamic_expr {
+            Some(expr) => expr,
+            None if self.static_tokens.is_empty() => Box::new(Expr::Lit(Lit::Bool(Bool {
+                span: DUMMY_SP,
+                value: false,
+            }))),
+            None => Box::new(Expr::Lit(Lit::Str(Str {
+                span: DUMMY_SP,
+                value: self.static_tokens.join(" ").into(),
+                raw: None,
+            }))),
+        }
+    }
+}
+
+#[derive(Default)]
+struct ClassValueScopeStack {
+    scopes: Vec<std::collections::BTreeMap<String, bool>>,
+}
+
+impl ClassValueScopeStack {
+    fn push(&mut self) {
+        self.scopes.push(std::collections::BTreeMap::new());
+    }
+
+    fn pop(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn insert(&mut self, name: String, value: bool) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name, value);
+        }
+    }
+
+    fn resolve(&self, ident: &Ident) -> Option<bool> {
+        let name = ident.sym.to_string();
+
+        for scope in self.scopes.iter().rev() {
+            if let Some(value) = scope.get(&name) {
+                return Some(*value);
+            }
+        }
+
+        None
+    }
 }
 
 fn apply_color_utility(
@@ -642,6 +719,7 @@ fn transform_impl(source: String, options: Option<TransformOptions>) -> Transfor
         diagnostics: Vec::new(),
         ir: Vec::new(),
         runtime_import_needed: false,
+        class_value_scopes: ClassValueScopeStack::default(),
     };
     module.visit_mut_with(&mut transformer);
 
@@ -785,6 +863,10 @@ fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsResponse {
 
     for context in contexts {
         for token in tokenize_class_name_with_ranges(&context.value, context.value_range.start) {
+            if token.text.ends_with('-') {
+                continue;
+            }
+
             if let Some(diagnostic) = host_utility_diagnostic(&context.element_tag, &token) {
                 diagnostics.push(diagnostic);
             }
@@ -795,7 +877,33 @@ fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsResponse {
                 &config,
                 &mut compiler_diagnostics,
             );
-            diagnostics.extend(compiler_diagnostics.into_iter().map(|diagnostic| {
+
+            // Filter out unknown-theme-key diagnostics for very short incomplete fragments.
+            // Only suppress diagnostics for tokens that look clearly incomplete (≤ 3 chars value),
+            // to avoid noisy warnings on in-progress typing like 'bg-s', 'bg-sl', or 'bg-sla'.
+            // Allow longer unknowns like 'bg-card' (4+ chars) to produce diagnostics.
+            let filtered = compiler_diagnostics.into_iter().filter(|diag| {
+                // Keep all non-unknown-theme-key diagnostics.
+                if diag.code != "unknown-theme-key" {
+                    return true;
+                }
+
+                let token_text = &token.text;
+
+                // Only suppress unknown-theme-key for very short incomplete fragments.
+                if let Some(pos) = token_text.find('-') {
+                    let rest = &token_text[pos + 1..];
+                    // Suppress if the value part is very short (likely incomplete typing).
+                    // This catches 'bg-s', 'bg-sl', 'bg-sla' but allows 'bg-card'.
+                    if rest.len() <= 3 {
+                        return false;
+                    }
+                }
+
+                true
+            });
+
+            diagnostics.extend(filtered.map(|diagnostic| {
                 EditorDiagnostic {
                     level: diagnostic.level,
                     code: diagnostic.code,
@@ -1381,14 +1489,272 @@ fn emit_module(cm: &Lrc<SourceMap>, module: &Module) -> Result<String, String> {
         .map_err(|error| format!("Generated output was not valid UTF-8: {error}"))
 }
 
+fn collapse_class_value_expr(
+    expr: &Expr,
+    scopes: &ClassValueScopeStack,
+) -> ClassValueCollapse {
+    match expr {
+        Expr::Paren(ParenExpr { expr, .. }) => collapse_class_value_expr(expr, scopes),
+        Expr::Lit(Lit::Str(value)) => ClassValueCollapse::static_only(
+            tokenize_class_name(&value.value.to_string_lossy())
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+        ),
+        Expr::Lit(Lit::Bool(_)) | Expr::Lit(Lit::Null(_)) => ClassValueCollapse::default(),
+        Expr::Ident(ident) if ident.sym == "undefined" => ClassValueCollapse::default(),
+        Expr::Ident(ident) if scopes.resolve(ident).is_some() => ClassValueCollapse::default(),
+        Expr::Unary(UnaryExpr {
+            op: UnaryOp::Bang,
+            arg,
+            ..
+        }) => {
+            if evaluate_constant_truthiness(arg, scopes).is_some() {
+                ClassValueCollapse::default()
+            } else {
+                ClassValueCollapse::dynamic(Box::new(expr.clone()))
+            }
+        }
+        Expr::Bin(BinExpr {
+            op: BinaryOp::LogicalAnd,
+            left,
+            right,
+            ..
+        }) => match evaluate_constant_truthiness(left, scopes) {
+            Some(true) => collapse_class_value_expr(right, scopes),
+            Some(false) => ClassValueCollapse::default(),
+            None => ClassValueCollapse::dynamic(Box::new(Expr::Bin(BinExpr {
+                span: DUMMY_SP,
+                op: BinaryOp::LogicalAnd,
+                left: collapse_class_value_expr(left, scopes).into_expr(),
+                right: collapse_class_value_expr(right, scopes).into_expr(),
+            }))),
+        },
+        Expr::Bin(BinExpr {
+            op: BinaryOp::LogicalOr,
+            left,
+            right,
+            ..
+        }) => match evaluate_constant_truthiness(left, scopes) {
+            Some(true) => ClassValueCollapse::default(),
+            Some(false) => collapse_class_value_expr(right, scopes),
+            None => ClassValueCollapse::dynamic(Box::new(Expr::Bin(BinExpr {
+                span: DUMMY_SP,
+                op: BinaryOp::LogicalOr,
+                left: collapse_class_value_expr(left, scopes).into_expr(),
+                right: collapse_class_value_expr(right, scopes).into_expr(),
+            }))),
+        },
+        Expr::Cond(CondExpr {
+            test,
+            cons,
+            alt,
+            ..
+        }) => match evaluate_constant_truthiness(test, scopes) {
+            Some(true) => collapse_class_value_expr(cons, scopes),
+            Some(false) => collapse_class_value_expr(alt, scopes),
+            None => ClassValueCollapse::dynamic(Box::new(Expr::Cond(CondExpr {
+                span: DUMMY_SP,
+                test: test.clone(),
+                cons: collapse_class_value_expr(cons, scopes).into_expr(),
+                alt: collapse_class_value_expr(alt, scopes).into_expr(),
+            }))),
+        },
+        Expr::Array(ArrayLit { elems, .. }) => {
+            let mut static_tokens = Vec::new();
+            let mut dynamic_elems = Vec::new();
+
+            for elem in elems.iter().flatten() {
+                if elem.spread.is_some() {
+                    dynamic_elems.push(elem.clone());
+                    continue;
+                }
+
+                let collapse = collapse_class_value_expr(&elem.expr, scopes);
+                static_tokens.extend(collapse.static_tokens);
+
+                if let Some(dynamic_expr) = collapse.dynamic_expr {
+                    dynamic_elems.push(ExprOrSpread {
+                        spread: None,
+                        expr: dynamic_expr,
+                    });
+                }
+            }
+
+            if dynamic_elems.is_empty() {
+                ClassValueCollapse::static_only(static_tokens)
+            } else {
+                let dynamic_expr = if dynamic_elems.len() == 1 {
+                    dynamic_elems
+                        .into_iter()
+                        .next()
+                        .expect("at least one dynamic array element")
+                        .expr
+                } else {
+                    Box::new(Expr::Array(ArrayLit {
+                        span: DUMMY_SP,
+                        elems: dynamic_elems.into_iter().map(Some).collect(),
+                    }))
+                };
+
+                ClassValueCollapse {
+                    static_tokens,
+                    dynamic_expr: Some(dynamic_expr),
+                }
+            }
+        }
+        Expr::Object(ObjectLit { props, .. }) => {
+            let mut static_tokens = Vec::new();
+            let mut dynamic_props = Vec::new();
+
+            for prop in props {
+                match prop {
+                    PropOrSpread::Prop(prop) => match &**prop {
+                        Prop::KeyValue(KeyValueProp { key, value }) => {
+                            let Some(class_key) = static_object_key(key) else {
+                                dynamic_props.push(PropOrSpread::Prop(prop.clone()));
+                                continue;
+                            };
+
+                            if let Some(truthy) = evaluate_constant_truthiness(value, scopes) {
+                                if truthy {
+                                    static_tokens.extend(
+                                        tokenize_class_name(&class_key)
+                                            .into_iter()
+                                            .map(str::to_owned),
+                                    );
+                                }
+                                continue;
+                            }
+
+                            let reduced_value = collapse_class_value_expr(value, scopes);
+                            if let Some(dynamic_expr) = reduced_value.dynamic_expr {
+                                dynamic_props.push(PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                                    KeyValueProp {
+                                        key: key.clone(),
+                                        value: dynamic_expr,
+                                    },
+                                ))));
+                            }
+                        }
+                        _ => dynamic_props.push(PropOrSpread::Prop(prop.clone())),
+                    },
+                    PropOrSpread::Spread(spread) => {
+                        dynamic_props.push(PropOrSpread::Spread(spread.clone()))
+                    }
+                }
+            }
+
+            if dynamic_props.is_empty() {
+                ClassValueCollapse::static_only(static_tokens)
+            } else {
+                ClassValueCollapse {
+                    static_tokens,
+                    dynamic_expr: Some(Box::new(Expr::Object(ObjectLit {
+                        span: DUMMY_SP,
+                        props: dynamic_props,
+                    }))),
+                }
+            }
+        }
+        _ => ClassValueCollapse::dynamic(Box::new(expr.clone())),
+    }
+}
+
+fn evaluate_constant_truthiness(expr: &Expr, scopes: &ClassValueScopeStack) -> Option<bool> {
+    match expr {
+        Expr::Paren(ParenExpr { expr, .. }) => evaluate_constant_truthiness(expr, scopes),
+        Expr::Lit(Lit::Bool(value)) => Some(value.value),
+        Expr::Lit(Lit::Null(_)) => Some(false),
+        Expr::Lit(Lit::Str(value)) => Some(!value.value.is_empty()),
+        Expr::Array(_) | Expr::Object(_) => Some(true),
+        Expr::Ident(ident) if ident.sym == "undefined" => Some(false),
+        Expr::Ident(ident) => scopes.resolve(ident),
+        Expr::Unary(UnaryExpr {
+            op: UnaryOp::Bang,
+            arg,
+            ..
+        }) => evaluate_constant_truthiness(arg, scopes).map(|value| !value),
+        Expr::Bin(BinExpr {
+            op: BinaryOp::LogicalAnd,
+            left,
+            right,
+            ..
+        }) => match evaluate_constant_truthiness(left, scopes) {
+            Some(false) => Some(false),
+            Some(true) => evaluate_constant_truthiness(right, scopes),
+            None => None,
+        },
+        Expr::Bin(BinExpr {
+            op: BinaryOp::LogicalOr,
+            left,
+            right,
+            ..
+        }) => match evaluate_constant_truthiness(left, scopes) {
+            Some(true) => Some(true),
+            Some(false) => evaluate_constant_truthiness(right, scopes),
+            None => None,
+        },
+        Expr::Cond(CondExpr {
+            test, cons, alt, ..
+        }) => match evaluate_constant_truthiness(test, scopes) {
+            Some(true) => evaluate_constant_truthiness(cons, scopes),
+            Some(false) => evaluate_constant_truthiness(alt, scopes),
+            None => None,
+        },
+        _ => None,
+    }
+}
+
+fn static_object_key(key: &PropName) -> Option<String> {
+    match key {
+        PropName::Str(value) => Some(value.value.to_string_lossy().into_owned()),
+        PropName::Ident(ident) => Some(ident.sym.to_string()),
+        _ => None,
+    }
+}
+
 impl VisitMut for TailwindTransformer {
     fn visit_mut_module(&mut self, module: &mut Module) {
+        self.class_value_scopes.push();
         module.visit_mut_children_with(self);
+        self.class_value_scopes.pop();
 
         if self.runtime_import_needed {
             let mut runtime_items = create_runtime_host_module_items(&self.config);
             runtime_items.append(&mut module.body);
             module.body = runtime_items;
+        }
+    }
+
+    fn visit_mut_block_stmt(&mut self, block: &mut BlockStmt) {
+        self.class_value_scopes.push();
+        block.visit_mut_children_with(self);
+        self.class_value_scopes.pop();
+    }
+
+    fn visit_mut_var_decl(&mut self, var_decl: &mut VarDecl) {
+        for declarator in &mut var_decl.decls {
+            declarator.visit_mut_with(self);
+
+            if var_decl.kind != VarDeclKind::Const {
+                continue;
+            }
+
+            let Some(init) = declarator.init.as_deref() else {
+                continue;
+            };
+
+            let Some(value) = evaluate_constant_truthiness(init, &self.class_value_scopes) else {
+                continue;
+            };
+
+            let Pat::Ident(binding) = &declarator.name else {
+                continue;
+            };
+
+            self.class_value_scopes
+                .insert(binding.id.sym.to_string(), value);
         }
     }
 
@@ -1400,7 +1766,12 @@ impl VisitMut for TailwindTransformer {
         }
 
         let Some(lowered) =
-            lower_class_name(&element.opening.attrs, &self.config, &mut self.diagnostics)
+            lower_class_name(
+                &element.opening.attrs,
+                &self.config,
+                &self.class_value_scopes,
+                &mut self.diagnostics,
+            )
         else {
             return;
         };
@@ -1488,6 +1859,7 @@ impl VisitMut for TailwindTransformer {
 fn lower_class_name(
     attrs: &[JSXAttrOrSpread],
     config: &TailwindConfig,
+    scopes: &ClassValueScopeStack,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Option<LoweredClassName> {
     let class_name_attr = attrs.iter().find_map(|attr| match attr {
@@ -1509,13 +1881,58 @@ fn lower_class_name(
     match &class_name_attr.value {
         Some(JSXAttrValue::Str(value)) => {
             let class_name = value.value.to_string_lossy().into_owned();
-            let style = resolve_class_tokens(tokenize_class_name(&class_name), config, diagnostics);
+            let style = resolve_class_tokens(
+                tokenize_class_name(&class_name).into_iter().map(str::to_owned),
+                config,
+                diagnostics,
+            );
             let needs_runtime_host = !style.runtime_rules.is_empty() || style.runtime_class_value;
 
             Some(LoweredClassName {
                 style_ir: style,
                 preserved_attrs,
                 runtime_class_name: None,
+                needs_runtime_host,
+            })
+        }
+        Some(JSXAttrValue::JSXExprContainer(container)) => {
+            let JSXExpr::Expr(expr) = &container.expr else {
+                return Some(LoweredClassName {
+                    style_ir: StyleIr {
+                        base: StyleEffectBundle::default(),
+                        runtime_rules: Vec::new(),
+                        runtime_class_value: true,
+                    },
+                    preserved_attrs,
+                    runtime_class_name: Some(class_name_attr.clone()),
+                    needs_runtime_host: true,
+                });
+            };
+
+            let collapse = collapse_class_value_expr(expr, scopes);
+            let runtime_class_value = collapse.is_dynamic();
+            let style = resolve_class_tokens(
+                collapse.static_tokens.clone(),
+                config,
+                diagnostics,
+            );
+            let needs_runtime_host = !style.runtime_rules.is_empty() || runtime_class_value;
+            let runtime_class_name = collapse.dynamic_expr.map(|expr| {
+                let mut runtime_attr = class_name_attr.clone();
+                runtime_attr.value = Some(JSXAttrValue::JSXExprContainer(JSXExprContainer {
+                    span: container.span,
+                    expr: JSXExpr::Expr(expr),
+                }));
+                runtime_attr
+            });
+
+            Some(LoweredClassName {
+                style_ir: StyleIr {
+                    runtime_class_value,
+                    ..style
+                },
+                preserved_attrs,
+                runtime_class_name,
                 needs_runtime_host,
             })
         }
@@ -1532,16 +1949,21 @@ fn lower_class_name(
     }
 }
 
-fn resolve_class_tokens(
-    tokens: Vec<&str>,
+fn resolve_class_tokens<T, I>(
+    tokens: I,
     config: &TailwindConfig,
     diagnostics: &mut Vec<Diagnostic>,
-) -> StyleIr {
+) -> StyleIr
+where
+    I: IntoIterator<Item = T>,
+    T: AsRef<str>,
+{
     let mut style = StyleIr::default();
     let mut pending_size_width: Option<SizeAxisValue> = None;
     let mut pending_size_height: Option<SizeAxisValue> = None;
 
     for token in tokens {
+        let token = token.as_ref();
         if let Some((condition, runtime_token)) = parse_runtime_variant_token(token) {
             let runtime_style = resolve_class_tokens(vec![runtime_token], config, diagnostics);
             if !runtime_style.base.props.is_empty() || !runtime_style.base.helpers.is_empty() {
