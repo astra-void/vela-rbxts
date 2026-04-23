@@ -75,8 +75,8 @@ export function createVelaRbxtsLanguageServicePlugin(
 			return prior;
 		}
 
-		const entries = response.items.map((item) =>
-			toCompletionEntry(typescript, item),
+		const entries = sortCompletionEntries(
+			response.items.map((item) => toCompletionEntry(typescript, item)),
 		);
 
 		if (prior) {
@@ -109,40 +109,20 @@ export function createVelaRbxtsLanguageServicePlugin(
 			languageServiceHost,
 			fileName,
 		);
-		const isPluginEntry =
-			source === VELA_RBXTS_COMPLETION_SOURCE ||
-			isVelaRbxtsCompletionData(data);
 
 		if (
-			isPluginEntry &&
+			source === VELA_RBXTS_COMPLETION_SOURCE &&
+			isVelaRbxtsCompletionData(data) &&
 			sourceFile &&
 			getSupportedClassNameContextAtPosition(typescript, sourceFile, position)
 		) {
-			let item: CompletionItem | undefined;
-			if (isVelaRbxtsCompletionData(data)) {
-				item = {
-					label: data.label,
-					insertText: data.label,
-					kind: "utility",
-					category: "utility",
-					documentation: data.documentation,
-				};
-			} else {
-				try {
-					const response = getCompletions({
-						source: sourceFile.getFullText(),
-						position,
-						options: resolveEditorOptions(fileName),
-					});
-					item = findCompletionItem(response.items, entryName);
-				} catch {
-					item = undefined;
-				}
-			}
-
-			if (item) {
-				return toCompletionDetails(typescript, item);
-			}
+			return toCompletionDetails(typescript, {
+				label: data.label,
+				insertText: data.label,
+				kind: "utility",
+				category: "utility",
+				documentation: data.documentation,
+			});
 		}
 
 		return languageService.getCompletionEntryDetails(
@@ -214,6 +194,10 @@ export function createVelaRbxtsLanguageServicePlugin(
 			toTsDiagnostic(typescript, sourceFile, diagnostic),
 		);
 
+		if (pluginDiagnostics.length === 0) {
+			return prior;
+		}
+
 		return dedupeDiagnostics([...prior, ...pluginDiagnostics]);
 	};
 
@@ -280,7 +264,7 @@ function mergeCompletionEntries(
 	const seen = new Set<string>();
 
 	for (const entry of [...pluginEntries, ...priorEntries]) {
-		const key = `${entry.name}::${entry.source ?? ""}`;
+		const key = entry.name;
 		if (seen.has(key)) {
 			continue;
 		}
@@ -290,6 +274,24 @@ function mergeCompletionEntries(
 	}
 
 	return merged;
+}
+
+function sortCompletionEntries(
+	entries: readonly ts.CompletionEntry[],
+): ts.CompletionEntry[] {
+	return [...entries].sort((left, right) => {
+		const leftSort = left.sortText ?? "";
+		const rightSort = right.sortText ?? "";
+		if (leftSort !== rightSort) {
+			return leftSort.localeCompare(rightSort);
+		}
+
+		if (left.name !== right.name) {
+			return left.name.localeCompare(right.name);
+		}
+
+		return (left.source ?? "").localeCompare(right.source ?? "");
+	});
 }
 
 function dedupeDiagnostics(
