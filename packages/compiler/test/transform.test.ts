@@ -133,7 +133,7 @@ test("merges extend colors without inventing fake singleton shades", () => {
 	});
 
 	const result = transform(
-		'<frame><frame className="bg-surface" /><frame className="bg-slate-500" /><frame className="bg-blue-600" /><frame className="bg-rose-400" /></frame>',
+		'<frame><frame className="bg-slate-500" /><frame className="bg-slate-700" /><frame className="bg-blue-600" /><frame className="bg-rose-400" /></frame>',
 		{
 			configJson: JSON.stringify(config),
 		},
@@ -142,8 +142,11 @@ test("merges extend colors without inventing fake singleton shades", () => {
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).not.toContain("className=");
+	const defaultSlate700 = (
+		defaultConfig.theme.colors.slate as Record<string, string>
+	)["700"];
 	expect(result.code).toContain(
-		`<frame BackgroundColor3={${defaultConfig.theme.colors.surface}}/>`,
+		`<frame BackgroundColor3={${defaultSlate700}}/>`,
 	);
 	expect(result.code).toContain(
 		"<frame BackgroundColor3={Color3.fromRGB(100, 116, 139)}/>",
@@ -200,22 +203,25 @@ test("rejects unshaded palette access and invalid singleton shade access", () =>
 
 test("resolves normalized default background colors and transparent keywords", () => {
 	const result = transform(
-		'<frame><frame className="bg-surface" /><frame className="bg-transparent" /></frame>',
+		'<frame><frame className="bg-slate-700" /><frame className="bg-transparent" /></frame>',
 	);
 
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).not.toContain("className=");
+	const defaultSlate700 = (
+		defaultConfig.theme.colors.slate as Record<string, string>
+	)["700"];
 	expect(
 		result.code.split(
-			`BackgroundColor3={${defaultConfig.theme.colors.surface}}`,
+			`BackgroundColor3={${defaultSlate700}}`,
 		),
 	).toHaveLength(2);
 	expect(result.code).toContain("<frame BackgroundTransparency={1}/>");
 });
 
 test("warns on unknown background color keys unless config defines them", () => {
-	const result = transform('<frame className="bg-brand-primary" />');
+	const result = transform('<frame className="bg-surface" />');
 
 	expect(result.changed).toBe(true);
 	expect(result.code).not.toContain("className=");
@@ -224,7 +230,7 @@ test("warns on unknown background color keys unless config defines them", () => 
 			expect.objectContaining({
 				level: "warning",
 				code: "unknown-theme-key",
-				token: "bg-brand-primary",
+				token: "bg-surface",
 			}),
 		]),
 	);
@@ -970,7 +976,7 @@ test("removes className even when only unsupported utilities remain", () => {
 
 test("rewrites dynamic ClassValue expressions through the runtime wrapper", () => {
 	const result = transform(
-		'<frame className={["bg-surface", active && "rounded-md"]} />',
+		'<frame className={["bg-slate-500", active && "rounded-md"]} />',
 	);
 
 	expect(result.changed).toBe(true);
@@ -1004,7 +1010,7 @@ test("rewrites dynamic ClassValue expressions through the runtime wrapper", () =
 
 test("folds a fully static array className without injecting the runtime wrapper", () => {
 	const result = transform(
-		'<frame className={["bg-surface", true && "rounded-md"]} />',
+		'<frame className={["bg-slate-500", true && "rounded-md"]} />',
 	);
 
 	expect(result.changed).toBe(true);
@@ -1037,7 +1043,7 @@ test("folds a fully static array className without injecting the runtime wrapper
 
 test("folds a locally constant identifier before lowering the className", () => {
 	const result = transform(
-		'const active = true; <frame className={["bg-surface", active && "rounded-md"]} />',
+		'const active = true; <frame className={["bg-slate-500", active && "rounded-md"]} />',
 	);
 
 	expect(result.changed).toBe(true);
@@ -1078,7 +1084,7 @@ test("folds a constant ternary to a static utility class", () => {
 
 test("keeps the runtime wrapper when a dynamic remainder survives constant folding", () => {
 	const result = transform(
-		'const active = true; <frame className={["bg-surface", active && dynamicToken]} />',
+		'const active = true; <frame className={["bg-slate-500", active && dynamicToken]} />',
 	);
 
 	expect(result.changed).toBe(true);
@@ -1195,26 +1201,28 @@ test("loads the native compiler binding", () => {
 });
 
 test("retains the default config shape for compatibility", () => {
-	expect(defaultConfig).toEqual({
-		theme: {
-			colors: {
-				surface: "Color3.fromRGB(40, 48, 66)",
-			},
-			radius: {
-				none: "new UDim(0, 0)",
-				xs: "new UDim(0, 2)",
-				sm: "new UDim(0, 4)",
-				md: "new UDim(0, 6)",
-				lg: "new UDim(0, 8)",
-				xl: "new UDim(0, 12)",
-				"2xl": "new UDim(0, 16)",
-				"3xl": "new UDim(0, 24)",
-				"4xl": "new UDim(0, 32)",
-				full: "new UDim(0.5, 0)",
-			},
-			spacing: {
-				"4": "new UDim(0, 16)",
-			},
-		},
+	expect(defaultConfig.theme.colors.slate).toEqual(
+		expect.objectContaining({
+			50: "Color3.fromRGB(248, 250, 252)",
+			500: "Color3.fromRGB(98, 116, 142)",
+			700: "Color3.fromRGB(49, 65, 88)",
+			950: "Color3.fromRGB(2, 6, 24)",
+		}),
+	);
+	expect(defaultConfig.theme.colors.surface).toBeUndefined();
+	expect(defaultConfig.theme.radius).toEqual({
+		none: "new UDim(0, 0)",
+		xs: "new UDim(0, 2)",
+		sm: "new UDim(0, 4)",
+		md: "new UDim(0, 6)",
+		lg: "new UDim(0, 8)",
+		xl: "new UDim(0, 12)",
+		"2xl": "new UDim(0, 16)",
+		"3xl": "new UDim(0, 24)",
+		"4xl": "new UDim(0, 32)",
+		full: "new UDim(0.5, 0)",
+	});
+	expect(defaultConfig.theme.spacing).toEqual({
+		"4": "new UDim(0, 16)",
 	});
 });

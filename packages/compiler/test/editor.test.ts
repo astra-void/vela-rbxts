@@ -21,8 +21,8 @@ test("completes background color utilities inside className", () => {
 	expect(result.items).toEqual(
 		expect.arrayContaining([
 			expect.objectContaining({
-				label: "bg-surface",
-				insertText: "bg-surface",
+				label: "bg-slate-500",
+				insertText: "bg-slate-500",
 			}),
 		]),
 	);
@@ -161,15 +161,15 @@ test("does not return className completions outside supported context", () => {
 });
 
 test("returns replacement spans for partial tokens in multi-token className", () => {
-	const source = '<frame className="rounded-md bg-su px-4" />';
-	const tokenStart = source.indexOf("bg-su");
-	const tokenEnd = tokenStart + "bg-su".length;
+	const source = '<frame className="rounded-md bg-sl px-4" />';
+	const tokenStart = source.indexOf("bg-sl");
+	const tokenEnd = tokenStart + "bg-sl".length;
 	const result = getCompletions({
 		source,
 		position: tokenEnd,
 	});
 
-	const entry = result.items.find((item) => item.label === "bg-surface");
+	const entry = result.items.find((item) => item.label === "bg-slate-500");
 	expect(entry).toBeDefined();
 	expect(entry?.replacement).toEqual({
 		start: tokenStart,
@@ -222,7 +222,7 @@ test("completes config-aware color radius and spacing keys", () => {
 });
 
 test("hovers known tokens with Roblox lowering details", () => {
-	const source = '<frame className="rounded-md bg-surface gap-4" />';
+	const source = '<frame className="rounded-md bg-slate-700 gap-4" />';
 
 	expect(
 		getHover({
@@ -239,9 +239,9 @@ test("hovers known tokens with Roblox lowering details", () => {
 	expect(
 		getHover({
 			source,
-			position: positionAfter(source, "bg-surface") - 2,
+			position: positionAfter(source, "bg-slate-700") - 2,
 		}).contents?.display,
-	).toBe("`bg-surface` -> BackgroundColor3");
+	).toBe("`bg-slate-700` -> BackgroundColor3");
 
 	expect(
 		getHover({
@@ -252,16 +252,16 @@ test("hovers known tokens with Roblox lowering details", () => {
 });
 
 test("hovers variant-prefixed tokens on the active token only", () => {
-	const source = '<frame className="md:bg-surface px-4" />';
+	const source = '<frame className="md:bg-blue-600 px-4" />';
 	const hover = getHover({
 		source,
-		position: positionAfter(source, "md:bg-surface") - 1,
+		position: positionAfter(source, "md:bg-blue-600") - 1,
 	});
 
-	expect(hover.contents?.display).toBe("`md:bg-surface` -> BackgroundColor3");
+	expect(hover.contents?.display).toBe("`md:bg-blue-600` -> BackgroundColor3");
 	expect(hover.range).toEqual({
-		start: source.indexOf("md:bg-surface"),
-		end: source.indexOf("md:bg-surface") + "md:bg-surface".length,
+		start: source.indexOf("md:bg-blue-600"),
+		end: source.indexOf("md:bg-blue-600") + "md:bg-blue-600".length,
 	});
 });
 
@@ -291,7 +291,7 @@ test("hovers include resolved config values when available", () => {
 
 test("reports editor diagnostics for unknown keys unsupported families and fit", () => {
 	const source =
-		'<frame><frame className="bg-card bg-surface-700 shadow-md w-fit" /><textbox className="placeholder-card" /></frame>';
+		'<frame><frame className="bg-card bg-surface shadow-md w-fit" /><textbox className="placeholder-card" /></frame>';
 	const result = getDiagnostics({ source });
 
 	expect(result.diagnostics).toEqual(
@@ -301,8 +301,8 @@ test("reports editor diagnostics for unknown keys unsupported families and fit",
 				token: "bg-card",
 			}),
 			expect.objectContaining({
-				code: "color-invalid-shade",
-				token: "bg-surface-700",
+				code: "unknown-theme-key",
+				token: "bg-surface",
 			}),
 			expect.objectContaining({
 				code: "unsupported-utility-family",
