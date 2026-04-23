@@ -1,24 +1,15 @@
 import { expect, test } from "vitest";
 
 import defaultsInput from "../src/defaults.json" with { type: "json" };
-import {
-	defaultConfig,
-	defineConfig,
-	resolveThemeColors,
-} from "../src/index";
+import { defaultConfig, defineConfig, resolveThemeColors } from "../src/index";
 
-function expectPalette(
-	value: unknown,
-	entries: Record<string, string>,
-) {
+function expectPalette(value: unknown, entries: Record<string, string>) {
 	expect(value).toEqual(entries);
 }
 
 test("keeps defaults authoring-shaped and preserves singleton colors", () => {
 	expect(defaultsInput.theme.colors.surface).toBe("Color3.fromRGB(40, 48, 66)");
-	expect(defaultConfig.theme.colors.surface).toBe(
-		"Color3.fromRGB(40, 48, 66)",
-	);
+	expect(defaultConfig.theme.colors.surface).toBe("Color3.fromRGB(40, 48, 66)");
 });
 
 test("preserves single literal color input as a singleton", () => {

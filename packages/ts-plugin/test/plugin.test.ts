@@ -19,7 +19,13 @@ function createSourceFile(
 	source: string,
 	scriptKind: ts.ScriptKind = ts.ScriptKind.TSX,
 ) {
-	return ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, scriptKind);
+	return ts.createSourceFile(
+		fileName,
+		source,
+		ts.ScriptTarget.Latest,
+		true,
+		scriptKind,
+	);
 }
 
 function createLanguageService(
@@ -45,13 +51,10 @@ function createPlugin(
 	sourceFile: ts.SourceFile,
 	overrides: Partial<ts.LanguageService> = {},
 ) {
-	return createVelaRbxtsLanguageServicePlugin(
-		ts,
-		{
-			languageService: createLanguageService(fileName, sourceFile, overrides),
-			languageServiceHost: {},
-		} as unknown as ts.server.PluginCreateInfo,
-	);
+	return createVelaRbxtsLanguageServicePlugin(ts, {
+		languageService: createLanguageService(fileName, sourceFile, overrides),
+		languageServiceHost: {},
+	} as unknown as ts.server.PluginCreateInfo);
 }
 
 test("uses compiler default completions when project config is absent", () => {
@@ -128,11 +131,15 @@ test("merges Vela completions with native completions without duplicates", () =>
 		{},
 	);
 
-	expect(completions?.entries.filter((entry) => entry.name === "bg-surface")).toHaveLength(1);
-	expect(completions?.entries.find((entry) => entry.name === "bg-surface")?.source).toBe(
-		VELA_RBXTS_COMPLETION_SOURCE,
+	expect(
+		completions?.entries.filter((entry) => entry.name === "bg-surface"),
+	).toHaveLength(1);
+	expect(
+		completions?.entries.find((entry) => entry.name === "bg-surface")?.source,
+	).toBe(VELA_RBXTS_COMPLETION_SOURCE);
+	expect(completions?.entries.some((entry) => entry.name === "native")).toBe(
+		true,
 	);
-	expect(completions?.entries.some((entry) => entry.name === "native")).toBe(true);
 });
 
 test("labels plugin completion entries with vela-rbxts source", () => {
@@ -147,9 +154,9 @@ test("labels plugin completion entries with vela-rbxts source", () => {
 		{},
 	);
 
-	expect(completions?.entries.some((entry) => entry.name === "bg-surface")).toBe(
-		true,
-	);
+	expect(
+		completions?.entries.some((entry) => entry.name === "bg-surface"),
+	).toBe(true);
 	expect(
 		completions?.entries.find((entry) => entry.name === "bg-surface")?.source,
 	).toBe(VELA_RBXTS_COMPLETION_SOURCE);
@@ -183,7 +190,8 @@ test("provides replacement spans for partial tokens inside multi-token className
 
 test("provides zero-length replacement spans at token boundaries and in empty className strings", () => {
 	const boundaryFileName = "/tmp/vela-rbxts-boundary/src/view.tsx";
-	const boundarySource = 'const view = <frame className="rounded-md bg- px-4" />;';
+	const boundarySource =
+		'const view = <frame className="rounded-md bg- px-4" />;';
 	const boundarySourceFile = createSourceFile(boundaryFileName, boundarySource);
 	const boundaryPlugin = createPlugin(boundaryFileName, boundarySourceFile);
 
@@ -228,7 +236,11 @@ test("offers completions between whitespace-separated tokens", () => {
 	const plugin = createPlugin(fileName, sourceFile);
 
 	const cursorPosition = source.indexOf("  ") + 1;
-	const completions = plugin.getCompletionsAtPosition(fileName, cursorPosition, {});
+	const completions = plugin.getCompletionsAtPosition(
+		fileName,
+		cursorPosition,
+		{},
+	);
 	const entry = completions?.entries.find((candidate) =>
 		candidate.name.startsWith("bg-"),
 	);
@@ -337,7 +349,10 @@ test("prefers vela hover results when available and falls back to typescript qui
 
 	expect(fallbackHover).toBe(nativeQuickInfo);
 	const lastCall = getQuickInfoAtPosition.mock.calls.at(-1);
-	expect(lastCall).toEqual([fileName, positionAfter(fallbackSource, "unknown")]);
+	expect(lastCall).toEqual([
+		fileName,
+		positionAfter(fallbackSource, "unknown"),
+	]);
 });
 
 test("appends vela diagnostics without dropping native diagnostics", () => {
@@ -360,8 +375,16 @@ test("appends vela diagnostics without dropping native diagnostics", () => {
 	const diagnostics = plugin.getSemanticDiagnostics(fileName);
 
 	expect(diagnostics).toContain(nativeDiagnostic);
-	expect(diagnostics.some((diagnostic) => diagnostic.source === VELA_RBXTS_COMPLETION_SOURCE)).toBe(true);
-	expect(diagnostics.filter((diagnostic) => diagnostic.source === VELA_RBXTS_COMPLETION_SOURCE).length).toBeGreaterThan(0);
+	expect(
+		diagnostics.some(
+			(diagnostic) => diagnostic.source === VELA_RBXTS_COMPLETION_SOURCE,
+		),
+	).toBe(true);
+	expect(
+		diagnostics.filter(
+			(diagnostic) => diagnostic.source === VELA_RBXTS_COMPLETION_SOURCE,
+		).length,
+	).toBeGreaterThan(0);
 });
 
 test("falls back to defaults when loading rbxtw.config.ts fails", () => {
@@ -392,7 +415,9 @@ test("falls back to defaults when loading rbxtw.config.ts fails", () => {
 });
 
 test("uses custom config completions when rbxtw.config.ts resolves", () => {
-	const root = fs.mkdtempSync(path.join(os.tmpdir(), "vela-rbxts-custom-config-"));
+	const root = fs.mkdtempSync(
+		path.join(os.tmpdir(), "vela-rbxts-custom-config-"),
+	);
 	const sourceFilePath = path.join(root, "src", "view.tsx");
 	fs.mkdirSync(path.dirname(sourceFilePath), { recursive: true });
 	fs.writeFileSync(
@@ -401,7 +426,7 @@ test("uses custom config completions when rbxtw.config.ts resolves", () => {
 			"export default defineConfig({",
 			"\ttheme: {",
 			"\t\tcolors: {",
-			"\t\t\tbrand: \"#123456\",",
+			'\t\t\tbrand: "#123456",',
 			"\t\t},",
 			"\t},",
 			"});",

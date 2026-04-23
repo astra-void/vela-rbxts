@@ -160,7 +160,7 @@ test("merges extend colors without inventing fake singleton shades", () => {
 	);
 });
 
-	test("rejects unshaded palette access and invalid singleton shade access", () => {
+test("rejects unshaded palette access and invalid singleton shade access", () => {
 	const config = defineConfig({
 		theme: {
 			colors: {

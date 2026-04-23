@@ -22,8 +22,8 @@ const { createRequire } = require("node:module") as {
 
 import type {
 	ColorInputMap,
-	ColorScaleInput,
 	ColorPalette,
+	ColorScaleInput,
 	TailwindConfig,
 	TailwindConfigInput,
 	ThemeColors,
@@ -217,7 +217,9 @@ function isColorPalette(value: unknown): value is ColorPalette {
 		isRecord(value) &&
 		Object.keys(value).length > 0 &&
 		Object.entries(value).every(
-			([shade, entry]) => SHADES.includes(Number(shade) as (typeof SHADES)[number]) && typeof entry === "string",
+			([shade, entry]) =>
+				SHADES.includes(Number(shade) as (typeof SHADES)[number]) &&
+				typeof entry === "string",
 		)
 	);
 }
@@ -262,10 +264,7 @@ function isOptionalColorInputMap(
 }
 
 function isColorScaleInput(value: unknown): value is ColorScaleInput {
-	return (
-		typeof value === "string" ||
-		isColorPalette(value)
-	);
+	return typeof value === "string" || isColorPalette(value);
 }
 
 function isOptionalThemeScale(

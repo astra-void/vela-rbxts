@@ -154,7 +154,10 @@ export function normalizeColorScale(value: ColorScaleInput): ColorValue {
 	return { ...value };
 }
 
-function mergeColorValues(base: ColorValue, value: ColorScaleInput): ColorValue {
+function mergeColorValues(
+	base: ColorValue,
+	value: ColorScaleInput,
+): ColorValue {
 	if (typeof base === "string" || typeof value === "string") {
 		return normalizeColorScale(value);
 	}

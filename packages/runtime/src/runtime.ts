@@ -315,8 +315,9 @@ function normalizeColorRegistry(
 	const normalized: Record<string, RuntimeColorEntry> = {};
 
 	for (const [key, value] of pairs(registry)) {
-		normalized[key] =
-			typeIs(value, "string") ? value : normalizeColorScale(value);
+		normalized[key] = typeIs(value, "string")
+			? value
+			: normalizeColorScale(value);
 	}
 
 	return normalized;
