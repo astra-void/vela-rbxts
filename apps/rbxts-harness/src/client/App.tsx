@@ -9,7 +9,7 @@ export const App = () => {
 			<frame
 				AnchorPoint={new Vector2(0.5, 0.5)}
 				Position={UDim2.fromScale(0.5, 0.5)}
-				className="rounded-md bg-surface px-4 py-3 w-80 h-27 gap-4"
+				className="rounded-md bg-slate-700 px-4 py-3 w-80 h-27 gap-4"
 			>
 				<textlabel
 					BackgroundTransparency={1}
@@ -25,7 +25,7 @@ export const App = () => {
 				/>
 				<frame
 					BackgroundTransparency={1}
-					className={["bg-surface", active && "rounded-md"]}
+					className={["bg-blue-600", active && "rounded-md"]}
 				/>
 				<frame
 					BackgroundTransparency={1}

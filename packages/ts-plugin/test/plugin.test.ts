@@ -67,7 +67,7 @@ test("uses compiler default completions when project config is absent", () => {
 		plugin
 			.getCompletionsAtPosition(fileName, positionAfter(source, "bg-"), {})
 			?.entries.map((entry) => entry.name),
-	).toContain("bg-surface");
+	).toContain("bg-slate-500");
 });
 
 test("does not add Vela completions outside supported className contexts", () => {
@@ -107,7 +107,7 @@ test("merges Vela completions with native completions without duplicates", () =>
 		isNewIdentifierLocation: false,
 		entries: [
 			{
-				name: "bg-surface",
+				name: "bg-slate-500",
 				kind: ts.ScriptElementKind.string,
 				kindModifiers: "",
 				sortText: "2",
@@ -132,10 +132,10 @@ test("merges Vela completions with native completions without duplicates", () =>
 	);
 
 	expect(
-		completions?.entries.filter((entry) => entry.name === "bg-surface"),
+		completions?.entries.filter((entry) => entry.name === "bg-slate-500"),
 	).toHaveLength(1);
 	expect(
-		completions?.entries.find((entry) => entry.name === "bg-surface")?.source,
+		completions?.entries.find((entry) => entry.name === "bg-slate-500")?.source,
 	).toBe(VELA_RBXTS_COMPLETION_SOURCE);
 	expect(completions?.entries.some((entry) => entry.name === "native")).toBe(
 		true,
@@ -155,22 +155,22 @@ test("labels plugin completion entries with vela-rbxts source", () => {
 	);
 
 	expect(
-		completions?.entries.some((entry) => entry.name === "bg-surface"),
+		completions?.entries.some((entry) => entry.name === "bg-slate-500"),
 	).toBe(true);
 	expect(
-		completions?.entries.find((entry) => entry.name === "bg-surface")?.source,
+		completions?.entries.find((entry) => entry.name === "bg-slate-500")?.source,
 	).toBe(VELA_RBXTS_COMPLETION_SOURCE);
 });
 
 test("provides replacement spans for partial tokens inside multi-token className", () => {
 	const fileName = "/tmp/vela-rbxts-replacement-span/src/view.tsx";
-	const source = 'const view = <frame className="rounded-md bg-su px-4" />;';
+	const source = 'const view = <frame className="rounded-md bg-sl px-4" />;';
 	const sourceFile = createSourceFile(fileName, source);
 	const plugin = createPlugin(fileName, sourceFile);
 
-	const tokenStart = source.indexOf("bg-su");
-	const tokenEnd = tokenStart + "bg-su".length;
-	const cursorPosition = tokenStart + "bg-su".length;
+	const tokenStart = source.indexOf("bg-sl");
+	const tokenEnd = tokenStart + "bg-sl".length;
+	const cursorPosition = tokenStart + "bg-sl".length;
 
 	const completions = plugin.getCompletionsAtPosition(
 		fileName,
@@ -178,7 +178,7 @@ test("provides replacement spans for partial tokens inside multi-token className
 		{},
 	);
 	const entry = completions?.entries.find((candidate) =>
-		candidate.name.startsWith("bg-su"),
+		candidate.name.startsWith("bg-sl"),
 	);
 
 	expect(entry).toBeDefined();
@@ -202,7 +202,7 @@ test("provides replacement spans for variant-prefixed completions", () => {
 		{},
 	);
 	const entry = completions?.entries.find(
-		(candidate) => candidate.name === "md:bg-surface",
+		(candidate) => candidate.name === "md:bg-slate-500",
 	);
 
 	expect(entry).toBeDefined();
@@ -300,18 +300,18 @@ test("returns vela completion details only for branded completion entries", () =
 	const velaDetails = plugin.getCompletionEntryDetails(
 		fileName,
 		positionAfter(source, "bg-"),
-		"bg-surface",
+		"bg-slate-500",
 		{},
 		VELA_RBXTS_COMPLETION_SOURCE,
 		undefined,
 		{
 			__velaRbxts: true,
-			label: "bg-surface",
-			documentation: "Set Roblox BackgroundColor3 from theme color `surface`.",
+			label: "bg-slate-500",
+			documentation: "Set Roblox BackgroundColor3 from theme color `slate-500`.",
 		} as unknown as ts.CompletionEntryData,
 	);
 
-	expect(velaDetails?.name).toBe("bg-surface");
+	expect(velaDetails?.name).toBe("bg-slate-500");
 	expect(getCompletionsAtPosition).not.toHaveBeenCalled();
 
 	const nativeResult = plugin.getCompletionEntryDetails(
@@ -331,7 +331,7 @@ test("returns vela completion details only for branded completion entries", () =
 
 test("prefers vela hover results when available and falls back to typescript quick info otherwise", () => {
 	const fileName = "/tmp/vela-rbxts-hover/src/view.tsx";
-	const source = 'const view = <frame className="bg-surface" />;';
+	const source = 'const view = <frame className="bg-slate-500" />;';
 	const sourceFile = createSourceFile(fileName, source);
 	const nativeQuickInfo: ts.QuickInfo = {
 		kind: ts.ScriptElementKind.string,
@@ -350,13 +350,13 @@ test("prefers vela hover results when available and falls back to typescript qui
 
 	const velaHover = plugin.getQuickInfoAtPosition(
 		fileName,
-		positionAfter(source, "bg-surface"),
+		positionAfter(source, "bg-slate-500"),
 	);
 
-	expect(velaHover?.displayParts?.[0].text).toContain("bg-surface");
+	expect(velaHover?.displayParts?.[0].text).toContain("bg-slate-500");
 	expect(velaHover?.textSpan).toEqual({
-		start: source.indexOf("bg-surface"),
-		length: "bg-surface".length,
+		start: source.indexOf("bg-slate-500"),
+		length: "bg-slate-500".length,
 	});
 	expect(getQuickInfoAtPosition).not.toHaveBeenCalled();
 
@@ -432,7 +432,7 @@ test("falls back to defaults when loading rbxtw.config.ts fails", () => {
 	);
 
 	expect(completions?.entries.map((entry) => entry.name)).toContain(
-		"bg-surface",
+		"bg-slate-500",
 	);
 
 	fs.rmSync(root, { recursive: true, force: true });

@@ -18,7 +18,7 @@ type TransformResponse =
 			error: string;
 	  };
 
-const defaultSource = `<frame className="rounded-md px-4 bg-surface" />`;
+const defaultSource = `<frame className="rounded-md px-4 bg-slate-700" />`;
 
 const app = document.querySelector<HTMLDivElement>("#app");
 

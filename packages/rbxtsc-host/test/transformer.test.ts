@@ -49,7 +49,7 @@ beforeEach(() => {
 test("reinjects transformed source through the TypeScript transformer lifecycle", () => {
 	const project = createProject();
 	const result = runLifecycleTransform(
-		'<frame className="rounded-md px-4 bg-surface" />',
+		'<frame className="rounded-md px-4 bg-slate-500" />',
 		project.root,
 	);
 
@@ -137,7 +137,7 @@ test("keeps host diagnostic failures visible in the rbxtsc lifecycle", () => {
 
 	const project = createProject();
 	const result = runLifecycleTransform(
-		'<frame className="rounded-md px-4 bg-surface" />',
+		'<frame className="rounded-md px-4 bg-slate-500" />',
 		project.root,
 	);
 

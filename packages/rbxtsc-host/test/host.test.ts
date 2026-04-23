@@ -32,7 +32,7 @@ vi.mock("@vela-rbxts/compiler", () => ({
 
 const sourceFile = {
 	fileName: "src/client/App.tsx",
-	sourceText: '<frame className="rounded-md px-4 bg-surface" />',
+	sourceText: '<frame className="rounded-md px-4 bg-slate-500" />',
 };
 
 beforeEach(() => {
