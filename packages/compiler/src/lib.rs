@@ -1163,6 +1163,16 @@ fn base_utility_candidates(config: &TailwindConfig) -> Vec<CompletionItem> {
         );
     }
 
+    for key in Z_INDEX_VALUES {
+        push_completion(
+            &mut items,
+            &format!("z-{key}"),
+            "stacking",
+            "utility",
+            &format!("Set Roblox ZIndex to `{key}`."),
+        );
+    }
+
     let spacing_keys = spacing_completion_keys(config);
     for prefix in ["p", "px", "py", "pt", "pr", "pb", "pl", "gap"] {
         for key in &spacing_keys {
@@ -1343,6 +1353,15 @@ fn describe_token(token: &str, config: &TailwindConfig, element_tag: &str) -> Op
         });
     }
 
+    if let Some(z_key) = base_token.strip_prefix("z-") {
+        let mut diagnostics = Vec::new();
+        let value = resolve_z_index_value(z_key, token, &mut diagnostics)?;
+        return Some(HoverContent {
+            display: format!("`{token}` -> ZIndex"),
+            documentation: format!("{variant_prefix}Sets `ZIndex` to `{value}`."),
+        });
+    }
+
     for (prefix, target) in [
         ("p-", "UIPadding"),
         ("px-", "UIPadding.PaddingLeft / PaddingRight"),
@@ -1468,6 +1487,36 @@ fn is_utility_allowed_on_host(element_tag: &str, token: &str) -> bool {
     }
 
     true
+}
+
+const Z_INDEX_VALUES: [&str; 6] = ["0", "10", "20", "30", "40", "50"];
+
+fn resolve_z_index_value(
+    z_key: &str,
+    token: &str,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> Option<String> {
+    if z_key == "auto" {
+        diagnostics.push(unsupported_z_index_auto_diagnostic(token));
+        return None;
+    }
+
+    if z_key.starts_with('[') && z_key.ends_with(']') {
+        diagnostics.push(unsupported_arbitrary_z_index_diagnostic(token));
+        return None;
+    }
+
+    if Z_INDEX_VALUES.contains(&z_key) {
+        return Some(z_key.to_owned());
+    }
+
+    if z_key.parse::<i32>().is_ok() {
+        diagnostics.push(unsupported_z_index_value_diagnostic(z_key, token));
+        return None;
+    }
+
+    diagnostics.push(unsupported_z_index_value_diagnostic(z_key, token));
+    None
 }
 
 fn emit_module(cm: &Lrc<SourceMap>, module: &Module) -> Result<String, String> {
@@ -2028,6 +2077,18 @@ where
                 style.set_helper_prop("uicorner", "CornerRadius", value.clone());
             } else {
                 diagnostics.push(unknown_theme_key_diagnostic("radius", radius_key, token));
+            }
+            continue;
+        }
+
+        if token.starts_with("-z-") {
+            diagnostics.push(negative_z_index_diagnostic(token));
+            continue;
+        }
+
+        if let Some(z_key) = token.strip_prefix("z-") {
+            if let Some(value) = resolve_z_index_value(z_key, token, diagnostics) {
+                style.set_prop("ZIndex", value);
             }
             continue;
         }
@@ -2711,6 +2772,45 @@ fn unsupported_utility_family_diagnostic(token: &str) -> Diagnostic {
         level: "warning".to_owned(),
         code: "unsupported-utility-family".to_owned(),
         message: format!("Unsupported utility family \"{family}\" in className literal."),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn unsupported_z_index_auto_diagnostic(token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-z-index-auto".to_owned(),
+        message: "Roblox `ZIndex` does not support Tailwind `auto`.".to_owned(),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn negative_z_index_diagnostic(token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-negative-z-index".to_owned(),
+        message: "Negative z-index is not supported on Roblox `ZIndex`.".to_owned(),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn unsupported_arbitrary_z_index_diagnostic(token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-arbitrary-z-index".to_owned(),
+        message: "Arbitrary z-index values are not supported yet on Roblox `ZIndex`."
+            .to_owned(),
+        token: Some(token.to_owned()),
+    }
+}
+
+fn unsupported_z_index_value_diagnostic(value: &str, token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-z-index-value".to_owned(),
+        message: format!(
+            "Tailwind `z-{value}` is not supported yet; supported values are z-0, z-10, z-20, z-30, z-40, and z-50."
+        ),
         token: Some(token.to_owned()),
     }
 }

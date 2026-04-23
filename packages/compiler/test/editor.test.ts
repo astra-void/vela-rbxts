@@ -130,6 +130,23 @@ test("completes radius utilities inside className", () => {
 	);
 });
 
+test("completes z-index utilities inside className", () => {
+	const source = '<frame className="z-" />';
+	const result = getCompletions({
+		source,
+		position: positionAfter(source, "z-"),
+	});
+
+	expect(result.items).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				label: "z-10",
+				insertText: "z-10",
+			}),
+		]),
+	);
+});
+
 test("completes runtime variants", () => {
 	const source = '<frame className="m" />';
 	const result = getCompletions({
@@ -249,6 +266,13 @@ test("hovers known tokens with Roblox lowering details", () => {
 			position: positionAfter(source, "gap-4") - 2,
 		}).contents?.display,
 	).toBe("`gap-4` -> UIListLayout.Padding");
+
+	expect(
+		getHover({
+			source: '<frame className="z-10 md:z-20" />',
+			position: positionAfter('<frame className="z-10 md:z-20" />', "z-10") - 1,
+		}).contents?.display,
+	).toBe("`z-10` -> ZIndex");
 });
 
 test("hovers variant-prefixed tokens on the active token only", () => {
@@ -315,6 +339,32 @@ test("reports editor diagnostics for unknown keys unsupported families and fit",
 			expect.objectContaining({
 				code: "unknown-theme-key",
 				token: "placeholder-card",
+			}),
+		]),
+	);
+});
+
+test("reports editor diagnostics for unsupported z-index forms", () => {
+	const source = '<frame className="z-auto -z-10 z-[123] z-999" />';
+	const result = getDiagnostics({ source });
+
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				code: "unsupported-z-index-auto",
+				token: "z-auto",
+			}),
+			expect.objectContaining({
+				code: "unsupported-negative-z-index",
+				token: "-z-10",
+			}),
+			expect.objectContaining({
+				code: "unsupported-arbitrary-z-index",
+				token: "z-[123]",
+			}),
+			expect.objectContaining({
+				code: "unsupported-z-index-value",
+				token: "z-999",
 			}),
 		]),
 	);

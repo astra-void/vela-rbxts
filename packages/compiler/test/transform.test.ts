@@ -326,6 +326,110 @@ test("resolves built-in radius presets out of the box", () => {
 	);
 });
 
+test("lowers supported z-index utilities to Roblox ZIndex", () => {
+	const result = transform('<frame className="z-10" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/ZIndex=\{10\}/);
+});
+
+test("lets later z-index utilities win within the same className", () => {
+	const result = transform('<frame className="z-10 z-30" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/ZIndex=\{30\}/);
+	expect(result.code).not.toMatch(/ZIndex=\{10\}/);
+});
+
+test("mixes z-index lowering with existing direct prop utilities", () => {
+	const result = transform('<frame className="rounded-md z-20 px-4" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/CornerRadius=\{new UDim\(0, 6\)\}/);
+	expect(result.code).toMatch(/ZIndex=\{20\}/);
+	expect(result.code).toMatch(/PaddingLeft=\{new UDim\(0, 16\)\}/);
+	expect(result.code).toMatch(/PaddingRight=\{new UDim\(0, 16\)\}/);
+});
+
+test("carries z-index utilities through the runtime variant path", () => {
+	const result = transform('<frame className="z-10 md:z-20" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toContain("createTailwindRuntimeHost");
+	expect(result.code).toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("__rbxtsTailwindRules");
+	expect(result.code).not.toContain("className=");
+	expect(result.code).toMatch(/ZIndex=\{10\}/);
+
+	expect(JSON.parse(result.ir[0])).toEqual(
+		expect.objectContaining({
+			base: expect.objectContaining({
+				props: expect.arrayContaining([
+					expect.objectContaining({
+						name: "ZIndex",
+						value: "10",
+					}),
+				]),
+			}),
+			runtimeRules: expect.arrayContaining([
+				expect.objectContaining({
+					condition: expect.objectContaining({
+						kind: "width",
+						alias: "md",
+					}),
+					effects: expect.objectContaining({
+						props: expect.arrayContaining([
+							expect.objectContaining({
+								name: "ZIndex",
+								value: "20",
+							}),
+						]),
+					}),
+				}),
+			]),
+		}),
+	);
+});
+
+test("warns on unsupported z-index forms", () => {
+	const result = transform('<frame className="z-auto -z-10 z-[123] z-999" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.code).not.toContain("className=");
+	expect(result.code).not.toMatch(/ZIndex=/);
+	expect(result.diagnostics).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				level: "warning",
+				code: "unsupported-z-index-auto",
+				token: "z-auto",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "unsupported-negative-z-index",
+				token: "-z-10",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "unsupported-arbitrary-z-index",
+				token: "z-[123]",
+			}),
+			expect.objectContaining({
+				level: "warning",
+				code: "unsupported-z-index-value",
+				token: "z-999",
+			}),
+		]),
+	);
+});
+
 test("lowers className on multiple supported Roblox host elements", () => {
 	const config = defineConfig({
 		theme: {
