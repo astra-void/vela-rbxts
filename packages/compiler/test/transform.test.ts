@@ -213,9 +213,7 @@ test("resolves normalized default background colors and transparent keywords", (
 		defaultConfig.theme.colors.slate as Record<string, string>
 	)["700"];
 	expect(
-		result.code.split(
-			`BackgroundColor3={${defaultSlate700}}`,
-		),
+		result.code.split(`BackgroundColor3={${defaultSlate700}}`),
 	).toHaveLength(2);
 	expect(result.code).toContain("<frame BackgroundTransparency={1}/>");
 });
