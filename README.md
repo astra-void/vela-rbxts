@@ -1,6 +1,6 @@
-# rbxts-tailwind
+# vela-rbxts
 
-`rbxts-tailwind` is the Tailwind CSS integration layer for [roblox-ts](https://roblox-ts.com/).
+`vela-rbxts` is the Tailwind CSS integration layer for [roblox-ts](https://roblox-ts.com/).
 This monorepo contains the compiler, host adapter, shared config/types, and the main consumer package that exposes the public API.
 
 ## What is implemented now
@@ -9,13 +9,13 @@ The current utility-class implementation is a focused baseline for Roblox UI sty
 
 The current implementation is centered on `className`-driven utility classes for Roblox UI elements.
 
-- `rbxts-tailwind` augments `React.Attributes` so TSX can accept `className?: ClassValue`.
-- `rbxts-tailwind/transformer` exposes the TypeScript transformer entry point for `rbxtsc`.
-- `@rbxts-tailwind/rbxtsc-host` decides which TSX files should be transformed and bridges compiler diagnostics into the host.
-- `@rbxts-tailwind/compiler` lowers supported utility classes into Roblox UI props and removes the original `className`.
-- `@rbxts-tailwind/config` provides the default config and `defineConfig()` helper.
-- `@rbxts-tailwind/core` owns the semantic boundary and supported host element contracts.
-- `@rbxts-tailwind/types` provides shared public types such as `ClassValue` and `StylableProps`.
+- `vela-rbxts` augments `React.Attributes` so TSX can accept `className?: ClassValue`.
+- `vela-rbxts/transformer` exposes the TypeScript transformer entry point for `rbxtsc`.
+- `@vela-rbxts/rbxtsc-host` decides which TSX files should be transformed and bridges compiler diagnostics into the host.
+- `@vela-rbxts/compiler` lowers supported utility classes into Roblox UI props and removes the original `className`.
+- `@vela-rbxts/config` provides the default config and `defineConfig()` helper.
+- `@vela-rbxts/core` owns the semantic boundary and supported host element contracts.
+- `@vela-rbxts/types` provides shared public types such as `ClassValue` and `StylableProps`.
 
 ### Implementation progress
 
@@ -41,14 +41,14 @@ Still incomplete:
 
 | Package | Responsibility |
 | --- | --- |
-| `rbxts-tailwind` | Main public package. Re-exports config helpers, the transformer bridge, and shared types. |
-| `rbxts-tailwind/transformer` | CommonJS transformer entry point for `rbxtsc` and other TypeScript transformer consumers. |
-| `@rbxts-tailwind/compiler` | Native compiler implementation that resolves and lowers utility classes. |
-| `@rbxts-tailwind/rbxtsc-host` | Host adapter that filters eligible files, loads project config, and calls the compiler. |
+| `vela-rbxts` | Main public package. Re-exports config helpers, the transformer bridge, and shared types. |
+| `vela-rbxts/transformer` | CommonJS transformer entry point for `rbxtsc` and other TypeScript transformer consumers. |
+| `@vela-rbxts/compiler` | Native compiler implementation that resolves and lowers utility classes. |
+| `@vela-rbxts/rbxtsc-host` | Host adapter that filters eligible files, loads project config, and calls the compiler. |
 | `@vela-rbxts/ts-plugin` | Thin TypeScript Language Service Plugin adapter for completions, hover, and semantic diagnostics. |
-| `@rbxts-tailwind/config` | Tailwind-style config shape, defaults, and config composition helpers. |
-| `@rbxts-tailwind/core` | Semantic ownership boundary and supported host element tags. |
-| `@rbxts-tailwind/types` | Shared utility types used across packages and public exports. |
+| `@vela-rbxts/config` | Tailwind-style config shape, defaults, and config composition helpers. |
+| `@vela-rbxts/core` | Semantic ownership boundary and supported host element tags. |
+| `@vela-rbxts/types` | Shared utility types used across packages and public exports. |
 
 ## Utility class flow
 
@@ -137,7 +137,7 @@ When the `className` value is dynamic or contains supported runtime variants:
 
 - the file is rewritten automatically to use the generated runtime host
 - no new user import, wrapper, or setup file is required
-- the generated runtime artifact is placed under `include/rbxts-tailwind`
+- the generated runtime artifact is placed under `include/vela-rbxts`
 
 Supported behavior includes:
 
@@ -154,7 +154,7 @@ The host resolves it by walking upward from the source file location and loading
 Use `defineConfig()` in `rbxtw.config.ts` to build a config object:
 
 ```ts
-import { defineConfig } from "rbxts-tailwind";
+import { defineConfig } from "vela-rbxts";
 
 export default defineConfig({
   theme: {
@@ -205,7 +205,7 @@ pnpm --filter @vela-rbxts/ts-plugin build
 
 ```tsx
 // rbxtw.config.ts
-import { defineConfig } from "rbxts-tailwind";
+import { defineConfig } from "vela-rbxts";
 
 export default defineConfig();
 ```
