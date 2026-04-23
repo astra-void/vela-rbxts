@@ -1,8 +1,15 @@
 import React from "@rbxts/react";
 import { UserInputService, Workspace } from "@rbxts/services";
 
-import type { TailwindConfig } from "@vela-rbxts/config";
 import type { ClassValue } from "@vela-rbxts/types";
+
+type TailwindConfig = {
+	theme: {
+		colors: Record<string, string | Record<string, string>>;
+		radius: Record<string, string>;
+		spacing: Record<string, string>;
+	};
+};
 
 type Color3 = object;
 
@@ -123,10 +130,12 @@ type RuntimeRule = {
 };
 
 type RuntimeTheme = {
-	colors: Record<string, RuntimeColorScale>;
+	colors: Record<string, RuntimeColorEntry>;
 	radius: Record<string, UDim>;
 	spacing: Record<string, UDim>;
 };
+
+type RuntimeColorEntry = string | RuntimeColorScale;
 
 type RuntimeColorScale = Record<string, Color3>;
 
@@ -297,12 +306,13 @@ function normalizeTheme(config: TailwindConfig): RuntimeTheme {
 }
 
 function normalizeColorRegistry(
-	registry: Record<string, Record<string, string>>,
-): Record<string, RuntimeColorScale> {
-	const normalized: Record<string, RuntimeColorScale> = {};
+	registry: Record<string, string | Record<string, string>>,
+): Record<string, RuntimeColorEntry> {
+	const normalized: Record<string, RuntimeColorEntry> = {};
 
 	for (const [key, value] of pairs(registry)) {
-		normalized[key] = normalizeColorScale(value);
+		normalized[key] =
+			typeof value === "string" ? value : normalizeColorScale(value);
 	}
 
 	return normalized;
@@ -461,13 +471,34 @@ function resolveUtilityToken(
 			};
 		}
 
-		const value = theme.colors[colorName]?.[shade];
-		if (!value) {
+		const value = theme.colors[colorName];
+		if (typeof value === "string") {
+			if (shade !== undefined) {
+				return undefined;
+			}
+
+			const parsed = parseColor3(value);
+			if (!parsed) {
+				return undefined;
+			}
+
+			return {
+				props: [{ name: "BackgroundColor3", value: parsed }],
+				helpers: [],
+			};
+		}
+
+		if (shade === undefined || !value) {
+			return undefined;
+		}
+
+		const shadeValue = value[shade];
+		if (!shadeValue) {
 			return undefined;
 		}
 
 		return {
-			props: [{ name: "BackgroundColor3", value }],
+			props: [{ name: "BackgroundColor3", value: shadeValue }],
 			helpers: [],
 		};
 	}
@@ -687,10 +718,10 @@ function resolveUtilityToken(
 	return undefined;
 }
 
-function splitColorKey(key: string): [string, string] {
+function splitColorKey(key: string): [string, string | undefined] {
 	const lastDash = lastIndexOf(key, "-");
 	if (lastDash === -1) {
-		return [key, "500"];
+		return [key, undefined];
 	}
 
 	const suffix = substring(key, lastDash + 1);
@@ -698,7 +729,7 @@ function splitColorKey(key: string): [string, string] {
 		return [substring(key, 0, lastDash), suffix];
 	}
 
-	return [key, "500"];
+	return [key, undefined];
 }
 
 function isColorShade(value: string): boolean {

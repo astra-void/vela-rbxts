@@ -103,15 +103,12 @@ beforeEach(() => {
 	vi.stubGlobal("UDim2", TestUDim2);
 });
 
-test("does not silently coerce invalid runtime colors to white", async () => {
+test("does not silently coerce invalid singleton colors to white", async () => {
 	const { createTailwindRuntimeHost } = await import("../src/runtime");
 	const RuntimeHost = createTailwindRuntimeHost({
 		theme: {
 			colors: {
-				brand: {
-					500: "not-a-color",
-					700: "Color3.fromRGB(1, 2, 3)",
-				},
+				brand: "not-a-color",
 			},
 			radius: {},
 			spacing: {},
@@ -158,4 +155,27 @@ test("resolves runtime color lookups from normalized palettes", async () => {
 		green: 8,
 		blue: 9,
 	});
+});
+
+test("does not resolve unshaded palette colors", async () => {
+	const { createTailwindRuntimeHost } = await import("../src/runtime");
+	const RuntimeHost = createTailwindRuntimeHost({
+		theme: {
+			colors: {
+				brand: {
+					500: "Color3.fromRGB(4, 5, 6)",
+					700: "Color3.fromRGB(7, 8, 9)",
+				},
+			},
+			radius: {},
+			spacing: {},
+		},
+	});
+
+	const element = RuntimeHost({
+		__rbxtsTailwindTag: "frame",
+		className: "bg-brand",
+	});
+
+	expect(element.props).not.toHaveProperty("BackgroundColor3");
 });
