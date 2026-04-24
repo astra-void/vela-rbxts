@@ -36,8 +36,8 @@ export function runCommand(command, args, options = {}) {
 export function runPnpm(args, options = {}) {
 	const pnpmExecPath = process.env.npm_execpath;
 
-	if (pnpmExecPath) {
-		return spawnAndCheck(process.execPath, [pnpmExecPath, ...args], options);
+	if (pnpmExecPath && process.platform !== "win32") {
+		return spawnAndCheck(pnpmExecPath, args, options);
 	}
 
 	return spawnAndCheck("pnpm", args, options);
