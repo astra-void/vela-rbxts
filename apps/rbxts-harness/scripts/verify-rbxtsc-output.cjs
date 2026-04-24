@@ -71,7 +71,9 @@ for (const fragment of requiredFragments) {
 
 for (const check of requiredPatterns) {
 	if (!check.pattern.test(source)) {
-		failures.push(`emitted Luau is missing expected pattern: ${check.description}`);
+		failures.push(
+			`emitted Luau is missing expected pattern: ${check.description}`,
+		);
 	}
 }
 
@@ -83,7 +85,9 @@ for (const fragment of forbiddenFragments) {
 
 for (const check of forbiddenPatterns) {
 	if (check.pattern.test(source)) {
-		failures.push(`emitted Luau still contains forbidden pattern: ${check.description}`);
+		failures.push(
+			`emitted Luau still contains forbidden pattern: ${check.description}`,
+		);
 	}
 }
 
