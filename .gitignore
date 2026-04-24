@@ -2,6 +2,7 @@ node_modules
 out
 dist
 include
+artifacts
 
 .pnpm-store
 .DS_Store
