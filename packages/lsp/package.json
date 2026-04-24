@@ -1,0 +1,29 @@
+{
+  "name": "@vela-rbxts/lsp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "description": "Source package for the vela-rbxts Rust LSP wrapper and release staging scripts.",
+  "main": "./bin/vela-rbxts-lsp.js",
+  "bin": {
+    "vela-rbxts-lsp": "./bin/vela-rbxts-lsp.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/astra-void/vela-rbxts.git"
+  },
+  "files": [
+    "bin/vela-rbxts-lsp.js",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "cargo build --release --manifest-path Cargo.toml",
+    "dev": "cargo run --manifest-path Cargo.toml",
+    "create-npm-dirs": "node ./scripts/create-npm-dirs.mjs",
+    "prepack": "pnpm run stage:lsp",
+    "publish:lsp": "node ./scripts/publish-lsp.mjs",
+    "publish:lsp:dry-run": "node ./scripts/publish-lsp.mjs --dry-run",
+    "stage:lsp": "node ./scripts/publish-lsp.mjs --prepare-only",
+    "clean": "node -e \"const fs=require('node:fs');for (const file of ['.npm','target']) fs.rmSync(file,{recursive:true,force:true});\""
+  }
+}
