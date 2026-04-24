@@ -11,11 +11,27 @@
     "lint:fix": "turbo run lint:fix",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "release:check": "pnpm run lint && pnpm run typecheck && pnpm run test",
+    "release:validate": "tsx ./scripts/release/validate-release.ts",
+    "release:pack": "tsx ./scripts/release/pack-workspace-packages.ts",
+    "release:publish": "tsx ./scripts/release/publish-workspace-packages.ts",
+    "release:publish:next": "pnpm run release:publish -- --tag next",
+    "release:publish:latest": "pnpm run release:publish -- --tag latest",
+    "release:napi": "pnpm --filter @vela-rbxts/compiler run publish:napi",
+    "release:napi:dry-run": "pnpm --filter @vela-rbxts/compiler run publish:napi -- --dry-run",
+    "release:lsp": "pnpm --filter @vela-rbxts/lsp run publish:lsp",
+    "release:lsp:dry-run": "pnpm --filter @vela-rbxts/lsp run publish:lsp -- --dry-run",
+    "release:dry-run:next": "pnpm run release:napi:dry-run -- --tag next && pnpm run release:lsp:dry-run -- --tag next && pnpm run release:publish -- --dry-run --tag next",
+    "release:next": "pnpm run release:napi -- --tag next && pnpm run release:lsp -- --tag next && pnpm run release:publish:next",
+    "release:dry-run:latest": "pnpm run release:napi:dry-run -- --tag latest && pnpm run release:lsp:dry-run -- --tag latest && pnpm run release:publish -- --dry-run --tag latest",
+    "release:latest": "pnpm run release:napi -- --tag latest && pnpm run release:lsp -- --tag latest && pnpm run release:publish:latest",
+    "release:vsix": "pnpm --filter ./packages/vscode-extension run package:vsix"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.12",
     "@changesets/cli": "^2.31.0",
+    "tsx": "^4.20.6",
     "turbo": "^2.5.8",
     "typescript": "5.9.3",
     "vitest": "^4.1.4"
