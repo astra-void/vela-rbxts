@@ -16,7 +16,8 @@ import {
 	REPO_ROOT,
 	writeJsonFile,
 } from "./utils/fs";
-import { type PackageJson, readJsonFile } from "./utils/package-json";
+import { type PackageJson } from "./utils/package-json";
+import { readJsonFile } from "./utils/fs";
 
 type TarballPackageInfo = {
 	artifact: PackedArtifact;
