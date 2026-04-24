@@ -17,26 +17,8 @@ rmSync(packageBinDir, { force: true, recursive: true });
 
 for (const variant of options.variants) {
 	const { target, output } = variant;
-	const useXwin = target.includes("windows");
-	const command = useXwin ? getCargoXwinBinaryPath() : getCargoBinaryPath();
-	const args = useXwin
-		? [
-				"xwin",
-				"build",
-				"--release",
-				"--manifest-path",
-				cargoManifestPath,
-				"--target",
-				target,
-			]
-		: [
-				"zigbuild",
-				"--release",
-				"--manifest-path",
-				cargoManifestPath,
-				"--target",
-				target,
-			];
+	const command = resolveCargoCommand(target);
+	const args = buildCargoArgs(target);
 	const buildResult = spawnSync(
 		command,
 		args,
@@ -71,6 +53,54 @@ function getCargoXwinBinaryPath() {
 		"bin",
 		process.platform === "win32" ? "cargo-xwin.exe" : "cargo-xwin",
 	);
+}
+
+function resolveCargoCommand(target) {
+	if (shouldUseXwin(target)) {
+		return getCargoXwinBinaryPath();
+	}
+
+	return getCargoBinaryPath();
+}
+
+function buildCargoArgs(target) {
+	if (shouldUseXwin(target)) {
+		return [
+			"xwin",
+			"build",
+			"--release",
+			"--manifest-path",
+			cargoManifestPath,
+			"--target",
+			target,
+		];
+	}
+
+	const linuxNeedsZig =
+		target.includes("linux-musl") || target.includes("aarch64-unknown-linux");
+	if (linuxNeedsZig) {
+		return [
+			"zigbuild",
+			"--release",
+			"--manifest-path",
+			cargoManifestPath,
+			"--target",
+			target,
+		];
+	}
+
+	return [
+		"build",
+		"--release",
+		"--manifest-path",
+		cargoManifestPath,
+		"--target",
+		target,
+	];
+}
+
+function shouldUseXwin(target) {
+	return process.platform !== "win32" && target.includes("windows");
 }
 
 function buildEnvironment() {

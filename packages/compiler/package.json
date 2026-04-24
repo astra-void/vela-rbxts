@@ -37,19 +37,18 @@
   "napi": {
     "binaryName": "compiler",
     "targets": [
-      "x86_64-apple-darwin",
-      "aarch64-apple-darwin",
       "x86_64-unknown-linux-gnu",
-      "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-musl",
       "aarch64-unknown-linux-gnu",
-      "aarch64-unknown-linux-musl",
-      "aarch64-pc-windows-msvc"
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-pc-windows-msvc"
     ]
   },
   "scripts": {
     "build": "pnpm run build:native",
     "build:native": "napi build --platform",
+    "build:native:target": "node ./scripts/build-target-artifact.mjs",
     "dev": "pnpm run build:native",
     "lint": "biome check .",
     "lint:fix": "biome check . --fix --unsafe",

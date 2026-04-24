@@ -174,7 +174,8 @@ async function copyNativeBinaries() {
 async function copyTargetBinariesToNpmDirs() {
 	for (const target of targets) {
 		const binaryFileName = `${binaryName}.${target.platformArchABI}.node`;
-		const artifactPath = join(PACKAGE_DIR, "artifacts", binaryFileName);
+		const artifactFileName = `${binaryName}.${target.triple}.node`;
+		const artifactPath = join(PACKAGE_DIR, "artifacts", artifactFileName);
 		const sourcePath = existsSync(artifactPath)
 			? artifactPath
 			: join(PACKAGE_DIR, binaryFileName);
@@ -185,11 +186,15 @@ async function copyTargetBinariesToNpmDirs() {
 			// Local staging only has the current platform binary; full publish jobs
 			// must provide every cross-target artifact through packages/compiler/artifacts.
 			if (options.prepareOnly) {
-				console.warn(`Skipping missing target binary: ${binaryFileName}`);
+				console.warn(
+					`Skipping missing target binary: ${artifactFileName} (or local fallback ${binaryFileName})`,
+				);
 				continue;
 			}
 
-			throw new Error(`Missing target binary: ${binaryFileName}`);
+			throw new Error(
+				`Missing target binary: ${artifactFileName} (and local fallback ${binaryFileName}).`,
+			);
 		}
 
 		await mkdir(targetDir, { recursive: true });
