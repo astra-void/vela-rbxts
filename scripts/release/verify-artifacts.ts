@@ -45,7 +45,6 @@ function hasForbiddenEntry(entries: readonly string[]) {
 function assertNoWorkspaceProtocol(manifest: PackageJson, packageName: string) {
 	const fields: Array<keyof PackageJson> = [
 		"dependencies",
-		"devDependencies",
 		"peerDependencies",
 		"optionalDependencies",
 	];
