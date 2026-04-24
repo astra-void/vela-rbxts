@@ -1,6 +1,6 @@
-# `@vela-rbxts/vscode-extension`
+# `astra-void.vela-rbxts-lsp`
 
-This VSCode extension launches the standalone Rust LSP through the published
+This VS Code extension launches the standalone Rust LSP through the published
 `@vela-rbxts/lsp` wrapper package when the matching platform binary package is
 installed.
 
@@ -8,13 +8,30 @@ installed.
 package, but new editor features should go through the standalone Rust LSP
 instead of the TypeScript plugin.
 
-For monorepo development, the extension can fall back to:
+## Build A Local VSIX
 
 ```sh
-cargo run --manifest-path packages/lsp/Cargo.toml
+pnpm --filter ./packages/vscode-extension package:vsix
 ```
 
-That Cargo-based launch path is useful during local development, but it is not
-the right packaged release strategy. Packaged releases should use the staged
-`@vela-rbxts/lsp` wrapper and the platform-specific binary packages it depends
-on.
+This generates:
+
+```txt
+packages/vscode-extension/dist/vela-rbxts-lsp-0.1.0.vsix
+```
+
+Install it manually with:
+
+```sh
+code --install-extension packages/vscode-extension/dist/vela-rbxts-lsp-0.1.0.vsix
+```
+
+The packaged extension id is:
+
+```txt
+astra-void.vela-rbxts-lsp
+```
+
+The VSIX packaging flow stages a temporary package snapshot and rewrites
+workspace dependencies in that staging directory only. Source files are not
+mutated.

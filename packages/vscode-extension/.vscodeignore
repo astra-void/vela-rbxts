@@ -1,0 +1,8 @@
+src/**
+*.ts
+tsconfig.json
+dist/.tsbuildinfo
+node_modules/.cache/**
+.vscode/**
+*.vsix
+pnpm-lock.yaml

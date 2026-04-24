@@ -9,8 +9,8 @@ import {
 	TransportKind,
 } from "vscode-languageclient/node";
 
-const EXTENSION_ID = "vela-rbxts";
-const OUTPUT_CHANNEL_NAME = "vela-rbxts";
+const EXTENSION_ID = "vela-rbxts-lsp";
+const OUTPUT_CHANNEL_NAME = "vela-rbxts-lsp";
 const CONFIG_WATCH_GLOB = "**/rbxtw.config.ts";
 
 let client: LanguageClient | undefined;
@@ -211,26 +211,10 @@ async function resolveServerCommand(
 		return bundledServerCommand;
 	}
 
-	const repoRootUri = getRepoRootUri(context);
-	const cargoManifestUri = vscode.Uri.joinPath(
-		repoRootUri,
-		"packages",
-		"lsp",
-		"Cargo.toml",
-	);
-	if (!(await fileExists(cargoManifestUri))) {
-		log(`Missing local dev fallback manifest: ${cargoManifestUri.fsPath}`);
-		return undefined;
-	}
-
 	log(
-		`Using repo-local Cargo development fallback for the LSP server: cargo run --manifest-path ${cargoManifestUri.fsPath}. This is convenient for monorepo development, but packaged releases should use bundled or downloaded binaries instead.`,
+		"No bundled @vela-rbxts/lsp server was resolved. Configure velaRbxts.lsp.serverPath or ensure @vela-rbxts/lsp and a matching platform binary package are installed.",
 	);
-	return {
-		command: "cargo",
-		args: ["run", "--manifest-path", cargoManifestUri.fsPath],
-		workspaceRoot,
-	};
+	return undefined;
 }
 
 function resolveBundledServerCommand(
@@ -243,7 +227,7 @@ function resolveBundledServerCommand(
 
 	if (!isBinaryPackageInstalled(runtimeBinaryPackageName)) {
 		log(
-			`Bundled @vela-rbxts/lsp is available, but ${runtimeBinaryPackageName} is not installed. Falling back to the repo-local Cargo development launch.`,
+			`Bundled @vela-rbxts/lsp is available, but ${runtimeBinaryPackageName} is not installed.`,
 		);
 		return undefined;
 	}
@@ -375,15 +359,6 @@ function log(message: string): void {
 	const timestamp = new Date().toISOString();
 	console.log(`[${OUTPUT_CHANNEL_NAME}] ${message}`);
 	outputChannel?.appendLine(`[${timestamp}] ${message}`);
-}
-
-async function fileExists(uri: vscode.Uri): Promise<boolean> {
-	try {
-		await vscode.workspace.fs.stat(uri);
-		return true;
-	} catch {
-		return false;
-	}
 }
 
 function formatError(error: unknown): string {

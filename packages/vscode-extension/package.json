@@ -1,14 +1,19 @@
 {
-	"name": "@vela-rbxts/vscode-extension",
+	"name": "vela-rbxts-lsp",
 	"version": "0.1.0",
-	"private": true,
 	"type": "commonjs",
-	"displayName": "vela-rbxts",
-	"description": "VSCode extension that launches the standalone vela-rbxts Rust LSP.",
+	"displayName": "Vela LSP",
+	"publisher": "astra-void",
+	"description": "VS Code extension that launches the standalone Vela RBXTS Rust LSP.",
 	"main": "./dist/extension.js",
 	"engines": {
 		"vscode": "^1.90.0"
 	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/astra-void/vela-rbxts.git"
+	},
+	"license": "MIT",
 	"activationEvents": ["onLanguage:typescript", "onLanguage:typescriptreact"],
 	"contributes": {
 		"configuration": {
@@ -17,7 +22,7 @@
 				"velaRbxts.lsp.serverPath": {
 					"type": "string",
 					"default": "",
-					"description": "Optional path to the standalone vela-rbxts LSP executable. When empty, the extension uses the published @vela-rbxts/lsp wrapper package when its platform binary dependency is installed, otherwise it falls back to a local Cargo-based development launch from packages/lsp."
+					"description": "Optional path to the standalone vela-rbxts LSP executable. When empty, the extension uses the published @vela-rbxts/lsp wrapper package when its matching platform binary dependency is installed."
 				},
 				"velaRbxts.lsp.trace.server": {
 					"type": "string",
@@ -38,13 +43,16 @@
 		"dev": "tsc -p tsconfig.json --watch",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"lint": "biome check src",
-		"clean": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});\""
+		"clean": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});\"",
+		"vscode:prepublish": "pnpm run build",
+		"package:vsix": "pnpm run clean && pnpm run build && node ./scripts/package-vsix.cjs"
 	},
 	"dependencies": {
 		"@vela-rbxts/lsp": "workspace:*",
 		"vscode-languageclient": "^9.0.1"
 	},
 	"devDependencies": {
+		"@vscode/vsce": "^3.6.2",
 		"@types/node": "^24.10.1",
 		"@types/vscode": "^1.90.0",
 		"typescript": "5.9.3"
