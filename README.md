@@ -28,8 +28,148 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 | `packages/core` | Semantic boundary and supported host element contracts. |
 | `packages/ir` | Internal shared IR and supporting types. |
 | `packages/types` | Shared public utility types such as `ClassValue` and `StylableProps`. |
-| `apps/rbxts-harness` | Roblox-ts consumer harness that exercises the transformer in a real project. |
+| `apps/rbxts-harness` | Local reference app used by maintainers to validate the transformer in a real roblox-ts project. |
 | `apps/compiler-harness` | Browser-based preview for the compiler API and diagnostics. |
+
+## Using vela-rbxts in a roblox-ts project
+
+`apps/rbxts-harness` in this repository is only a local reference app for maintainers. You do not need to recreate it to use Vela in your own project.
+
+### 1. Install the packages
+
+Install Vela and the runtime package alongside the normal roblox-ts React dependencies:
+
+```bash
+pnpm add vela-rbxts @vela-rbxts/runtime @rbxts/react @rbxts/react-roblox @rbxts/services
+pnpm add -D @rbxts/compiler-types @rbxts/types roblox-ts typescript
+```
+
+If you are starting from an existing roblox-ts project, keep your current workspace tooling and add only the missing packages.
+
+### 2. Configure `tsconfig.json`
+
+Add the transformer entry to `compilerOptions.plugins`:
+
+```json
+{
+  "compilerOptions": {
+    "jsx": "react",
+    "jsxFactory": "React.createElement",
+    "jsxFragmentFactory": "React.Fragment",
+    "module": "commonjs",
+    "moduleResolution": "Node",
+    "noLib": true,
+    "strict": true,
+    "target": "ESNext",
+    "typeRoots": ["node_modules/@rbxts", "node_modules/@vela-rbxts"],
+    "types": ["types", "compiler-types"],
+    "plugins": [
+      {
+        "transform": "vela-rbxts/transformer"
+      }
+    ],
+    "rootDir": "src",
+    "outDir": "out",
+    "baseUrl": "src",
+    "tsBuildInfoFile": "out/tsconfig.tsbuildinfo"
+  },
+  "include": ["src"]
+}
+```
+
+The transformer is what lowers supported `className` usage into Roblox props during the roblox-ts build.
+
+### 3. Add `vela.config.ts`
+
+Vela reads its project configuration from `vela.config.ts`. Use `defineConfig()` from `vela-rbxts`:
+
+```ts
+// vela.config.ts
+import { defineConfig } from "vela-rbxts";
+
+export default defineConfig({
+  theme: {
+    colors: {
+      surface: "Color3.fromRGB(40, 48, 66)",
+    },
+    extend: {
+      colors: {
+        brand: {
+          500: "Color3.fromRGB(59, 130, 246)",
+          700: "Color3.fromRGB(29, 78, 216)",
+        },
+      },
+    },
+  },
+});
+```
+
+If you do not need custom theme values, `export default defineConfig();` is enough.
+
+### 4. Add the declaration file
+
+Add a declaration file such as `src/vela-rbxts.d.ts` so `className` is available on React attributes:
+
+```ts
+// src/vela-rbxts.d.ts
+import "vela-rbxts";
+```
+
+### 5. Expose the runtime folders through Rojo
+
+Map the Roblox TS dependency folders and the Vela package folders into `ReplicatedStorage`:
+
+```json
+{
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "node_modules": {
+        "$className": "Folder",
+        "@rbxts": {
+          "$path": "node_modules/@rbxts"
+        },
+        "@rbxts-js": {
+          "$path": "node_modules/@rbxts-js"
+        },
+        "@vela-rbxts": {
+          "$path": "node_modules/@vela-rbxts"
+        }
+      }
+    }
+  }
+}
+```
+
+`@vela-rbxts/runtime` must be visible to Roblox Studio because transformed files can emit a runtime host import for `@vela-rbxts/runtime` when `className` needs runtime evaluation. If Studio cannot see that package through Rojo, the generated code cannot resolve the runtime host at run time.
+
+### 6. Use `className` in TSX
+
+A minimal component looks like this:
+
+```tsx
+import React from "@rbxts/react";
+
+export function App() {
+  return <frame className="rounded-md bg-slate-700 px-4 py-3" />;
+}
+```
+
+The transformer handles supported host elements such as `frame`, `textlabel`, `textbutton`, and the other Roblox UI elements listed below.
+
+### 7. Build and run
+
+Use the normal roblox-ts build and watcher commands, then serve the Rojo project into Studio:
+
+```bash
+pnpm install
+pnpm exec rbxtsc -p tsconfig.json
+pnpm exec rbxtsc -w -p tsconfig.json
+rojo serve default.project.json
+```
+
+In a typical project, `rbxtsc -p tsconfig.json` is your build step, `rbxtsc -w -p tsconfig.json` is your local watch mode, and `rojo serve` keeps Studio synced with the compiled output and mapped module folders.
 
 ## Supported Surface
 
@@ -116,10 +256,10 @@ Notes:
 
 ## Configuration
 
-The project config file is named `rbxtw.config.ts`.
+The project config file is named `vela.config.ts`.
 The host resolves it by walking upward from the source file location and loading the nearest config file it finds.
 
-Use `defineConfig()` in `rbxtw.config.ts` to build a config object:
+Use `defineConfig()` in `vela.config.ts` to build a config object:
 
 ```ts
 import { defineConfig } from "vela-rbxts";
@@ -151,7 +291,7 @@ The plugin keeps TypeScript-side responsibilities in TypeScript:
 
 - tsserver lifecycle integration
 - detecting supported TSX `className="..."` contexts
-- nearest `rbxtw.config.ts` resolution through the existing host config loader
+- nearest `vela.config.ts` resolution through the existing host config loader
 - translating compiler query results into TypeScript completions, quick info, and diagnostics
 
 The native compiler remains the semantic engine for token analysis, utility validation, completions, hover text, and diagnostics.
@@ -187,7 +327,7 @@ cargo run
 ## Example
 
 ```tsx
-// rbxtw.config.ts
+// vela.config.ts
 import { defineConfig } from "vela-rbxts";
 
 export default defineConfig();
