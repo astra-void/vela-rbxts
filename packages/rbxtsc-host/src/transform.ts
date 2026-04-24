@@ -1,6 +1,6 @@
 import { transform } from "@vela-rbxts/compiler";
 import type { TailwindConfig } from "@vela-rbxts/config";
-
+import type { StyleIR } from "@vela-rbxts/ir";
 import {
 	createHostDiagnostic,
 	mapCompilerDiagnosticsToHostDiagnostics,
@@ -90,9 +90,9 @@ export function transformSourceForHost(
 function normalizeCompilerResult(
 	result: ReturnType<HostCompiler["transform"]>,
 ): HostCompilerResult {
-	const ir = (result.ir ?? []).map((entry) => {
+	const ir = (result.ir ?? []).map((entry: string | StyleIR) => {
 		if (typeof entry === "string") {
-			return JSON.parse(entry);
+			return JSON.parse(entry) as StyleIR;
 		}
 
 		return entry;
