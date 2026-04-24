@@ -3,6 +3,8 @@
 `vela-rbxts` is a Tailwind-style `className` integration layer for [roblox-ts](https://roblox-ts.com/).
 This monorepo contains the native compiler, the `rbxtsc` host adapter, shared config and type packages, the runtime host, a standalone Rust LSP adapter, and two harness apps.
 
+Release workflow documentation is available in `docs/release.md`.
+
 ## Current Scope
 
 The implementation is intentionally narrow and focuses on Roblox UI styling rather than full Tailwind parity.

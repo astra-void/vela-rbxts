@@ -7,11 +7,19 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release tag to publish, for example v0.5.0 or v0.5.0-next.1
+        description: "Release tag to publish (example: v0.5.0 or v0.5.0-next.1)"
         required: true
         type: string
+      npm_tag:
+        description: NPM dist-tag
+        required: true
+        default: next
+        type: choice
+        options:
+          - next
+          - latest
       dry_run:
-        description: Run a dry-run publish instead of publishing to npm
+        description: Run dry-run publish steps
         required: false
         default: true
         type: boolean
@@ -23,19 +31,63 @@ permissions:
 env:
   NODE_VERSION: 24
   ZIG_VERSION: 0.14.0
-  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  release-metadata:
+    name: release metadata
+    runs-on: ubuntu-24.04
+    outputs:
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+      npm_tag: ${{ steps.meta.outputs.npm_tag }}
+      dry_run: ${{ steps.meta.outputs.dry_run }}
+    steps:
+      - name: Resolve release metadata
+        id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          INPUT_NPM_TAG: ${{ inputs.npm_tag }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            release_tag="${INPUT_RELEASE_TAG}"
+            npm_tag="${INPUT_NPM_TAG}"
+            dry_run="${INPUT_DRY_RUN}"
+          else
+            release_tag="${REF_NAME}"
+            if [[ "${release_tag}" == *"-"* ]]; then
+              npm_tag="next"
+            else
+              npm_tag="latest"
+            fi
+            dry_run="false"
+          fi
+
+          if [ -z "${release_tag}" ]; then
+            echo "release_tag is required" >&2
+            exit 1
+          fi
+
+          if [ "${npm_tag}" != "next" ] && [ "${npm_tag}" != "latest" ]; then
+            echo "npm_tag must be one of: next, latest" >&2
+            exit 1
+          fi
+
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+          echo "npm_tag=${npm_tag}" >> "${GITHUB_OUTPUT}"
+          echo "dry_run=${dry_run}" >> "${GITHUB_OUTPUT}"
+
   validate:
     name: validate
     runs-on: ubuntu-24.04
+    needs: release-metadata
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -50,19 +102,24 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Validate release tag and package versions
-        run: pnpm release:validate
+      - name: Release plan
+        run: pnpm release:plan --tag "${{ needs.release-metadata.outputs.npm_tag }}" --release-tag "${{ needs.release-metadata.outputs.release_tag }}"
 
-      - name: Run release check
-        run: pnpm release:check
+      - name: Lint
+        run: pnpm lint
 
-  compiler-native-artifacts:
-    name: compiler native (${{ matrix.target }})
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+  build-native:
+    name: build native (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
     needs: validate
     strategy:
@@ -112,27 +169,18 @@ jobs:
         if: ${{ contains(matrix.target, 'linux-musl') || contains(matrix.target, 'aarch64-unknown-linux') }}
         run: cargo install cargo-zigbuild --locked
 
-      - name: Install cargo-xwin
-        if: ${{ contains(matrix.target, 'windows') && runner.os != 'Windows' }}
-        run: cargo install cargo-xwin --locked
+      - name: Build native artifacts
+        run: pnpm release:build --native-target "${{ matrix.target }}" --skip-workspace=true
 
-      - name: Build compiler artifact
-        if: ${{ matrix.target == 'aarch64-unknown-linux-gnu' }}
-        run: pnpm --filter @vela-rbxts/compiler run build:native:target -- --target "${{ matrix.target }}" --cross-compile
-
-      - name: Build compiler artifact
-        if: ${{ matrix.target != 'aarch64-unknown-linux-gnu' }}
-        run: pnpm --filter @vela-rbxts/compiler run build:native:target -- --target "${{ matrix.target }}"
-
-      - name: Upload compiler artifact
+      - name: Upload native artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: compiler-artifact-${{ matrix.target }}
-          path: packages/compiler/artifacts/compiler.${{ matrix.target }}.node
+          name: native-${{ matrix.target }}
+          path: artifacts/native/*
           if-no-files-found: error
 
-  lsp-native-artifacts:
-    name: lsp native (${{ matrix.target }})
+  build-lsp:
+    name: build lsp (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
     needs: validate
     strategy:
@@ -182,32 +230,26 @@ jobs:
         if: ${{ contains(matrix.target, 'linux-musl') || contains(matrix.target, 'aarch64-unknown-linux') }}
         run: cargo install cargo-zigbuild --locked
 
-      - name: Install cargo-xwin
-        if: ${{ contains(matrix.target, 'windows') && runner.os != 'Windows' }}
-        run: cargo install cargo-xwin --locked
+      - name: Build lsp artifacts
+        run: pnpm release:build --lsp-target "${{ matrix.target }}" --skip-workspace=true
 
-      - name: Build lsp artifact
-        run: pnpm --filter @vela-rbxts/lsp run build:lsp:target -- --target ${{ matrix.target }}
-
-      - name: Upload lsp artifact
+      - name: Upload lsp artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: lsp-artifact-${{ matrix.target }}
-          path: packages/lsp/artifacts
+          name: lsp-${{ matrix.target }}
+          path: artifacts/lsp
           if-no-files-found: error
 
-  publish:
-    name: publish
+  pack:
+    name: pack
     runs-on: ubuntu-24.04
     needs:
       - validate
-      - compiler-native-artifacts
-      - lsp-native-artifacts
+      - build-native
+      - build-lsp
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
@@ -217,106 +259,123 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
-          registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Download compiler artifacts
+      - name: Download native artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: compiler-artifact-*
+          pattern: native-*
           merge-multiple: true
-          path: packages/compiler/artifacts
+          path: artifacts/native
 
       - name: Download lsp artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: lsp-artifact-*
+          pattern: lsp-*
           merge-multiple: true
-          path: packages/lsp/artifacts
+          path: artifacts/lsp
 
-      - name: Verify compiler artifact layout
-        run: |
-          test -f packages/compiler/artifacts/compiler.x86_64-unknown-linux-gnu.node
-          test -f packages/compiler/artifacts/compiler.x86_64-unknown-linux-musl.node
-          test -f packages/compiler/artifacts/compiler.aarch64-unknown-linux-gnu.node
-          test -f packages/compiler/artifacts/compiler.aarch64-apple-darwin.node
-          test -f packages/compiler/artifacts/compiler.x86_64-apple-darwin.node
-          test -f packages/compiler/artifacts/compiler.x86_64-pc-windows-msvc.node
+      - name: Pack release artifacts
+        run: pnpm release:pack
 
-      - name: Verify LSP artifact layout
-        run: |
-          test -f packages/lsp/artifacts/x86_64-unknown-linux-gnu/vela-rbxts-lsp
-          test -f packages/lsp/artifacts/x86_64-unknown-linux-musl/vela-rbxts-lsp
-          test -f packages/lsp/artifacts/aarch64-unknown-linux-gnu/vela-rbxts-lsp
-          test -f packages/lsp/artifacts/aarch64-apple-darwin/vela-rbxts-lsp
-          test -f packages/lsp/artifacts/x86_64-apple-darwin/vela-rbxts-lsp
-          test -f packages/lsp/artifacts/x86_64-pc-windows-msvc/vela-rbxts-lsp.exe
+      - name: Upload packed artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: packed-release-artifacts
+          path: |
+            artifacts/native/**
+            artifacts/lsp/**
+            artifacts/npm/**
+            artifacts/logs/**
+          if-no-files-found: error
 
-      - name: List staged artifacts
-        run: |
-          echo "Compiler artifacts:"
-          find packages/compiler/artifacts -type f | sort
-          echo "LSP artifacts:"
-          find packages/lsp/artifacts -type f | sort
+  verify:
+    name: verify
+    runs-on: ubuntu-24.04
+    needs: pack
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      - name: Resolve publish metadata
-        id: release
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download packed artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: packed-release-artifacts
+          path: artifacts
+
+      - name: Verify artifacts
+        run: pnpm release:verify
+
+      - name: Upload verified artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-release-artifacts
+          path: artifacts/**
+          if-no-files-found: error
+
+  publish-npm:
+    name: publish npm
+    runs-on: ubuntu-24.04
+    needs:
+      - verify
+      - release-metadata
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download verified artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: verified-release-artifacts
+          path: artifacts
+
+      - name: Publish npm tarballs
         env:
-          RELEASE_TAG: ${{ env.RELEASE_TAG }}
-          DRY_RUN_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          NPM_TAG: ${{ needs.release-metadata.outputs.npm_tag }}
+          DRY_RUN: ${{ needs.release-metadata.outputs.dry_run }}
         run: |
-          if [ -z "${RELEASE_TAG}" ]; then
-            echo "RELEASE_TAG is required." >&2
-            exit 1
-          fi
-
-          release_version="${RELEASE_TAG#v}"
-          if [ "${release_version}" != "${release_version%%-*}" ]; then
-            npm_dist_tag="next"
+          if [ "${DRY_RUN}" = "true" ]; then
+            pnpm release:publish:npm --tag "${NPM_TAG}" --dry-run
           else
-            npm_dist_tag="latest"
+            pnpm release:publish:npm --tag "${NPM_TAG}"
           fi
-
-          echo "Using release tag: ${RELEASE_TAG}"
-          echo "Resolved npm dist-tag: ${npm_dist_tag}"
-          echo "npm_dist_tag=${npm_dist_tag}" >> "${GITHUB_OUTPUT}"
-          echo "dry_run=${DRY_RUN_INPUT}" >> "${GITHUB_OUTPUT}"
-
-      - name: Ensure no pending changesets remain
-        run: |
-          pending_changesets="$(find .changeset -maxdepth 1 -type f -name '*.md' ! -name 'README.md')"
-          if [ -n "${pending_changesets}" ]; then
-            echo "Pending changesets must be versioned before publish:" >&2
-            echo "${pending_changesets}" >&2
-            exit 1
-          fi
-
-      - name: Dry-run publish
-        if: ${{ steps.release.outputs.dry_run == 'true' }}
-        env:
-          NPM_DIST_TAG: ${{ steps.release.outputs.npm_dist_tag }}
-        run: |
-          echo "Resolved npm dist-tag: ${NPM_DIST_TAG:-latest}"
-          pnpm release:napi:dry-run -- --tag "${NPM_DIST_TAG:-latest}"
-          pnpm release:lsp:dry-run -- --tag "${NPM_DIST_TAG:-latest}"
-          pnpm release:publish -- --dry-run --tag "${NPM_DIST_TAG:-latest}"
-
-      - name: Publish packages
-        if: ${{ steps.release.outputs.dry_run != 'true' }}
-        env:
-          NPM_DIST_TAG: ${{ steps.release.outputs.npm_dist_tag }}
-        run: |
-          echo "Resolved npm dist-tag: ${NPM_DIST_TAG:-latest}"
-          pnpm release:napi -- --tag "${NPM_DIST_TAG:-latest}"
-          pnpm release:lsp -- --tag "${NPM_DIST_TAG:-latest}"
-          pnpm release:publish -- --tag "${NPM_DIST_TAG:-latest}"
 
   package-vsix:
     name: package vsix
     runs-on: ubuntu-24.04
-    needs: publish
+    needs:
+      - publish-npm
+      - release-metadata
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -333,31 +392,26 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Download lsp artifacts
+      - name: Download verified artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: lsp-artifact-*
-          merge-multiple: true
-          path: packages/lsp/artifacts
-
-      - name: Verify LSP artifact layout
-        run: |
-          test -f packages/lsp/artifacts/x86_64-unknown-linux-gnu/vela-rbxts-lsp
-          test -f packages/lsp/artifacts/x86_64-unknown-linux-musl/vela-rbxts-lsp
-          test -f packages/lsp/artifacts/aarch64-unknown-linux-gnu/vela-rbxts-lsp
-          test -f packages/lsp/artifacts/aarch64-apple-darwin/vela-rbxts-lsp
-          test -f packages/lsp/artifacts/x86_64-apple-darwin/vela-rbxts-lsp
-          test -f packages/lsp/artifacts/x86_64-pc-windows-msvc/vela-rbxts-lsp.exe
-
-      - name: Stage lsp packages for vsix bundling
-        run: pnpm --filter @vela-rbxts/lsp run stage:lsp
+          name: verified-release-artifacts
+          path: artifacts
 
       - name: Package VSIX
-        run: pnpm release:vsix
+        env:
+          DRY_RUN: ${{ needs.release-metadata.outputs.dry_run }}
+        run: |
+          if [ "${DRY_RUN}" = "true" ]; then
+            pnpm release:vsix --dry-run
+          else
+            pnpm release:vsix
+          fi
 
       - name: Upload VSIX artifact
+        if: ${{ needs.release-metadata.outputs.dry_run != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: vela-rbxts-vsix
-          path: packages/vscode-extension/dist/*.vsix
+          path: artifacts/vsix/*.vsix
           if-no-files-found: error
