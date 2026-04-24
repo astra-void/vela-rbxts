@@ -5,7 +5,13 @@ import { fileURLToPath } from "node:url";
 
 import { readNapiConfig } from "@napi-rs/cli";
 
-import { getPassthroughArgs, runCommand, runNapi, runPnpm } from "./napi-cli.mjs";
+import {
+	getPassthroughArgs,
+	resolveNpmCommand,
+	runCommand,
+	runNapi,
+	runPnpm,
+} from "./napi-cli.mjs";
 import { stampRepositoryIntoNpmManifests } from "./stamp-repository.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -67,6 +73,7 @@ async function prepareStage() {
 async function publishStage() {
 	const publishArgs = buildPublishArgs();
 	const publishEnv = createPublishEnv();
+	const npmCommand = resolveNpmCommand();
 	const ghReleaseId = process.env.NAPI_GH_RELEASE_ID?.trim();
 	const prePublishArgs = [
 		"pre-publish",
@@ -92,13 +99,13 @@ async function publishStage() {
 	await stampRepositoryIntoNpmManifests({ rootDir: STAGE_ROOT });
 
 	for (const target of targets) {
-		runCommand("npm", publishArgs, {
+		runCommand(npmCommand, publishArgs, {
 			cwd: join(STAGE_ROOT, "npm", target.platformArchABI),
 			env: publishEnv,
 		});
 	}
 
-	runCommand("npm", publishArgs, {
+	runCommand(npmCommand, publishArgs, {
 		cwd: STAGE_ROOT,
 		env: publishEnv,
 	});

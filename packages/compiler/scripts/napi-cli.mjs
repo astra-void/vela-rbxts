@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
@@ -45,4 +46,15 @@ export function runPnpm(args, options = {}) {
 
 export function runNapi(args, options = {}) {
 	return runCommand(process.execPath, [cliPath, ...args], options);
+}
+
+export function resolveNpmCommand() {
+	const commandName = process.platform === "win32" ? "npm.cmd" : "npm";
+	const localCommand = join(dirname(process.execPath), commandName);
+
+	if (existsSync(localCommand)) {
+		return localCommand;
+	}
+
+	return commandName;
 }
