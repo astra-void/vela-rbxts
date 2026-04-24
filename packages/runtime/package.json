@@ -2,6 +2,9 @@
   "name": "@vela-rbxts/runtime",
   "version": "0.1.0-next.0",
   "types": "./runtime.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "default.project.json",
     "runtime.luau",
