@@ -34,6 +34,7 @@ export async function activate(
 		`${OUTPUT_CHANNEL_NAME} Trace`,
 	);
 	context.subscriptions.push(outputChannel, traceOutputChannel);
+	log(`Extension path: ${context.extensionPath}`);
 
 	const watcher = vscode.workspace.createFileSystemWatcher(CONFIG_WATCH_GLOB);
 	context.subscriptions.push(watcher);
@@ -157,7 +158,12 @@ async function startClient(
 	);
 
 	try {
-		log(`Starting standalone Rust LSP using command: ${command}`);
+		const renderedArgs = args
+			.map((argument) => JSON.stringify(argument))
+			.join(" ");
+		log(
+			`Starting standalone Rust LSP using command: ${command}${renderedArgs.length > 0 ? ` ${renderedArgs}` : ""}`,
+		);
 		await client.start();
 		await client.setTrace(toClientTrace(getTraceSetting()));
 		log("Standalone Rust LSP started.");
@@ -205,8 +211,11 @@ async function resolveServerCommand(
 
 	const bundledServerCommand = resolveBundledServerCommand(workspaceRoot);
 	if (bundledServerCommand) {
+		const renderedArgs = bundledServerCommand.args
+			.map((argument) => JSON.stringify(argument))
+			.join(" ");
 		log(
-			`Using bundled @vela-rbxts/lsp wrapper package: ${bundledServerCommand.command} ${bundledServerCommand.args.join(" ")}`.trim(),
+			`Using bundled @vela-rbxts/lsp wrapper package command: ${bundledServerCommand.command}${renderedArgs.length > 0 ? ` ${renderedArgs}` : ""}`,
 		);
 		return bundledServerCommand;
 	}
@@ -221,6 +230,9 @@ function resolveBundledServerCommand(
 	workspaceRoot: string,
 ): ResolvedServerCommand | undefined {
 	const runtimeBinaryPackageName = resolveBinaryPackageName();
+	log(
+		`Selected platform package for ${process.platform}/${process.arch}: ${runtimeBinaryPackageName ?? "<unsupported>"}`,
+	);
 	if (!runtimeBinaryPackageName) {
 		return undefined;
 	}
@@ -234,12 +246,14 @@ function resolveBundledServerCommand(
 
 	try {
 		const launcherPath = require.resolve("@vela-rbxts/lsp");
+		log(`Bundled wrapper resolve succeeded: ${launcherPath}`);
 		return {
 			command: process.execPath,
 			args: [launcherPath],
 			workspaceRoot,
 		};
 	} catch {
+		log("Bundled wrapper resolve failed for @vela-rbxts/lsp.");
 		return undefined;
 	}
 }
