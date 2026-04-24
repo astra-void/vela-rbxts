@@ -111,7 +111,14 @@ async function runCommand(command, args, options = {}) {
 }
 
 function resolveNpmCommand() {
-	return process.platform === "win32" ? "npm.cmd" : "npm";
+	const commandName = process.platform === "win32" ? "npm.cmd" : "npm";
+	const localCommand = join(dirname(process.execPath), commandName);
+
+	if (existsSync(localCommand)) {
+		return localCommand;
+	}
+
+	return commandName;
 }
 
 function parseArgs(rawArgs) {
