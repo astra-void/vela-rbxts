@@ -214,7 +214,7 @@ function createProject(): {
 	sourceFile: string;
 	runtimeArtifactPath: string;
 } {
-	const root = fs.mkdtempSync(path.join(os.tmpdir(), "rbxtw-transformer-"));
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "vela-transformer-"));
 	const sourceFile = path.join(root, "src", "client", "App.tsx");
 
 	return {

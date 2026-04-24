@@ -78,7 +78,7 @@ test("returns a skipped result without invoking the compiler", () => {
 	);
 });
 
-test("falls back to defaultConfig when rbxtw.config.ts is absent", () => {
+test("falls back to defaultConfig when vela.config.ts is absent", () => {
 	const project = createProject();
 
 	const result = transformSourceForHost({
@@ -169,7 +169,7 @@ test("does not write a generated runtime artifact when runtime rules are reporte
 	expect(fs.existsSync(project.runtimeArtifactPath)).toBe(false);
 });
 
-test("loads rbxtw.config.ts when present", () => {
+test("loads vela.config.ts when present", () => {
 	const project = createProject(
 		`export default defineConfig({
 			theme: {
@@ -225,7 +225,7 @@ test("loads rbxtw.config.ts when present", () => {
 	expect(result.sourceText).toBe(mockTransformedCode);
 });
 
-test("normalizes nearest rbxtw.config.ts authoring-shaped color input", () => {
+test("normalizes nearest vela.config.ts authoring-shaped color input", () => {
 	const project = createProject(
 		`export default {
 			theme: {
@@ -324,11 +324,7 @@ function createProject(configFileText?: string): {
 	fs.mkdirSync(path.dirname(sourceFile), { recursive: true });
 
 	if (configFileText !== undefined) {
-		fs.writeFileSync(
-			path.join(root, "rbxtw.config.ts"),
-			configFileText,
-			"utf8",
-		);
+		fs.writeFileSync(path.join(root, "vela.config.ts"), configFileText, "utf8");
 	}
 
 	return {

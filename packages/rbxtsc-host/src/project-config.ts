@@ -33,7 +33,7 @@ import { defaultConfig, defineConfig, SHADES } from "@vela-rbxts/config";
 type TypeScriptModule = typeof import("typescript");
 type ConfigLoader = (input?: TailwindConfigInput) => TailwindConfig;
 
-const CONFIG_FILE_NAME = "rbxtw.config.ts";
+const CONFIG_FILE_NAME = "vela.config.ts";
 
 export function resolveProjectConfig(sourceFileName: string): TailwindConfig {
 	const configFilePath = findProjectConfigFile(sourceFileName);
@@ -161,7 +161,7 @@ function loadTypeScript(): TypeScriptModule {
 		const message = error instanceof Error ? error.message : String(error);
 
 		throw new Error(
-			`Failed to load the TypeScript runtime needed for rbxtw.config.ts: ${message}`,
+			`Failed to load the TypeScript runtime needed for vela.config.ts: ${message}`,
 		);
 	}
 }
