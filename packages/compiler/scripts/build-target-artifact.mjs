@@ -24,7 +24,12 @@ async function main() {
 		);
 	}
 
-	runNapi(["build", "--platform", "--target", options.target], {
+	const buildArgs = ["build", "--platform", "--target", options.target];
+	if (options.crossCompile) {
+		buildArgs.push("--cross-compile");
+	}
+
+	runNapi(buildArgs, {
 		cwd: PACKAGE_DIR,
 	});
 
@@ -62,10 +67,16 @@ function assertSupportedHostForTarget(target) {
 
 function parseArgs(rawArgs) {
 	let target;
+	let crossCompile = false;
 
 	for (let index = 0; index < rawArgs.length; index += 1) {
 		const arg = rawArgs[index];
 		if (arg === "--") {
+			continue;
+		}
+
+		if (arg === "--cross-compile") {
+			crossCompile = true;
 			continue;
 		}
 
@@ -87,7 +98,7 @@ function parseArgs(rawArgs) {
 		throw new Error("Missing --target <triple>.");
 	}
 
-	return { target };
+	return { target, crossCompile };
 }
 
 main().catch((error) => {
