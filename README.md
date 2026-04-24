@@ -1,7 +1,7 @@
 # vela-rbxts
 
 `vela-rbxts` is a Tailwind-style `className` integration layer for [roblox-ts](https://roblox-ts.com/).
-This monorepo contains the native compiler, the `rbxtsc` host adapter, shared config and type packages, the runtime host, a TypeScript language service plugin, a standalone Rust LSP adapter, and two harness apps.
+This monorepo contains the native compiler, the `rbxtsc` host adapter, shared config and type packages, the runtime host, a standalone Rust LSP adapter, and two harness apps.
 
 ## Current Scope
 
@@ -22,7 +22,6 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 | `packages/compiler` | Native compiler implementation that resolves, validates, and lowers utility classes. |
 | `packages/lsp` | Early standalone Rust stdio LSP server that adapts compiler editor APIs for completions, hover, and diagnostics. |
 | `packages/rbxtsc-host` | Host adapter that filters eligible files, loads project config, and bridges compiler diagnostics into `rbxtsc`. |
-| `packages/ts-plugin` | TypeScript Language Service Plugin for completions, hover, and diagnostics. |
 | `packages/runtime` | Runtime host bundle used when class values need runtime evaluation. |
 | `packages/config` | Config schema, defaults, and `defineConfig()` helper. |
 | `packages/core` | Semantic boundary and supported host element contracts. |
@@ -283,38 +282,14 @@ export default defineConfig({
 
 ## Editor Integration
 
-The v1 editor integration is a TypeScript Language Service Plugin. It does not run a standalone LSP server.
-
-The new LSP path lives in `packages/lsp` and is intentionally minimal for now. It reuses the native compiler as the semantic engine and only handles transport, document state, and editor protocol translation.
-
-The plugin keeps TypeScript-side responsibilities in TypeScript:
-
-- tsserver lifecycle integration
-- detecting supported TSX `className="..."` contexts
-- nearest `vela.config.ts` resolution through the existing host config loader
-- translating compiler query results into TypeScript completions, quick info, and diagnostics
+The standalone Rust LSP path lives in `packages/lsp` and is intentionally minimal for now. It reuses the native compiler as the semantic engine and only handles transport, document state, and editor protocol translation.
 
 The native compiler remains the semantic engine for token analysis, utility validation, completions, hover text, and diagnostics.
 
-To enable the local plugin in a project or harness `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "plugins": [
-      {
-        "name": "@vela-rbxts/ts-plugin"
-      }
-    ]
-  }
-}
-```
-
-When developing from this monorepo, build the compiler native binding and plugin package first:
+When developing from this monorepo, build the compiler native binding first:
 
 ```bash
 pnpm --filter @vela-rbxts/compiler build
-pnpm --filter @vela-rbxts/ts-plugin build
 ```
 
 To run the early Rust LSP server directly:
