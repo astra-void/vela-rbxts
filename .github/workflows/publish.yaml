@@ -56,10 +56,32 @@ jobs:
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
           REF_NAME: ${{ github.ref_name }}
         run: |
+          normalize_bool() {
+            local raw="${1:-}"
+            local default_value="${2:-}"
+
+            if [ -z "${raw}" ]; then
+              raw="${default_value}"
+            fi
+
+            case "${raw}" in
+              true|True|TRUE|1|yes|Yes|YES|on|On|ON)
+                echo "true"
+                ;;
+              false|False|FALSE|0|no|No|NO|off|Off|OFF)
+                echo "false"
+                ;;
+              *)
+                echo "Invalid boolean value for dry_run: ${raw}" >&2
+                exit 1
+                ;;
+            esac
+          }
+
           if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
             release_tag="${INPUT_RELEASE_TAG}"
             npm_tag="${INPUT_NPM_TAG}"
-            dry_run="${INPUT_DRY_RUN}"
+            dry_run="$(normalize_bool "${INPUT_DRY_RUN}" "true")"
           else
             release_tag="${REF_NAME}"
             if [[ "${release_tag}" == *"-"* ]]; then
@@ -69,6 +91,10 @@ jobs:
             fi
             dry_run="false"
           fi
+
+          echo "Resolved release_tag=${release_tag}"
+          echo "Resolved npm_tag=${npm_tag}"
+          echo "Resolved dry_run=${dry_run}"
 
           if [ -z "${release_tag}" ]; then
             echo "release_tag is required" >&2
@@ -364,10 +390,17 @@ jobs:
           NPM_TAG: ${{ needs.release-metadata.outputs.npm_tag }}
           DRY_RUN: ${{ needs.release-metadata.outputs.dry_run }}
         run: |
+          echo "Publish mode: dry_run=${DRY_RUN}, npm_tag=${NPM_TAG}"
+
           if [ "${DRY_RUN}" = "true" ]; then
+            echo "Running npm publish in dry-run mode."
             pnpm release:publish:npm --tag "${NPM_TAG}" --dry-run
-          else
+          elif [ "${DRY_RUN}" = "false" ]; then
+            echo "Running real npm publish."
             pnpm release:publish:npm --tag "${NPM_TAG}"
+          else
+            echo "Invalid canonical dry_run output: ${DRY_RUN}" >&2
+            exit 1
           fi
 
   package-vsix:
