@@ -1,6 +1,6 @@
 {
 	"name": "vela-rbxts-lsp",
-	"version": "0.1.0",
+	"version": "0.1.1-next.0",
 	"type": "commonjs",
 	"displayName": "Vela LSP",
 	"publisher": "astra-void",
@@ -14,7 +14,10 @@
 		"url": "https://github.com/astra-void/vela-rbxts.git"
 	},
 	"license": "MIT",
-	"activationEvents": ["onLanguage:typescript", "onLanguage:typescriptreact"],
+	"activationEvents": [
+		"onLanguage:typescript",
+		"onLanguage:typescriptreact"
+	],
 	"contributes": {
 		"configuration": {
 			"title": "vela-rbxts",
@@ -27,7 +30,11 @@
 				"velaRbxts.lsp.trace.server": {
 					"type": "string",
 					"default": "off",
-					"enum": ["off", "messages", "verbose"],
+					"enum": [
+						"off",
+						"messages",
+						"verbose"
+					],
 					"description": "Trace level forwarded to the vela-rbxts language client."
 				},
 				"velaRbxts.lsp.enabled": {
