@@ -108,11 +108,10 @@ async function main() {
 	for (const unit of npmUnits) {
 		const before = await getTgzFiles(ARTIFACT_DIRS.npm);
 		runCommand(
-			"pnpm",
+			npmCommand,
 			[
-				"--filter",
-				unit.name,
 				"pack",
+				unit.absPath,
 				"--pack-destination",
 				ARTIFACT_DIRS.npm,
 				"--ignore-scripts",
