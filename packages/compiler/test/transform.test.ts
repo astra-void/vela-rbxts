@@ -1198,6 +1198,22 @@ test("keeps the runtime wrapper when a dynamic remainder survives constant foldi
 	expect(result.code).toContain("BackgroundColor3");
 });
 
+test("keeps dynamic object-map className values on the runtime wrapper", () => {
+	const result = transform(
+		'let roomy = false; <frame className={{ "bg-slate-500": true, "px-4": roomy, "px-2": !roomy }} />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toContain("createTailwindRuntimeHost");
+	expect(result.code).toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("BackgroundColor3");
+	expect(result.code).toContain("className={{");
+	expect(result.code).toContain('"px-4": roomy');
+	expect(result.code).toContain('"px-2": !roomy');
+	expect(result.code).not.toContain('"bg-slate-500": true');
+});
+
 test("keeps variant-prefixed literals on the runtime rule path when they survive folding", () => {
 	const enabledResult = transform(
 		'const enabled = true; <frame className={["rounded-md", enabled && "md:px-4"]} />',

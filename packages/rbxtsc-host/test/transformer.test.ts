@@ -122,8 +122,8 @@ test("bridges compiler diagnostics into TypeScript diagnostics", () => {
 		code: 89000,
 		messageText: expect.stringContaining("unknown-theme-key"),
 	});
-	expect(result.diagnostics[0].file?.fileName).toBe(
-		path.join(project.root, "src", "client", "App.tsx"),
+	expect(path.normalize(result.diagnostics[0].file?.fileName ?? "")).toBe(
+		path.normalize(path.join(project.root, "src", "client", "App.tsx")),
 	);
 	expect(result.diagnostics[0].start).toBeGreaterThanOrEqual(0);
 

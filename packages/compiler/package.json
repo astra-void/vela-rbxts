@@ -57,7 +57,7 @@
     "prepublish:napi": "pnpm run stage:napi",
     "publish:napi": "node ./scripts/publish-napi.mjs",
     "publish:napi:dry-run": "node ./scripts/publish-napi.mjs --dry-run",
-    "test": "pnpm run build:native && vitest run test/*.test.ts",
+    "test": "pnpm run build:native && vitest run",
     "stage:napi": "node ./scripts/publish-napi.mjs --prepare-only",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "clean": "node -e \"const fs=require('node:fs');for (const file of ['dist','index.js','index.d.ts','.npm','npm']) fs.rmSync(file,{recursive:true,force:true});for (const entry of fs.readdirSync('.')) if (entry.endsWith('.node')) fs.rmSync(entry,{force:true});\""
