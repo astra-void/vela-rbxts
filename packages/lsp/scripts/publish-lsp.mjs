@@ -1,12 +1,15 @@
 import { dirname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { chmod, copyFile, mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 
 import { BINARY_PACKAGE_CONFIGS, getBinaryFileName } from "./package-config.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = resolve(SCRIPT_DIR, "..");
 const STAGE_ROOT = join(PACKAGE_DIR, ".npm", "publish");
+const ARTIFACTS_ROOT = join(PACKAGE_DIR, "artifacts");
 
 const options = parseArgs(process.argv.slice(2));
 const lifecycleEvent = process.env.npm_lifecycle_event;
@@ -21,25 +24,42 @@ const shouldPublishStage =
 	(lifecycleEvent === "publish:lsp" || !lifecycleEvent);
 
 if (shouldPrepareStage) {
-	await prepareStage();
+	await prepareStage(options.prepareOnly);
 }
 
 if (shouldPublishStage) {
 	await publishStage(options.publishArgs, options.dryRun);
 }
 
-async function prepareStage() {
+async function prepareStage(prepareOnly) {
 	await runNodeScript("create-npm-dirs.mjs");
 
 	for (const config of BINARY_PACKAGE_CONFIGS) {
-		await runNodeScript("package-binary.js", [
-			"--package-dir",
-			join(STAGE_ROOT, "npm", config.directory),
-			"--crate-dir",
-			PACKAGE_DIR,
-			"--variant",
-			`${config.target}=bin/${getBinaryFileName(config.os)}`,
-		]);
+		const artifactPath = join(
+			ARTIFACTS_ROOT,
+			config.target,
+			getBinaryFileName(config.os),
+		);
+		const outputRelativePath = `bin/${getBinaryFileName(config.os)}`;
+		const outputPath = join(STAGE_ROOT, "npm", config.directory, outputRelativePath);
+
+		if (existsSync(artifactPath)) {
+			await mkdir(dirname(outputPath), { recursive: true });
+			await copyFile(artifactPath, outputPath);
+			if (config.os !== "win32") {
+				await chmod(outputPath, 0o755);
+			}
+			continue;
+		}
+
+		if (prepareOnly) {
+			console.warn(`Skipping missing target artifact: ${config.target}`);
+			continue;
+		}
+
+		throw new Error(
+			`Missing required target artifact: ${config.target}. Expected file at ${artifactPath}.`,
+		);
 	}
 }
 

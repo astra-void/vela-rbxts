@@ -18,6 +18,7 @@
   ],
   "scripts": {
     "build": "cargo build --release --manifest-path Cargo.toml",
+    "build:lsp:target": "node ./scripts/build-target-artifact.mjs",
     "dev": "cargo run --manifest-path Cargo.toml",
     "create-npm-dirs": "node ./scripts/create-npm-dirs.mjs",
     "prepack": "pnpm run stage:lsp",

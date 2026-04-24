@@ -24,13 +24,6 @@ export const BINARY_PACKAGE_CONFIGS = [
 		target: "aarch64-unknown-linux-gnu",
 	},
 	{
-		directory: "linux-arm64-musl",
-		name: "@vela-rbxts/lsp-linux-arm64-musl",
-		os: "linux",
-		cpu: "arm64",
-		target: "aarch64-unknown-linux-musl",
-	},
-	{
 		directory: "linux-x64-gnu",
 		name: "@vela-rbxts/lsp-linux-x64-gnu",
 		os: "linux",
@@ -43,13 +36,6 @@ export const BINARY_PACKAGE_CONFIGS = [
 		os: "linux",
 		cpu: "x64",
 		target: "x86_64-unknown-linux-musl",
-	},
-	{
-		directory: "win32-arm64-msvc",
-		name: "@vela-rbxts/lsp-win32-arm64-msvc",
-		os: "win32",
-		cpu: "arm64",
-		target: "aarch64-pc-windows-msvc",
 	},
 	{
 		directory: "win32-x64-msvc",
@@ -69,7 +55,6 @@ export function getBinaryPackageName(platform, arch, runtimeKind = "gnu") {
 		linux: {
 			arm64: {
 				gnu: "@vela-rbxts/lsp-linux-arm64-gnu",
-				musl: "@vela-rbxts/lsp-linux-arm64-musl",
 			},
 			x64: {
 				gnu: "@vela-rbxts/lsp-linux-x64-gnu",
@@ -77,7 +62,6 @@ export function getBinaryPackageName(platform, arch, runtimeKind = "gnu") {
 			},
 		},
 		win32: {
-			arm64: "@vela-rbxts/lsp-win32-arm64-msvc",
 			x64: "@vela-rbxts/lsp-win32-x64-msvc",
 		},
 	};
