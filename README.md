@@ -10,8 +10,7 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 - `className?: ClassValue` is added to `React.Attributes` through `vela-rbxts`.
 - Supported TSX files are lowered by the `rbxtsc` transformer when they target supported Roblox host elements.
 - Dynamic `ClassValue` expressions and supported Roblox-oriented variants are rewritten to a generated runtime host when needed.
-- The TypeScript plugin provides completions, hover, and diagnostics in editors.
-- A standalone Rust LSP server is being introduced under `packages/lsp` as the long-term editor tooling path.
+- The standalone Rust LSP server under `packages/lsp` provides completions, hover, and diagnostics in editors.
 - Unsupported utility families and unknown theme keys produce diagnostics instead of being silently ignored.
 
 ## Packages And Apps
