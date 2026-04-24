@@ -4,9 +4,8 @@ This VS Code extension launches the standalone Rust LSP through the published
 `@vela-rbxts/lsp` wrapper package when the matching platform binary package is
 installed.
 
-`packages/ts-plugin` remains in the monorepo as a legacy or transitional
-package, but new editor features should go through the standalone Rust LSP
-instead of the TypeScript plugin.
+New editor features should go through the standalone Rust LSP rather than a
+TypeScript language service plugin.
 
 ## Build A Local VSIX
 
