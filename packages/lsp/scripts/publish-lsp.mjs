@@ -64,6 +64,7 @@ async function prepareStage(prepareOnly) {
 }
 
 async function publishStage(publishArgs, dryRun) {
+	const npmCommand = resolveNpmCommand();
 	const publishCommand = ["publish", ...publishArgs];
 	if (!publishCommand.includes("--ignore-scripts")) {
 		publishCommand.push("--ignore-scripts");
@@ -73,12 +74,12 @@ async function publishStage(publishArgs, dryRun) {
 	}
 
 	for (const config of BINARY_PACKAGE_CONFIGS) {
-		await runCommand("npm", publishCommand, {
+		await runCommand(npmCommand, publishCommand, {
 			cwd: join(STAGE_ROOT, "npm", config.directory),
 		});
 	}
 
-	await runCommand("npm", publishCommand, {
+	await runCommand(npmCommand, publishCommand, {
 		cwd: STAGE_ROOT,
 	});
 }
@@ -103,6 +104,18 @@ async function runCommand(command, args, options = {}) {
 	if (result.status !== 0) {
 		process.exit(result.status ?? 1);
 	}
+}
+
+function resolveNpmCommand() {
+	const npmBinaryName = process.platform === "win32" ? "npm.cmd" : "npm";
+	const nodeBinDir = dirname(process.execPath);
+	const npmPath = join(nodeBinDir, npmBinaryName);
+
+	if (existsSync(npmPath)) {
+		return npmPath;
+	}
+
+	return npmBinaryName;
 }
 
 function parseArgs(rawArgs) {
