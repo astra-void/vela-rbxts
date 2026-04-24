@@ -11,7 +11,7 @@ import {
 
 const EXTENSION_ID = "vela-rbxts-lsp";
 const OUTPUT_CHANNEL_NAME = "vela-rbxts-lsp";
-const CONFIG_WATCH_GLOB = "**/rbxtw.config.ts";
+const CONFIG_WATCH_GLOB = "**/vela.config.ts";
 
 let client: LanguageClient | undefined;
 let lifecycleTask: Promise<void> = Promise.resolve();
