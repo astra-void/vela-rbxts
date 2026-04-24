@@ -1,8 +1,16 @@
 import React from "@rbxts/react";
 
 export const App = () => {
-	const active = true;
-	const roomy = false;
+	const [active, setActive] = React.useState(false);
+	const [roomy, setRoomy] = React.useState(false);
+
+	React.useEffect(() => {
+		while (true) {
+			task.wait(1);
+			setActive((v) => !v);
+			setRoomy((v) => !v);
+		}
+	}, []);
 
 	return (
 		<screengui ResetOnSpawn={false} IgnoreGuiInset>
