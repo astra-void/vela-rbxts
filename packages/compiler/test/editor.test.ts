@@ -75,9 +75,11 @@ test("completes semantic and palette color tokens with variant-aware prefixes", 
 		},
 	});
 
-	expect(paletteResult.items.some((item) => item.label === "bg-surface")).toBe(
-		false,
-	);
+	expect(
+		paletteResult.items.some(
+			(item: { label: string }) => item.label === "bg-surface",
+		),
+	).toBe(false);
 	expect(paletteResult.items).toEqual(
 		expect.arrayContaining([
 			expect.objectContaining({
@@ -191,7 +193,9 @@ test("returns replacement spans for partial tokens in multi-token className", ()
 		position: tokenEnd,
 	});
 
-	const entry = result.items.find((item) => item.label === "bg-slate-500");
+	const entry = result.items.find(
+		(item: { label: string }) => item.label === "bg-slate-500",
+	);
 	expect(entry).toBeDefined();
 	expect(entry?.replacement).toEqual({
 		start: tokenStart,
@@ -410,18 +414,24 @@ test("keeps diagnostics precise for palette and singleton color mismatches", () 
 		]),
 	);
 	expect(
-		result.diagnostics.some((diagnostic) => diagnostic.token === "bg-sla"),
+		result.diagnostics.some(
+			(diagnostic: { token?: string }) => diagnostic.token === "bg-sla",
+		),
 	).toBe(false);
 	expect(
-		result.diagnostics.some((diagnostic) => diagnostic.token === "md:bg-"),
+		result.diagnostics.some(
+			(diagnostic: { token?: string }) => diagnostic.token === "md:bg-",
+		),
 	).toBe(false);
 	expect(
-		result.diagnostics.some((diagnostic) => diagnostic.token === "rounded-"),
+		result.diagnostics.some(
+			(diagnostic: { token?: string }) => diagnostic.token === "rounded-",
+		),
 	).toBe(false);
 	// The valid token should stay quiet even when surrounded by invalid fragments.
 	expect(
 		result.diagnostics.some(
-			(diagnostic) => diagnostic.token === "bg-slate-500",
+			(diagnostic: { token?: string }) => diagnostic.token === "bg-slate-500",
 		),
 	).toBe(false);
 });
