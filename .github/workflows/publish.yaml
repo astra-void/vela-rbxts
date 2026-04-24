@@ -202,9 +202,6 @@ jobs:
       - validate
       - compiler-native-artifacts
       - lsp-native-artifacts
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      NPM_CONFIG_PROVENANCE: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
