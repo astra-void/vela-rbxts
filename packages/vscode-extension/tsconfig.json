@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"module": "commonjs",
+		"moduleResolution": "node",
+		"verbatimModuleSyntax": false,
+		"rootDir": "src",
+		"outDir": "dist",
+		"composite": true,
+		"tsBuildInfoFile": "dist/.tsbuildinfo",
+		"types": ["node", "vscode"]
+	},
+	"include": ["src"]
+}
