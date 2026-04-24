@@ -100,12 +100,17 @@ async function main() {
 	const nativeTargetsArg = getRepeatedFlagValues(rawArgs, "--native-target");
 	const lspTargetsArg = getRepeatedFlagValues(rawArgs, "--lsp-target");
 	const skipWorkspaceBuild = getFlagValue(rawArgs, "--skip-workspace") === "true";
+	const buildAllTargets = nativeTargetsArg.length === 0 && lspTargetsArg.length === 0;
 
 	const compilerManifest = await readJsonFile<PackageJson>(
 		join(REPO_ROOT, "packages/compiler/package.json"),
 	);
-	const compilerTargets = resolveCompilerTargets(compilerManifest, nativeTargetsArg);
-	const lspConfig = await resolveLspTargets(lspTargetsArg);
+	const compilerTargets = nativeTargetsArg.length > 0 || buildAllTargets
+		? resolveCompilerTargets(compilerManifest, nativeTargetsArg)
+		: [];
+	const lspConfig = lspTargetsArg.length > 0 || buildAllTargets
+		? await resolveLspTargets(lspTargetsArg)
+		: null;
 
 	if (!dryRun) {
 		await ensureArtifactDirs();
@@ -175,39 +180,41 @@ async function main() {
 		buildRecords.push({ kind: "compiler", target, output: destinationPath });
 	}
 
-	for (const config of lspConfig.configs) {
-		const args = [
-			"--filter",
-			"@vela-rbxts/lsp",
-			"run",
-			"build:lsp:target",
-			"--",
-			"--target",
-			config.target,
-		];
+	if (lspConfig) {
+		for (const config of lspConfig.configs) {
+			const args = [
+				"--filter",
+				"@vela-rbxts/lsp",
+				"run",
+				"build:lsp:target",
+				"--",
+				"--target",
+				config.target,
+			];
 
-		if (dryRun) {
-			console.log(`[dry-run] pnpm ${args.join(" ")}`);
-			continue;
+			if (dryRun) {
+				console.log(`[dry-run] pnpm ${args.join(" ")}`);
+				continue;
+			}
+
+			runCommand("pnpm", args, { cwd: REPO_ROOT });
+			const binaryFileName = lspConfig.getBinaryFileName(config.os);
+			const sourcePath = join(
+				REPO_ROOT,
+				"packages/lsp/artifacts",
+				config.target,
+				binaryFileName,
+			);
+			if (!exists(sourcePath)) {
+				throw new Error(`Missing expected LSP artifact: ${sourcePath}`);
+			}
+
+			const destinationDir = join(ARTIFACT_DIRS.lsp, config.target);
+			await cleanDir(destinationDir);
+			const destinationPath = join(destinationDir, basename(sourcePath));
+			await cp(sourcePath, destinationPath);
+			buildRecords.push({ kind: "lsp", target: config.target, output: destinationPath });
 		}
-
-		runCommand("pnpm", args, { cwd: REPO_ROOT });
-		const binaryFileName = lspConfig.getBinaryFileName(config.os);
-		const sourcePath = join(
-			REPO_ROOT,
-			"packages/lsp/artifacts",
-			config.target,
-			binaryFileName,
-		);
-		if (!exists(sourcePath)) {
-			throw new Error(`Missing expected LSP artifact: ${sourcePath}`);
-		}
-
-		const destinationDir = join(ARTIFACT_DIRS.lsp, config.target);
-		await cleanDir(destinationDir);
-		const destinationPath = join(destinationDir, basename(sourcePath));
-		await cp(sourcePath, destinationPath);
-		buildRecords.push({ kind: "lsp", target: config.target, output: destinationPath });
 	}
 
 	if (!dryRun) {
@@ -218,14 +225,16 @@ async function main() {
 			);
 		}
 
-		const lspTargetDirs = (await readdir(ARTIFACT_DIRS.lsp, { withFileTypes: true }))
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => entry.name)
-			.sort();
-		if (lspTargetDirs.length !== lspConfig.targets.length) {
-			throw new Error(
-				`Expected ${lspConfig.targets.length} LSP target directories but found ${lspTargetDirs.length}.`,
-			);
+		if (lspConfig) {
+			const lspTargetDirs = (await readdir(ARTIFACT_DIRS.lsp, { withFileTypes: true }))
+				.filter((entry) => entry.isDirectory())
+				.map((entry) => entry.name)
+				.sort();
+			if (lspTargetDirs.length !== lspConfig.targets.length) {
+				throw new Error(
+					`Expected ${lspConfig.targets.length} LSP target directories but found ${lspTargetDirs.length}.`,
+				);
+			}
 		}
 
 		await writeJsonFile(join(ARTIFACT_DIRS.logs, "build-manifest.json"), {
