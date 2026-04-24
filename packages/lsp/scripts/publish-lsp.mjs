@@ -93,8 +93,12 @@ async function runNodeScript(scriptFileName, args = []) {
 async function runCommand(command, args, options = {}) {
 	const result = spawnSync(command, args, {
 		cwd: options.cwd ?? PACKAGE_DIR,
-		env: options.env ?? process.env,
+		env: {
+			...process.env,
+			...(options.env ?? {}),
+		},
 		stdio: options.stdio ?? "inherit",
+		shell: process.platform === "win32",
 	});
 
 	if (result.error) {
@@ -107,15 +111,7 @@ async function runCommand(command, args, options = {}) {
 }
 
 function resolveNpmCommand() {
-	const npmBinaryName = process.platform === "win32" ? "npm.cmd" : "npm";
-	const nodeBinDir = dirname(process.execPath);
-	const npmPath = join(nodeBinDir, npmBinaryName);
-
-	if (existsSync(npmPath)) {
-		return npmPath;
-	}
-
-	return npmBinaryName;
+	return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
 function parseArgs(rawArgs) {
