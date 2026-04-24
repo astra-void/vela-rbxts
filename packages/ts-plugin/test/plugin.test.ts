@@ -412,12 +412,12 @@ test("appends vela diagnostics without dropping native diagnostics", () => {
 	).toBeGreaterThan(0);
 });
 
-test("falls back to defaults when loading rbxtw.config.ts fails", () => {
+test("falls back to defaults when loading vela.config.ts fails", () => {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "vela-rbxts-plugin-"));
 	const sourceFilePath = path.join(root, "src", "view.tsx");
 	fs.mkdirSync(path.dirname(sourceFilePath), { recursive: true });
 	fs.writeFileSync(
-		path.join(root, "rbxtw.config.ts"),
+		path.join(root, "vela.config.ts"),
 		"export default defineConfig({",
 		"utf8",
 	);
@@ -439,14 +439,14 @@ test("falls back to defaults when loading rbxtw.config.ts fails", () => {
 	fs.rmSync(root, { recursive: true, force: true });
 });
 
-test("uses custom config completions when rbxtw.config.ts resolves", () => {
+test("uses custom config completions when vela.config.ts resolves", () => {
 	const root = fs.mkdtempSync(
 		path.join(os.tmpdir(), "vela-rbxts-custom-config-"),
 	);
 	const sourceFilePath = path.join(root, "src", "view.tsx");
 	fs.mkdirSync(path.dirname(sourceFilePath), { recursive: true });
 	fs.writeFileSync(
-		path.join(root, "rbxtw.config.ts"),
+		path.join(root, "vela.config.ts"),
 		[
 			"export default defineConfig({",
 			"\ttheme: {",
