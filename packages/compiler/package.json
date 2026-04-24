@@ -1,9 +1,25 @@
 {
   "name": "@vela-rbxts/compiler",
   "version": "0.1.0",
+  "private": false,
   "type": "commonjs",
+  "description": "Native compiler implementation for @vela-rbxts/compiler.",
   "main": "./entry.cjs",
   "types": "./entry.d.ts",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/astra-void/vela-rbxts.git"
+  },
+  "files": [
+    "entry.cjs",
+    "entry.d.ts",
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ],
   "exports": {
     ".": {
       "types": "./entry.d.ts",
@@ -37,9 +53,15 @@
     "dev": "pnpm run build:native",
     "lint": "biome check .",
     "lint:fix": "biome check . --fix --unsafe",
+    "create-npm-dirs": "node ./scripts/create-npm-dirs.mjs",
+    "prepack": "pnpm run clean && pnpm run build",
+    "prepublish:napi": "pnpm run stage:napi",
+    "publish:napi": "node ./scripts/publish-napi.mjs",
+    "publish:napi:dry-run": "node ./scripts/publish-napi.mjs --dry-run",
     "test": "pnpm run build:native && vitest run test/*.test.ts",
+    "stage:napi": "node ./scripts/publish-napi.mjs --prepare-only",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "clean": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});\""
+    "clean": "node -e \"const fs=require('node:fs');for (const file of ['dist','index.js','index.d.ts','.npm','npm']) fs.rmSync(file,{recursive:true,force:true});for (const entry of fs.readdirSync('.')) if (entry.endsWith('.node')) fs.rmSync(entry,{force:true});\""
   },
   "devDependencies": {
     "@vela-rbxts/config": "workspace:*",
