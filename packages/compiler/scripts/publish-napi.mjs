@@ -77,6 +77,10 @@ async function publishStage() {
 		"npm",
 	];
 
+	if (options.dryRun) {
+		prePublishArgs.push("--no-gh-release");
+	}
+
 	if (ghReleaseId) {
 		prePublishArgs.push("--gh-release-id", ghReleaseId);
 	}
