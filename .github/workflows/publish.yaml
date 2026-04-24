@@ -17,7 +17,7 @@ on:
         type: boolean
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 env:
@@ -26,6 +26,7 @@ env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
