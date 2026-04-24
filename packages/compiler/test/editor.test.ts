@@ -1,4 +1,9 @@
-import { getCompletions, getDiagnostics, getHover } from "@vela-rbxts/compiler";
+import {
+	getCompletions,
+	getDiagnostics,
+	getDocumentColors,
+	getHover,
+} from "@vela-rbxts/compiler";
 import { expect, test } from "vitest";
 import { defineConfig } from "../../config/src/index";
 
@@ -442,4 +447,111 @@ test("reports host-specific invalid utility use when knowable", () => {
 			}),
 		]),
 	);
+});
+
+test("normalizes resolved Color3 values to document colors", () => {
+	const config = defineConfig({
+		theme: {
+			extend: {
+				colors: {
+					brand: "Color3.fromRGB(1, 2, 3)",
+				},
+			},
+		},
+	});
+	const result = getDocumentColors({
+		source: '<frame className="bg-brand" />',
+		options: {
+			configJson: JSON.stringify(config),
+		},
+	});
+
+	expect(result.colors).toHaveLength(1);
+	expect(result.colors[0]).toEqual(
+		expect.objectContaining({
+			token: "bg-brand",
+			presentation: "bg-brand",
+			red: 1 / 255,
+			green: 2 / 255,
+			blue: 3 / 255,
+			alpha: 1,
+		}),
+	);
+});
+
+test("returns one color for background color utilities", () => {
+	const result = getDocumentColors({
+		source: '<frame className="rounded-md bg-slate-700 px-4" />',
+	});
+
+	expect(result.colors).toHaveLength(1);
+	expect(result.colors[0]).toEqual(
+		expect.objectContaining({
+			token: "bg-slate-700",
+			presentation: "bg-slate-700",
+		}),
+	);
+});
+
+test("respects host validation for text color utilities", () => {
+	const unsupported = getDocumentColors({
+		source: '<frame className="text-blue-500" />',
+	});
+	const supported = getDocumentColors({
+		source: '<textlabel className="text-blue-500" />',
+	});
+
+	expect(unsupported.colors).toEqual([]);
+	expect(supported.colors).toHaveLength(1);
+	expect(supported.colors[0].token).toBe("text-blue-500");
+});
+
+test("returns colors for image utilities on image hosts", () => {
+	for (const host of ["imagebutton", "imagelabel"] as const) {
+		const result = getDocumentColors({
+			source: `<${host} className="image-rose-400" />`,
+		});
+
+		expect(result.colors).toHaveLength(1);
+		expect(result.colors[0].token).toBe("image-rose-400");
+	}
+});
+
+test("returns colors for placeholder utilities on textbox", () => {
+	const result = getDocumentColors({
+		source: '<textbox className="placeholder-gray-500" />',
+	});
+
+	expect(result.colors).toHaveLength(1);
+	expect(result.colors[0].token).toBe("placeholder-gray-500");
+});
+
+test("returns full ranges for variant-prefixed color utilities", () => {
+	const source = '<frame className="rounded-md md:bg-slate-700 px-4" />';
+	const result = getDocumentColors({ source });
+	const token = "md:bg-slate-700";
+	const start = source.indexOf(token);
+
+	expect(result.colors).toHaveLength(1);
+	expect(result.colors[0]).toEqual(
+		expect.objectContaining({
+			token,
+			range: {
+				start,
+				end: start + token.length,
+			},
+		}),
+	);
+});
+
+test("skips unknown colors and non-color utilities", () => {
+	const unknown = getDocumentColors({
+		source: '<frame className="bg-not-a-real-color" />',
+	});
+	const nonColor = getDocumentColors({
+		source: '<frame className="rounded-md px-4 w-80" />',
+	});
+
+	expect(unknown.colors).toEqual([]);
+	expect(nonColor.colors).toEqual([]);
 });

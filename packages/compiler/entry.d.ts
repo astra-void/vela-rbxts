@@ -5,6 +5,9 @@ export type {
 	Diagnostic,
 	DiagnosticsRequest,
 	DiagnosticsResponse,
+	DocumentColor,
+	DocumentColorsRequest,
+	DocumentColorsResponse,
 	EditorDiagnostic,
 	EditorOptions,
 	EditorRange,
@@ -17,6 +20,7 @@ export type {
 export {
 	getCompletions,
 	getDiagnostics,
+	getDocumentColors,
 	getHover,
 	implementationKind,
 	transform,

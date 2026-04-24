@@ -1,6 +1,6 @@
 use crate::api::{
     CompletionRequest, CompletionResponse, DiagnosticsRequest, DiagnosticsResponse, HoverRequest,
-    HoverResponse,
+    HoverResponse, DocumentColorsRequest, DocumentColorsResponse,
 };
 
 pub(crate) fn get_completions_impl(request: CompletionRequest) -> CompletionResponse {
@@ -13,4 +13,10 @@ pub(crate) fn get_hover_impl(request: HoverRequest) -> HoverResponse {
 
 pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsResponse {
     crate::editor::diagnostics::get_diagnostics_impl(request)
+}
+
+pub(crate) fn get_document_colors_impl(
+    request: DocumentColorsRequest,
+) -> DocumentColorsResponse {
+    crate::editor::colors::get_document_colors_impl(request)
 }

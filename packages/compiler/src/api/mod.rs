@@ -60,6 +60,13 @@ pub struct DiagnosticsRequest {
 
 #[cfg_attr(not(target_arch = "wasm32"), napi(object))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DocumentColorsRequest {
+    pub source: String,
+    pub options: Option<EditorOptions>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct EditorRange {
     pub start: u32,
     pub end: u32,
@@ -112,6 +119,24 @@ pub struct EditorDiagnostic {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct DiagnosticsResponse {
     pub diagnostics: Vec<EditorDiagnostic>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DocumentColor {
+    pub range: EditorRange,
+    pub red: f64,
+    pub green: f64,
+    pub blue: f64,
+    pub alpha: f64,
+    pub token: String,
+    pub presentation: String,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct DocumentColorsResponse {
+    pub colors: Vec<DocumentColor>,
 }
 
 pub mod editor;

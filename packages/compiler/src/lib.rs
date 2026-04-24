@@ -16,8 +16,9 @@ pub(crate) mod utilities;
 
 pub use api::{
     CompletionItem, CompletionRequest, CompletionResponse, Diagnostic, DiagnosticsRequest,
-    DiagnosticsResponse, EditorDiagnostic, EditorOptions, EditorRange, HoverContent, HoverRequest,
-    HoverResponse, TransformOptions, TransformResult,
+    DiagnosticsResponse, DocumentColor, DocumentColorsRequest, DocumentColorsResponse,
+    EditorDiagnostic, EditorOptions, EditorRange, HoverContent, HoverRequest, HoverResponse,
+    TransformOptions, TransformResult,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -54,6 +55,12 @@ pub fn get_hover(request: HoverRequest) -> HoverResponse {
 #[napi(js_name = "getDiagnostics")]
 pub fn get_diagnostics(request: DiagnosticsRequest) -> DiagnosticsResponse {
     api::editor::get_diagnostics_impl(request)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[napi(js_name = "getDocumentColors")]
+pub fn get_document_colors(request: DocumentColorsRequest) -> DocumentColorsResponse {
+    api::editor::get_document_colors_impl(request)
 }
 
 #[cfg(target_arch = "wasm32")]
