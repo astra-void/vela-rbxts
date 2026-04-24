@@ -4,7 +4,8 @@ use tower_lsp::lsp_types::{Position, Range, Url};
 
 #[cfg(test)]
 use vela_rbxts_compiler::{
-    CompletionRequest, EditorOptions, EditorRange, HoverRequest, get_completions, get_hover,
+    CompletionRequest, DocumentColorsRequest, EditorOptions, EditorRange, HoverRequest,
+    get_completions, get_document_colors, get_hover,
 };
 
 #[derive(Clone, Debug)]
@@ -283,6 +284,58 @@ mod tests {
                 .iter()
                 .map(|item| item.label.as_str())
                 .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn maps_multiline_positions_to_compiler_colors() {
+        let source = "export const App = () => (\n  <frame className=\"rounded-md md:bg-slate-700 px-4 py-3\" />\n  <textlabel className=\"text-blue-500\" />\n);";
+        let index = Utf16Index::new(source);
+        let line_one = source.lines().nth(1).unwrap();
+        let line_two = source.lines().nth(2).unwrap();
+        let options = Some(EditorOptions {
+            config_json: None,
+            file_name: Some("App.tsx".to_owned()),
+            project_root: None,
+        });
+
+        let response = get_document_colors(DocumentColorsRequest {
+            source: source.to_owned(),
+            options,
+        });
+
+        let variant_color = response
+            .colors
+            .iter()
+            .find(|color| color.token == "md:bg-slate-700")
+            .expect("expected md:bg-slate-700 color");
+        let text_color = response
+            .colors
+            .iter()
+            .find(|color| color.token == "text-blue-500")
+            .expect("expected text-blue-500 color");
+
+        assert_eq!(
+            editor_range_to_lsp_range(&index, &variant_color.range),
+            Some(Range::new(
+                Position::new(1, line_one.find("md:bg-slate-700").unwrap() as u32),
+                Position::new(
+                    1,
+                    line_one.find("md:bg-slate-700").unwrap() as u32
+                        + "md:bg-slate-700".encode_utf16().count() as u32,
+                ),
+            ))
+        );
+        assert_eq!(
+            editor_range_to_lsp_range(&index, &text_color.range),
+            Some(Range::new(
+                Position::new(2, line_two.find("text-blue-500").unwrap() as u32),
+                Position::new(
+                    2,
+                    line_two.find("text-blue-500").unwrap() as u32
+                        + "text-blue-500".encode_utf16().count() as u32,
+                ),
+            ))
         );
     }
 

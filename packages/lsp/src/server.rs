@@ -4,17 +4,19 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
+    Color, ColorInformation, ColorPresentation, ColorPresentationParams, ColorProviderCapability,
     CompletionItem, CompletionItemKind, CompletionOptions, CompletionParams, CompletionResponse,
     CompletionTextEdit, Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, MarkupContent,
-    MarkupKind, NumberOrString, Position, Range, ServerCapabilities, ServerInfo,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentColorParams, Hover, HoverContents,
+    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams,
+    MarkupContent, MarkupKind, NumberOrString, Position, Range, ServerCapabilities, ServerInfo,
     TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
 };
 use tower_lsp::{Client, LanguageServer};
 use vela_rbxts_compiler::{
-    DiagnosticsRequest, EditorDiagnostic as CompilerDiagnostic, HoverRequest, get_completions,
-    get_diagnostics, get_hover,
+    DiagnosticsRequest, DocumentColor as CompilerDocumentColor, DocumentColorsRequest,
+    EditorDiagnostic as CompilerDiagnostic, HoverRequest, get_completions, get_diagnostics,
+    get_document_colors, get_hover,
 };
 
 use crate::documents::Document;
@@ -107,6 +109,7 @@ impl LanguageServer for RbxtsLanguageServer {
                     trigger_characters: Some(vec!["-".to_owned(), ":".to_owned()]),
                     ..Default::default()
                 }),
+                color_provider: Some(ColorProviderCapability::Simple(true)),
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 ..Default::default()
             },
@@ -239,6 +242,60 @@ impl LanguageServer for RbxtsLanguageServer {
             range: hover_range,
         }))
     }
+
+    async fn document_color(
+        &self,
+        params: DocumentColorParams,
+    ) -> Result<Vec<ColorInformation>> {
+        let uri = params.text_document.uri;
+        let Some(document) = self.snapshot_document(&uri).await else {
+            return Ok(Vec::new());
+        };
+
+        let response = get_document_colors(DocumentColorsRequest {
+            source: document.text.clone(),
+            options: Some(self.compiler_editor_options(&document).await),
+        });
+
+        Ok(response
+            .colors
+            .into_iter()
+            .filter_map(|color| compiler_document_color_to_lsp(&document, color))
+            .collect())
+    }
+
+    async fn color_presentation(
+        &self,
+        params: ColorPresentationParams,
+    ) -> Result<Vec<ColorPresentation>> {
+        let uri = params.text_document.uri;
+        let Some(document) = self.snapshot_document(&uri).await else {
+            return Ok(Vec::new());
+        };
+
+        let response = get_document_colors(DocumentColorsRequest {
+            source: document.text.clone(),
+            options: Some(self.compiler_editor_options(&document).await),
+        });
+
+        let presentations = response
+            .colors
+            .into_iter()
+            .filter_map(|color| {
+                let range = document.range_to_lsp_range(color.range.start, color.range.end)?;
+                if range != params.range {
+                    return None;
+                }
+
+                Some(ColorPresentation {
+                    label: color.presentation,
+                    ..Default::default()
+                })
+            })
+            .collect();
+
+        Ok(presentations)
+    }
 }
 
 fn compiler_completion_item_to_lsp(
@@ -316,4 +373,21 @@ fn compiler_diagnostic_to_lsp(document: &Document, diagnostic: CompilerDiagnosti
         message: diagnostic.message,
         ..Default::default()
     }
+}
+
+fn compiler_document_color_to_lsp(
+    document: &Document,
+    color: CompilerDocumentColor,
+) -> Option<ColorInformation> {
+    let range = document.range_to_lsp_range(color.range.start, color.range.end)?;
+
+    Some(ColorInformation {
+        range,
+        color: Color {
+            red: color.red as f32,
+            green: color.green as f32,
+            blue: color.blue as f32,
+            alpha: color.alpha as f32,
+        },
+    })
 }
