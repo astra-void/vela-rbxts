@@ -2,6 +2,11 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { createRequire } = require("node:module");
 const { spawnSync } = require("node:child_process");
+const {
+	VSCODE_TARGETS,
+	SUPPORTED_VSCODE_TARGETS,
+	resolveDefaultVsCodeTarget,
+} = require("./vsix-targets.cjs");
 
 const extensionDir = path.resolve(__dirname, "..");
 const distDir = path.join(extensionDir, "dist");
@@ -18,9 +23,63 @@ const sourceWrapperPath = path.join(
 	"vela-rbxts-lsp.js",
 );
 
+function parseArgs(rawArgs) {
+	let target;
+	let outputPath;
+	let dryRun = false;
+
+	for (let index = 0; index < rawArgs.length; index += 1) {
+		const arg = rawArgs[index];
+
+		if (arg === "--dry-run") {
+			dryRun = true;
+			continue;
+		}
+
+		if (arg === "--target") {
+			target = rawArgs[index + 1];
+			index += 1;
+			continue;
+		}
+
+		if (arg.startsWith("--target=")) {
+			target = arg.slice("--target=".length);
+			continue;
+		}
+
+		if (arg === "--out") {
+			outputPath = rawArgs[index + 1];
+			index += 1;
+			continue;
+		}
+
+		if (arg.startsWith("--out=")) {
+			outputPath = arg.slice("--out=".length);
+			continue;
+		}
+
+		throw new Error(`Unsupported argument: ${arg}`);
+	}
+
+	return {
+		target,
+		outputPath,
+		dryRun,
+	};
+}
+
 function assertExists(targetPath, message) {
 	if (!fs.existsSync(targetPath)) {
 		throw new Error(message);
+	}
+}
+
+function assertDirEntries(targetPath, requiredEntries, context) {
+	const present = new Set(fs.readdirSync(targetPath));
+	for (const required of requiredEntries) {
+		if (!present.has(required)) {
+			throw new Error(`Missing ${context} entry "${required}" in ${targetPath}.`);
+		}
 	}
 }
 
@@ -33,64 +92,13 @@ function run(command, args, cwd) {
 	});
 
 	if (result.status !== 0) {
-		process.exit(result.status ?? 1);
+		throw new Error(
+			`Command failed (${result.status ?? 1}): ${command} ${args.join(" ")}`,
+		);
 	}
-}
-
-function detectLinuxRuntimeKind() {
-	if (typeof process.report?.getReport !== "function") {
-		return "musl";
-	}
-
-	const report = process.report.getReport();
-	return report?.header?.glibcVersionRuntime ? "gnu" : "musl";
-}
-
-function resolvePlatformFolder() {
-	if (process.platform === "darwin") {
-		if (process.arch === "arm64") {
-			return "darwin-arm64";
-		}
-
-		if (process.arch === "x64") {
-			return "darwin-x64";
-		}
-
-		return undefined;
-	}
-
-	if (process.platform === "linux") {
-		const runtimeKind = detectLinuxRuntimeKind();
-		if (process.arch === "arm64") {
-			return `linux-arm64-${runtimeKind}`;
-		}
-
-		if (process.arch === "x64") {
-			return `linux-x64-${runtimeKind}`;
-		}
-
-		return undefined;
-	}
-
-	if (process.platform === "win32") {
-		if (process.arch === "arm64") {
-			return "win32-arm64-msvc";
-		}
-
-		if (process.arch === "x64") {
-			return "win32-x64-msvc";
-		}
-
-		return undefined;
-	}
-
-	return undefined;
 }
 
 function copyRequiredFiles() {
-	fs.rmSync(stageDir, { recursive: true, force: true });
-	fs.mkdirSync(stageDir, { recursive: true });
-
 	for (const fileName of ["README.md", "LICENSE", ".vscodeignore"]) {
 		const sourcePath = path.join(extensionDir, fileName);
 		if (fs.existsSync(sourcePath)) {
@@ -168,7 +176,6 @@ function stageRuntimeDependencyTree(rootPackageName) {
 }
 
 function prepareManifest(lspVersion) {
-	const extensionPackageJsonPath = path.join(extensionDir, "package.json");
 	const extensionPackageJson = JSON.parse(
 		fs.readFileSync(extensionPackageJsonPath, "utf8"),
 	);
@@ -201,17 +208,19 @@ function prepareManifest(lspVersion) {
 		path.join(stageDir, "package.json"),
 		`${JSON.stringify(stagePackageJson, null, 2)}\n`,
 	);
+
+	return extensionPackageJson;
 }
 
-function stageLspPackages() {
+function stageLspPackages(target, targetConfig) {
 	assertExists(
 		sourceWrapperPath,
-		`Missing wrapper launcher at ${sourceWrapperPath}. Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp stage:lsp).`,
+		`[${target}] Missing wrapper launcher at ${sourceWrapperPath}. Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp stage:lsp).`,
 	);
 
 	assertExists(
 		lspPublishPackageJsonPath,
-		`Missing staged wrapper package metadata at ${lspPublishPackageJsonPath}. Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp stage:lsp).`,
+		`[${target}] Missing staged wrapper package metadata at ${lspPublishPackageJsonPath}. Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp stage:lsp).`,
 	);
 
 	const publishedLspPackageJson = JSON.parse(
@@ -231,7 +240,7 @@ function stageLspPackages() {
 		const sourcePath = path.join(lspPublishDir, fileName);
 		assertExists(
 			sourcePath,
-			`Missing staged wrapper file at ${sourcePath}. Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp stage:lsp).`,
+			`[${target}] Missing staged wrapper file at ${sourcePath}. Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp stage:lsp).`,
 		);
 		fs.copyFileSync(sourcePath, path.join(stagedWrapperTarget, fileName));
 	}
@@ -241,17 +250,14 @@ function stageLspPackages() {
 		path.join(stagedWrapperTarget, "bin", "vela-rbxts-lsp.js"),
 	);
 
-	const platformFolder = resolvePlatformFolder();
-	if (!platformFolder) {
-		throw new Error(
-			`No local platform binary package mapping for ${process.platform}/${process.arch}. Add platform mapping support before packaging this extension.`,
-		);
-	}
-
-	const platformPackagePath = path.join(lspPublishDir, "npm", platformFolder);
+	const platformPackagePath = path.join(
+		lspPublishDir,
+		"npm",
+		targetConfig.lspFolder,
+	);
 	if (!fs.existsSync(platformPackagePath)) {
 		throw new Error(
-			`Missing staged platform package at ${platformPackagePath}. Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp stage:lsp).`,
+			`[${target}] Missing staged platform package ${targetConfig.packageName} at ${platformPackagePath}. Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp stage:lsp).`,
 		);
 	}
 
@@ -259,10 +265,9 @@ function stageLspPackages() {
 		fs.readFileSync(path.join(platformPackagePath, "package.json"), "utf8"),
 	);
 	const platformPackageName = String(platformPackageJson.name ?? "");
-	if (!platformPackageName.startsWith("@vela-rbxts/")) {
+	if (platformPackageName !== targetConfig.packageName) {
 		throw new Error(
-			`Unexpected platform package name ${platformPackageName} in ${platformPackagePath}. Expected a package scoped as @vela-rbxts/<platform>.
-Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp stage:lsp).`,
+			`[${target}] Unexpected platform package name ${platformPackageName} in ${platformPackagePath}. Expected ${targetConfig.packageName}.`,
 		);
 	}
 
@@ -278,7 +283,51 @@ Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp st
 	};
 }
 
-function verifyStagedArtifacts({ platformPackageName, platformPackageTarget }) {
+function verifyStagedArtifacts(target, { platformPackageName, platformPackageTarget }) {
+	const stagePackageJsonPath = path.join(stageDir, "package.json");
+	const stageExtensionEntryPath = path.join(stageDir, "dist", "extension.js");
+	const stagedRuntimeDependencyPath = path.join(
+		stageDir,
+		"node_modules",
+		"vscode-languageclient",
+	);
+	const stagedWrapperPackageJsonPath = path.join(
+		stageDir,
+		"node_modules",
+		"@vela-rbxts",
+		"lsp",
+		"package.json",
+	);
+	const platformPackageShortName = platformPackageName.slice("@vela-rbxts/".length);
+	const stagedPlatformPackageJsonPath = path.join(
+		stageDir,
+		"node_modules",
+		"@vela-rbxts",
+		platformPackageShortName,
+		"package.json",
+	);
+
+	assertExists(
+		stagePackageJsonPath,
+		`[${target}] Missing staged extension manifest at ${stagePackageJsonPath}.`,
+	);
+	assertExists(
+		stageExtensionEntryPath,
+		`[${target}] Missing staged extension bundle at ${stageExtensionEntryPath}. Build the extension first (for example: pnpm --filter ./packages/vscode-extension run build).`,
+	);
+	assertExists(
+		stagedRuntimeDependencyPath,
+		`[${target}] Missing staged runtime dependency tree at ${stagedRuntimeDependencyPath}.`,
+	);
+	assertExists(
+		stagedWrapperPackageJsonPath,
+		`[${target}] Missing staged @vela-rbxts/lsp package at ${stagedWrapperPackageJsonPath}.`,
+	);
+	assertExists(
+		stagedPlatformPackageJsonPath,
+		`[${target}] Missing staged platform package ${platformPackageName} at ${stagedPlatformPackageJsonPath}.`,
+	);
+
 	const wrapperLauncherPath = path.join(
 		stageDir,
 		"node_modules",
@@ -289,10 +338,9 @@ function verifyStagedArtifacts({ platformPackageName, platformPackageTarget }) {
 	);
 	assertExists(
 		wrapperLauncherPath,
-		`Missing staged wrapper launcher at ${wrapperLauncherPath}.`,
+		`[${target}] Missing staged wrapper launcher at ${wrapperLauncherPath}.`,
 	);
 
-	const stagePackageJsonPath = path.join(stageDir, "package.json");
 	const stageRequire = createRequire(stagePackageJsonPath);
 	const normalizedStageDir = path.resolve(stageDir);
 
@@ -304,7 +352,7 @@ function verifyStagedArtifacts({ platformPackageName, platformPackageTarget }) {
 		);
 		if (relativeToStage.startsWith("..") || path.isAbsolute(relativeToStage)) {
 			throw new Error(
-				`${description} resolved outside staged extension: ${resolvedPath}`,
+				`[${target}] ${description} resolved outside staged extension: ${resolvedPath}`,
 			);
 		}
 	}
@@ -315,7 +363,7 @@ function verifyStagedArtifacts({ platformPackageName, platformPackageTarget }) {
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		throw new Error(
-			`Failed resolving @vela-rbxts/lsp from staged extension: ${message}`,
+			`[${target}] Failed resolving @vela-rbxts/lsp from staged extension: ${message}`,
 		);
 	}
 	assertWithinStage(resolvedWrapperPath, "@vela-rbxts/lsp");
@@ -328,7 +376,7 @@ function verifyStagedArtifacts({ platformPackageName, platformPackageTarget }) {
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		throw new Error(
-			`Failed resolving ${platformPackageName}/package.json from staged extension: ${message}`,
+			`[${target}] Failed resolving ${platformPackageName}/package.json from staged extension: ${message}`,
 		);
 	}
 	assertWithinStage(
@@ -355,25 +403,44 @@ function verifyStagedArtifacts({ platformPackageName, platformPackageTarget }) {
 			: platformPackageJson.bin?.["vela-rbxts-lsp"];
 	if (typeof binEntry !== "string") {
 		throw new Error(
-			`Invalid or missing binary entry in ${resolvedPlatformPackageJsonPath}.`,
+			`[${target}] Invalid or missing binary entry in ${resolvedPlatformPackageJsonPath}.`,
 		);
 	}
 
 	const nativeBinaryPath = path.resolve(path.dirname(resolvedPlatformPackageJsonPath), binEntry);
 	assertExists(
 		nativeBinaryPath,
-		`Missing staged native LSP binary at ${nativeBinaryPath}.`,
+		`[${target}] Missing staged native LSP binary at ${nativeBinaryPath}.`,
 	);
 	assertWithinStage(nativeBinaryPath, `${platformPackageName} binary`);
 
-	if (process.platform !== "win32") {
-		try {
-			fs.accessSync(nativeBinaryPath, fs.constants.X_OK);
-		} catch {
+	if (!target.startsWith("win32-")) {
+		const mode = fs.statSync(nativeBinaryPath).mode;
+		if ((mode & 0o111) === 0) {
 			throw new Error(
-				`Native LSP binary is not executable: ${nativeBinaryPath}`,
+				`[${target}] Native LSP binary is missing execute permissions: ${nativeBinaryPath} (mode=${mode.toString(8)}).`,
 			);
 		}
+	}
+
+	const scopedPackagesDir = path.join(stageDir, "node_modules", "@vela-rbxts");
+	assertDirEntries(scopedPackagesDir, ["lsp", platformPackageShortName], `@vela-rbxts packages for ${target}`);
+	const unexpectedBinaryPackages = fs
+		.readdirSync(scopedPackagesDir, { withFileTypes: true })
+		.filter((entry) => entry.isDirectory())
+		.map((entry) => entry.name)
+		.filter(
+			(packageShortName) =>
+				packageShortName.startsWith("lsp-") &&
+				`@vela-rbxts/${packageShortName}` !== platformPackageName,
+		);
+
+	if (unexpectedBinaryPackages.length > 0) {
+		throw new Error(
+			`[${target}] Staged unexpected platform binary packages: ${unexpectedBinaryPackages
+				.map((name) => `@vela-rbxts/${name}`)
+				.join(", ")}. Expected only ${platformPackageName}.`,
+		);
 	}
 
 	console.log(`Staged wrapper resolved to: ${resolvedWrapperPath}`);
@@ -389,29 +456,74 @@ function verifyStagedArtifacts({ platformPackageName, platformPackageTarget }) {
 }
 
 function main() {
-	fs.rmSync(stageDir, { recursive: true, force: true });
-	fs.mkdirSync(distDir, { recursive: true });
-
-	run("pnpm", ["--filter", "@vela-rbxts/lsp", "stage:lsp"], repoRoot);
-	copyRequiredFiles();
-	stageRuntimeDependencyTree("vscode-languageclient");
-	const stagedLsp = stageLspPackages();
-	verifyStagedArtifacts(stagedLsp);
-
-	const outputPath = path.join(distDir, "vela-rbxts-lsp-0.1.0.vsix");
-	run(
-		"pnpm",
-		[
-			"exec",
-			"vsce",
-			"package",
-			"--allow-missing-repository",
-			"--out",
-			outputPath,
-		],
-		stageDir,
+	const { dryRun, outputPath, target: explicitTarget } = parseArgs(
+		process.argv.slice(2),
 	);
+	const resolvedTarget = explicitTarget ?? resolveDefaultVsCodeTarget();
+	if (!resolvedTarget) {
+		throw new Error(
+			`No default target mapping for local platform ${process.platform}/${process.arch}. Pass --target explicitly. Supported targets: ${SUPPORTED_VSCODE_TARGETS.join(", ")}`,
+		);
+	}
+
+	const targetConfig = VSCODE_TARGETS[resolvedTarget];
+	if (!targetConfig) {
+		throw new Error(
+			`Unsupported VS Code target "${resolvedTarget}". Supported targets: ${SUPPORTED_VSCODE_TARGETS.join(", ")}`,
+		);
+	}
+
+	const extensionPackageJson = JSON.parse(
+		fs.readFileSync(extensionPackageJsonPath, "utf8"),
+	);
+	const extensionVersion = String(extensionPackageJson.version ?? "0.1.0");
+
+	const resolvedOutputPath = path.resolve(
+		outputPath ??
+			path.join(distDir, `vela-rbxts-lsp-${extensionVersion}-${resolvedTarget}.vsix`),
+	);
+
+	assertExists(
+		path.join(distDir, "extension.js"),
+		`Missing extension bundle at ${path.join(distDir, "extension.js")}. Build the extension first (for example: pnpm --filter ./packages/vscode-extension run build).`,
+	);
+
 	fs.rmSync(stageDir, { recursive: true, force: true });
+	fs.mkdirSync(stageDir, { recursive: true });
+	fs.mkdirSync(path.dirname(resolvedOutputPath), { recursive: true });
+
+	try {
+		run("pnpm", ["--filter", "@vela-rbxts/lsp", "stage:lsp"], repoRoot);
+		copyRequiredFiles();
+		stageRuntimeDependencyTree("vscode-languageclient");
+		const stagedLsp = stageLspPackages(resolvedTarget, targetConfig);
+		verifyStagedArtifacts(resolvedTarget, stagedLsp);
+
+		if (dryRun) {
+			console.log(
+				`[dry-run] Would package target ${resolvedTarget} to ${resolvedOutputPath}`,
+			);
+			return;
+		}
+
+		run(
+			"pnpm",
+			[
+				"exec",
+				"vsce",
+				"package",
+				"--target",
+				resolvedTarget,
+				"--allow-missing-repository",
+				"--out",
+				resolvedOutputPath,
+			],
+			stageDir,
+		);
+		console.log(`Packaged ${resolvedTarget} VSIX at ${resolvedOutputPath}`);
+	} finally {
+		fs.rmSync(stageDir, { recursive: true, force: true });
+	}
 }
 
 main();

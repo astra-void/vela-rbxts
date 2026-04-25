@@ -16,7 +16,13 @@ pnpm --filter ./packages/vscode-extension package:vsix
 This generates:
 
 ```txt
-packages/vscode-extension/dist/vela-rbxts-lsp-0.1.0.vsix
+packages/vscode-extension/dist/vela-rbxts-lsp-<version>-<host-target>.vsix
+```
+
+You can package a specific VS Code target explicitly:
+
+```sh
+pnpm --filter ./packages/vscode-extension package:vsix -- --target win32-x64 --out ./dist/vela-rbxts-lsp-<version>-win32-x64.vsix
 ```
 
 Install it manually with:

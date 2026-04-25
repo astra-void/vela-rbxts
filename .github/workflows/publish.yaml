@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag to publish (example: v0.5.0 or v0.5.0-next.1)"
+        description: "Release tag to publish (example: v0.1.0 or v0.1.0-next.0)"
         required: true
         type: string
       npm_tag:
@@ -359,9 +359,9 @@ jobs:
     needs:
       - verify
       - release-metadata
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -448,3 +448,65 @@ jobs:
           name: vela-rbxts-vsix
           path: artifacts/vsix/*.vsix
           if-no-files-found: error
+
+  publish-vscode-marketplace:
+    name: publish vscode marketplace
+    runs-on: ubuntu-24.04
+    needs:
+      - package-vsix
+      - release-metadata
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && needs.release-metadata.outputs.dry_run != 'true' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download VSIX artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: vela-rbxts-vsix
+          path: artifacts/vsix
+
+      - name: Publish VSIX files
+        env:
+          RELEASE_TAG: ${{ needs.release-metadata.outputs.release_tag }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "${VSCE_PAT}" ]; then
+            echo "VSCE_PAT is required for VS Code Marketplace publishing." >&2
+            exit 1
+          fi
+
+          prerelease_flag=""
+          if [[ "${RELEASE_TAG}" == *"-"* ]]; then
+            prerelease_flag="--pre-release"
+          fi
+
+          shopt -s nullglob
+          vsix_files=(artifacts/vsix/*.vsix)
+          if [ "${#vsix_files[@]}" -eq 0 ]; then
+            echo "No VSIX files found in artifacts/vsix." >&2
+            exit 1
+          fi
+
+          for vsix in "${vsix_files[@]}"; do
+            echo "Publishing ${vsix}"
+            if [ -n "${prerelease_flag}" ]; then
+              pnpm exec vsce publish --packagePath "${vsix}" ${prerelease_flag}
+            else
+              pnpm exec vsce publish --packagePath "${vsix}"
+            fi
+          done

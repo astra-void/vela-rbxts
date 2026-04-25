@@ -13,10 +13,11 @@ import {
 import {
 	ARTIFACT_DIRS,
 	exists,
+	listFilesRecursive,
 	REPO_ROOT,
 	writeJsonFile,
 } from "./utils/fs";
-import { type PackageJson } from "./utils/package-json";
+import type { PackageJson } from "./utils/package-json";
 import { readJsonFile } from "./utils/fs";
 
 type TarballPackageInfo = {
@@ -88,6 +89,20 @@ function assertManifestFieldEntries(
 	}
 }
 
+function detectLinuxRuntimeKind(): "gnu" | "musl" {
+	if (typeof process.report?.getReport !== "function") {
+		return "musl";
+	}
+
+	const report = process.report.getReport() as {
+		header?: {
+			glibcVersionRuntime?: string;
+		};
+	};
+
+	return report.header?.glibcVersionRuntime ? "gnu" : "musl";
+}
+
 async function main() {
 	if (!exists(PACK_MANIFEST_PATH)) {
 		throw new Error(`Missing pack manifest at ${PACK_MANIFEST_PATH}. Run release:pack first.`);
@@ -139,7 +154,7 @@ async function main() {
 	}
 
 	const tarballPackageNames = new Set(tarballInfos.map((entry) => entry.artifact.packageName));
-	for (const expectedName of expectedNpmPackageNames) {
+	for (const expectedName of Array.from(expectedNpmPackageNames)) {
 		if (!tarballPackageNames.has(expectedName)) {
 			throw new Error(`Missing packed tarball for ${expectedName}.`);
 		}
@@ -193,9 +208,7 @@ async function main() {
 		}
 	}
 
-	const runtimeKind = process.platform === "linux" && !process.report?.getReport?.().header?.glibcVersionRuntime
-		? "musl"
-		: "gnu";
+	const runtimeKind = process.platform === "linux" ? detectLinuxRuntimeKind() : "gnu";
 	const currentPlatformLspPackage = lspPackageConfig.getBinaryPackageName(
 		process.platform,
 		process.arch,
@@ -210,6 +223,53 @@ async function main() {
 		throw new Error(
 			`Missing packed tarball for current platform LSP package ${currentPlatformLspPackage}.`,
 		);
+	}
+
+	const vsixFiles = (await listFilesRecursive(ARTIFACT_DIRS.vsix))
+		.filter((file) => file.endsWith(".vsix"))
+		.sort();
+	if (vsixFiles.length > 0) {
+		const vsixTargetsModule = (await import(
+			pathToFileURL(
+				join(REPO_ROOT, "packages/vscode-extension/scripts/vsix-targets.cjs"),
+			).href
+		)) as {
+			SUPPORTED_VSCODE_TARGETS: string[];
+		};
+
+		const extensionManifest = await readJsonFile<PackageJson>(
+			join(REPO_ROOT, "packages/vscode-extension/package.json"),
+		);
+		const version = String(extensionManifest.version ?? "0.1.0");
+		const expectedVsixFileNames = new Set(
+			vsixTargetsModule.SUPPORTED_VSCODE_TARGETS.map(
+				(target) => `vela-rbxts-lsp-${version}-${target}.vsix`,
+			),
+		);
+
+		const actualVsixFileNames = new Set(
+			vsixFiles.map((filePath) => {
+				const segments = filePath.split(/[\\/]/);
+				const fileName = segments[segments.length - 1];
+				return fileName ?? filePath;
+			}),
+		);
+
+		for (const expectedFile of Array.from(expectedVsixFileNames)) {
+			if (!actualVsixFileNames.has(expectedFile)) {
+				throw new Error(
+					`Missing expected VSIX artifact: ${join(ARTIFACT_DIRS.vsix, expectedFile)}`,
+				);
+			}
+		}
+
+		for (const actualFile of Array.from(actualVsixFileNames)) {
+			if (!expectedVsixFileNames.has(actualFile)) {
+				throw new Error(
+					`Unexpected VSIX artifact found: ${join(ARTIFACT_DIRS.vsix, actualFile)}`,
+				);
+			}
+		}
 	}
 
 	await writeJsonFile(VERIFY_REPORT_PATH, {

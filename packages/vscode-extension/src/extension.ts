@@ -229,17 +229,20 @@ async function resolveServerCommand(
 function resolveBundledServerCommand(
 	workspaceRoot: string,
 ): ResolvedServerCommand | undefined {
-	const runtimeBinaryPackageName = resolveBinaryPackageName();
+	const runtimeBinaryResolution = resolveBinaryPackageName();
 	log(
-		`Selected platform package for ${process.platform}/${process.arch}: ${runtimeBinaryPackageName ?? "<unsupported>"}`,
+		`Selected platform package for ${process.platform}/${process.arch}: ${runtimeBinaryResolution.packageName ?? "<unsupported>"}`,
 	);
-	if (!runtimeBinaryPackageName) {
+	if (!runtimeBinaryResolution.packageName) {
+		log(
+			`Bundled platform package is unsupported for ${process.platform}/${process.arch}: ${runtimeBinaryResolution.reason}`,
+		);
 		return undefined;
 	}
 
-	if (!isBinaryPackageInstalled(runtimeBinaryPackageName)) {
+	if (!isBinaryPackageInstalled(runtimeBinaryResolution.packageName)) {
 		log(
-			`Bundled @vela-rbxts/lsp is available, but ${runtimeBinaryPackageName} is not installed.`,
+			`Bundled @vela-rbxts/lsp is available, but ${runtimeBinaryResolution.packageName} is not installed.`,
 		);
 		return undefined;
 	}
@@ -258,50 +261,82 @@ function resolveBundledServerCommand(
 	}
 }
 
-function resolveBinaryPackageName(): string | undefined {
+function resolveBinaryPackageName(): { packageName?: string; reason: string } {
 	if (process.platform === "darwin") {
 		if (process.arch === "arm64") {
-			return "@vela-rbxts/lsp-darwin-arm64";
+			return {
+				packageName: "@vela-rbxts/lsp-darwin-arm64",
+				reason: "supported",
+			};
 		}
 
 		if (process.arch === "x64") {
-			return "@vela-rbxts/lsp-darwin-x64";
+			return {
+				packageName: "@vela-rbxts/lsp-darwin-x64",
+				reason: "supported",
+			};
 		}
 
-		return undefined;
+		return {
+			reason: `darwin/${process.arch} is not currently packaged for this extension. Supported darwin targets are arm64 and x64.`,
+		};
 	}
 
 	if (process.platform === "linux") {
 		const runtimeKind = detectLinuxRuntimeKind();
 
 		if (process.arch === "arm64") {
-			return runtimeKind === "gnu"
-				? "@vela-rbxts/lsp-linux-arm64-gnu"
-				: "@vela-rbxts/lsp-linux-arm64-musl";
+			if (runtimeKind === "gnu") {
+				return {
+					packageName: "@vela-rbxts/lsp-linux-arm64-gnu",
+					reason: "supported",
+				};
+			}
+
+			return {
+				reason:
+					"linux/arm64 musl is not currently packaged. Supported linux/arm64 target is gnu.",
+			};
 		}
 
 		if (process.arch === "x64") {
-			return runtimeKind === "gnu"
-				? "@vela-rbxts/lsp-linux-x64-gnu"
-				: "@vela-rbxts/lsp-linux-x64-musl";
+			return {
+				packageName:
+					runtimeKind === "gnu"
+						? "@vela-rbxts/lsp-linux-x64-gnu"
+						: "@vela-rbxts/lsp-linux-x64-musl",
+				reason: "supported",
+			};
 		}
 
-		return undefined;
+		return {
+			reason: `linux/${process.arch} is not currently packaged for this extension. Supported linux targets are x64 (gnu/musl) and arm64 (gnu).`,
+		};
 	}
 
 	if (process.platform === "win32") {
-		if (process.arch === "arm64") {
-			return "@vela-rbxts/lsp-win32-arm64-msvc";
-		}
-
 		if (process.arch === "x64") {
-			return "@vela-rbxts/lsp-win32-x64-msvc";
+			return {
+				packageName: "@vela-rbxts/lsp-win32-x64-msvc",
+				reason: "supported",
+			};
 		}
 
-		return undefined;
+		if (process.arch === "arm64") {
+			return {
+				reason:
+					"win32/arm64 is not currently packaged. Supported win32 target is x64.",
+			};
+		}
+
+		return {
+			reason: `win32/${process.arch} is not currently packaged. Supported win32 target is x64.`,
+		};
 	}
 
-	return undefined;
+	return {
+		reason: `Unsupported platform ${process.platform}/${process.arch}.`,
+	};
 }
 
 function isBinaryPackageInstalled(packageName: string | undefined): boolean {
