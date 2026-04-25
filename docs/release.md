@@ -61,3 +61,11 @@ If LSP artifacts fail:
 
 `pnpm release:vsix` requires already built LSP artifacts in `artifacts/lsp`.
 The VSIX packaging phase stages those binaries through `@vela-rbxts/lsp` and fails if the current platform binary is missing.
+
+## VSIX Versioning
+
+Workspace packages may keep prerelease semver versions such as `0.1.0-next.0`.
+VS Code Marketplace packaging normalizes the staged extension manifest to a plain `major.minor.patch` version in the staging directory only, so `packages/vscode-extension/package.json` stays unchanged.
+
+`RELEASE_TAG` still controls Marketplace pre-release publishing through `--pre-release`.
+If you need a unique Marketplace version for repeated prerelease publishes, set `VSIX_VERSION=0.1.1` to override the staged manifest version explicitly.
