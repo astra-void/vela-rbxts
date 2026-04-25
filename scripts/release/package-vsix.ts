@@ -28,6 +28,13 @@ const {
 		}
 	>;
 };
+const { resolveMarketplaceVsixVersion } = require("./utils/vsix-version.cjs") as {
+	resolveMarketplaceVsixVersion: (input: {
+		sourceVersion?: string;
+		releaseTag?: string;
+		overrideVersion?: string;
+	}) => string;
+};
 
 type ExtensionPackageJson = {
 	version?: string;
@@ -159,7 +166,15 @@ async function main() {
 	const extensionManifest = await readJsonFile<ExtensionPackageJson>(
 		join(REPO_ROOT, "packages/vscode-extension/package.json"),
 	);
-	const version = String(extensionManifest.version ?? "0.1.0");
+	const sourceVersion = String(extensionManifest.version ?? "0.1.0");
+	const releaseTag = process.env.RELEASE_TAG?.trim() ?? "";
+	const vsixVersionOverride = process.env.VSIX_VERSION?.trim() ?? "";
+	const prerelease = releaseTag.includes("-");
+	const marketplaceVersion = resolveMarketplaceVsixVersion({
+		sourceVersion,
+		releaseTag,
+		overrideVersion: vsixVersionOverride,
+	});
 
 	const lspPackageConfig = (await import(
 		pathToFileURL(join(REPO_ROOT, "packages/lsp/scripts/package-config.mjs")).href
@@ -197,11 +212,22 @@ async function main() {
 	});
 
 	if (dryRun) {
+		console.log(`VSIX version source: ${sourceVersion}`);
+		if (vsixVersionOverride) {
+			console.log(`VSIX version override: using VSIX_VERSION=${vsixVersionOverride}`);
+		}
+		console.log(`VSIX Marketplace manifest version: ${marketplaceVersion}`);
+		console.log(`VSIX pre-release: ${prerelease}`);
+		if (!vsixVersionOverride && /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(sourceVersion.trim().replace(/^v/, ""))) {
+			console.warn(
+				`Warning: VS Code Marketplace does not support semver prerelease suffixes. Packaged VSIX manifest version was normalized from ${sourceVersion} to ${marketplaceVersion}. Ensure this Marketplace version has not already been published.`,
+			);
+		}
 		console.log("[dry-run] VSIX packaging prerequisites validated and LSP artifacts staged.");
 		for (const target of SUPPORTED_VSCODE_TARGETS) {
 			const targetConfig = VSCODE_TARGETS[target];
 			console.log(
-				`[dry-run] would package ${target} using ${targetConfig.packageName} -> ${getVsixOutputPath(version, target)}`,
+				`[dry-run] would package ${target} using ${targetConfig.packageName} -> ${getVsixOutputPath(marketplaceVersion, target)}`,
 			);
 		}
 		return;
@@ -210,7 +236,7 @@ async function main() {
 	await cleanDir(ARTIFACT_DIRS.vsix);
 
 	for (const target of SUPPORTED_VSCODE_TARGETS) {
-		const outputPath = getVsixOutputPath(version, target);
+		const outputPath = getVsixOutputPath(marketplaceVersion, target);
 		runCommand(
 			process.execPath,
 			[
