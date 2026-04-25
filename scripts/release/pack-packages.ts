@@ -1,5 +1,6 @@
-import { readdir } from "node:fs/promises";
+import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { collectReleaseUnits, parseDryRunFlag } from "./release-config";
 import { runCommand } from "./utils/exec";
@@ -19,10 +20,108 @@ import {
 	writeJsonFile,
 } from "./utils/fs";
 import { resolveNpmCommand } from "./utils/npm";
+import { type PackageJson } from "./utils/package-json";
+
+const WORKSPACE_PROTOCOL = "workspace:";
 
 async function getTgzFiles(directoryPath: string) {
 	const files = await listFilesRecursive(directoryPath);
 	return files.filter((file) => file.endsWith(".tgz")).sort();
+}
+
+function rewriteWorkspaceRange(range: string, version: string) {
+	const workspaceRange = range.slice(WORKSPACE_PROTOCOL.length);
+	if (workspaceRange === "" || workspaceRange === "*") {
+		return version;
+	}
+	if (workspaceRange === "^" || workspaceRange === "~") {
+		return `${workspaceRange}${version}`;
+	}
+	return workspaceRange;
+}
+
+function rewritePublishedDependencyRanges(
+	manifest: PackageJson,
+	publishedVersions: ReadonlyMap<string, string>,
+) {
+	const nextManifest: PackageJson = { ...manifest };
+	const fields: Array<keyof Pick<
+		PackageJson,
+		"dependencies" | "peerDependencies" | "optionalDependencies"
+	>> = ["dependencies", "peerDependencies", "optionalDependencies"];
+
+	for (const field of fields) {
+		const deps = manifest[field];
+		if (!deps || typeof deps !== "object") {
+			continue;
+		}
+
+		const nextDeps: Record<string, string> = { ...deps };
+		let fieldChanged = false;
+
+		for (const [depName, range] of Object.entries(deps)) {
+			if (!range.startsWith(WORKSPACE_PROTOCOL)) {
+				continue;
+			}
+
+			const publishedVersion = publishedVersions.get(depName);
+			if (!publishedVersion) {
+				throw new Error(
+					`Unable to rewrite ${manifest.name ?? "<unknown>"} ${field} dependency ${depName}=${range}: missing published version.`,
+				);
+			}
+
+			nextDeps[depName] = rewriteWorkspaceRange(range, publishedVersion);
+			fieldChanged = true;
+		}
+
+		if (fieldChanged) {
+			nextManifest[field] = nextDeps;
+		}
+	}
+
+	return nextManifest;
+}
+
+async function packWorkspacePackage(
+	unit: {
+		absPath: string;
+		name: string;
+		version: string;
+	},
+	publishedVersions: ReadonlyMap<string, string>,
+	npmCommand: string,
+) {
+	const stagingRoot = await mkdtemp(join(tmpdir(), "vela-rbxts-pack-"));
+	const stagingDir = join(stagingRoot, basename(unit.absPath));
+
+	try {
+		await cp(unit.absPath, stagingDir, { recursive: true });
+
+		const manifestPath = join(stagingDir, "package.json");
+		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as PackageJson;
+		const rewrittenManifest = rewritePublishedDependencyRanges(manifest, publishedVersions);
+		await writeFile(manifestPath, `${JSON.stringify(rewrittenManifest, null, 2)}\n`, "utf8");
+
+		const before = await getTgzFiles(ARTIFACT_DIRS.npm);
+		runCommand(
+			npmCommand,
+			[
+				"pack",
+				stagingDir,
+				"--pack-destination",
+				ARTIFACT_DIRS.npm,
+				"--ignore-scripts",
+			],
+			{ cwd: REPO_ROOT },
+		);
+		const after = await getTgzFiles(ARTIFACT_DIRS.npm);
+		const tarballPath = await detectSingleNewTarball(before, after, unit.name);
+
+		return tarballPath;
+	} finally {
+		await rm(stagingRoot, { recursive: true, force: true });
+	}
 }
 
 async function detectSingleNewTarball(
@@ -74,6 +173,7 @@ async function main() {
 	const rawArgs = process.argv.slice(2);
 	const dryRun = parseDryRunFlag(rawArgs);
 	const releaseUnits = await collectReleaseUnits();
+	const publishedVersions = new Map(releaseUnits.map((unit) => [unit.name, unit.version]));
 	const npmUnits = releaseUnits.filter(
 		(unit) => unit.publishToNpm && unit.kind !== "native" && unit.kind !== "lsp",
 	);
@@ -106,20 +206,7 @@ async function main() {
 	const packedArtifacts: PackedArtifact[] = [];
 
 	for (const unit of npmUnits) {
-		const before = await getTgzFiles(ARTIFACT_DIRS.npm);
-		runCommand(
-			npmCommand,
-			[
-				"pack",
-				unit.absPath,
-				"--pack-destination",
-				ARTIFACT_DIRS.npm,
-				"--ignore-scripts",
-			],
-			{ cwd: REPO_ROOT },
-		);
-		const after = await getTgzFiles(ARTIFACT_DIRS.npm);
-		const tarballPath = await detectSingleNewTarball(before, after, unit.name);
+		const tarballPath = await packWorkspacePackage(unit, publishedVersions, npmCommand);
 		packedArtifacts.push({
 			packageName: unit.name,
 			version: unit.version,
