@@ -234,9 +234,11 @@ async function main() {
 	}
 
 	await cleanDir(ARTIFACT_DIRS.vsix);
+	const packagedVsixPaths: string[] = [];
 
 	for (const target of SUPPORTED_VSCODE_TARGETS) {
 		const outputPath = getVsixOutputPath(marketplaceVersion, target);
+		packagedVsixPaths.push(outputPath);
 		runCommand(
 			process.execPath,
 			[
@@ -257,8 +259,8 @@ async function main() {
 	}
 
 	console.log("VSIX packages:");
-	for (const target of SUPPORTED_VSCODE_TARGETS) {
-		console.log(`- ${getVsixOutputPath(version, target)}`);
+	for (const outputPath of packagedVsixPaths) {
+		console.log(`- ${outputPath}`);
 	}
 }
 

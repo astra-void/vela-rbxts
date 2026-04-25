@@ -27,6 +27,11 @@ on:
         required: false
         default: true
         type: boolean
+      publish_vscode_extension:
+        description: Publish VS Code extension to Marketplace
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -51,6 +56,7 @@ jobs:
       npm_tag: ${{ steps.meta.outputs.npm_tag }}
       vsix_version: ${{ steps.meta.outputs.vsix_version }}
       dry_run: ${{ steps.meta.outputs.dry_run }}
+      publish_vscode_extension: ${{ steps.meta.outputs.publish_vscode_extension }}
     steps:
       - name: Resolve release metadata
         id: meta
@@ -60,6 +66,7 @@ jobs:
           INPUT_NPM_TAG: ${{ inputs.npm_tag }}
           INPUT_VSIX_VERSION: ${{ inputs.vsix_version }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_PUBLISH_VSCODE_EXTENSION: ${{ inputs.publish_vscode_extension }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           normalize_bool() {
@@ -78,7 +85,7 @@ jobs:
                 echo "false"
                 ;;
               *)
-                echo "Invalid boolean value for dry_run: ${raw}" >&2
+                echo "Invalid boolean value: ${raw}" >&2
                 exit 1
                 ;;
             esac
@@ -89,6 +96,7 @@ jobs:
             npm_tag="${INPUT_NPM_TAG}"
             vsix_version="${INPUT_VSIX_VERSION}"
             dry_run="$(normalize_bool "${INPUT_DRY_RUN}" "true")"
+            publish_vscode_extension="$(normalize_bool "${INPUT_PUBLISH_VSCODE_EXTENSION}" "false")"
           else
             release_tag="${REF_NAME}"
             if [[ "${release_tag}" == *"-"* ]]; then
@@ -98,12 +106,14 @@ jobs:
             fi
             vsix_version=""
             dry_run="false"
+            publish_vscode_extension="true"
           fi
 
           echo "Resolved release_tag=${release_tag}"
           echo "Resolved npm_tag=${npm_tag}"
           echo "Resolved vsix_version=${vsix_version}"
           echo "Resolved dry_run=${dry_run}"
+          echo "Resolved publish_vscode_extension=${publish_vscode_extension}"
 
           if [ -z "${release_tag}" ]; then
             echo "release_tag is required" >&2
@@ -119,6 +129,7 @@ jobs:
           echo "npm_tag=${npm_tag}" >> "${GITHUB_OUTPUT}"
           echo "vsix_version=${vsix_version}" >> "${GITHUB_OUTPUT}"
           echo "dry_run=${dry_run}" >> "${GITHUB_OUTPUT}"
+          echo "publish_vscode_extension=${publish_vscode_extension}" >> "${GITHUB_OUTPUT}"
 
   validate:
     name: validate
@@ -467,33 +478,50 @@ jobs:
     needs:
       - package-vsix
       - release-metadata
-    if: ${{ needs.release-metadata.outputs.dry_run != 'true' }}
     permissions:
       contents: read
     steps:
+      - name: Skip VS Code Marketplace publish
+        if: needs.release-metadata.outputs.publish_vscode_extension != 'true'
+        run: |
+          echo "Skipping VS Code Marketplace publish because publish_vscode_extension=false."
+          echo "VSIX artifacts were still packaged and uploaded."
+
+      - name: Skip VS Code Marketplace publish for dry-run
+        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run == 'true'
+        run: |
+          echo "Skipping real VS Code Marketplace publish because dry_run=true."
+
       - name: Checkout
+        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
         uses: actions/checkout@v6
 
       - name: Setup pnpm
+        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
         uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
+        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
         uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
       - name: Install dependencies
+        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Download VSIX artifacts
+        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
         uses: actions/download-artifact@v4
         with:
           name: vela-rbxts-vsix
           path: artifacts/vsix
 
       - name: Publish VSIX files
+        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
         env:
           RELEASE_TAG: ${{ needs.release-metadata.outputs.release_tag }}
+          VSIX_VERSION: ${{ needs.release-metadata.outputs.vsix_version }}
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: pnpm --filter ./packages/vscode-extension run publish:vsix

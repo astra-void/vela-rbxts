@@ -69,3 +69,13 @@ VS Code Marketplace packaging normalizes the staged extension manifest to a plai
 
 `RELEASE_TAG` still controls Marketplace pre-release publishing through `--pre-release`.
 If you need a unique Marketplace version for repeated prerelease publishes, set `VSIX_VERSION=0.1.1` to override the staged manifest version explicitly.
+
+## Manual Dispatch Options
+
+For `workflow_dispatch` on `.github/workflows/publish.yaml`:
+
+- `dry_run=true`: validates release flow and runs VSIX packaging checks without real npm/Marketplace publishing.
+- `vsix_version`: optional Marketplace-compatible `major.minor.patch` override for staged VSIX manifest version.
+- `publish_vscode_extension=false`: package and upload VSIX artifacts only; skip Marketplace publish.
+- `publish_vscode_extension=true`: publish VSIX artifacts to VS Code Marketplace, unless `dry_run=true`.
+- `VSCE_PAT` is required only for real VS Code Marketplace publishing.
