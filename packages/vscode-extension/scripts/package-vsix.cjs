@@ -483,6 +483,8 @@ function main() {
 		fs.readFileSync(extensionPackageJsonPath, "utf8"),
 	);
 	const extensionVersion = String(extensionPackageJson.version ?? "0.1.0");
+	const releaseTag = process.env.RELEASE_TAG?.trim() ?? "";
+	const prerelease = releaseTag.includes("-") || extensionVersion.includes("-");
 
 	const resolvedOutputPath = path.resolve(
 		outputPath ??
@@ -505,25 +507,26 @@ function main() {
 		const stagedLsp = stageLspPackages(resolvedTarget, targetConfig);
 		verifyStagedArtifacts(resolvedTarget, stagedLsp);
 
-	if (dryRun) {
+		if (dryRun) {
 			console.log(
-				`[dry-run] Would package target ${resolvedTarget} to ${resolvedOutputPath}`,
+				`[dry-run] Would package target ${resolvedTarget} to ${resolvedOutputPath}${prerelease ? " as pre-release" : ""}`,
 			);
 			return;
 		}
 
-		run(
-			vsceBinaryPath,
-			[
-				"package",
-				"--target",
-				resolvedTarget,
-				"--allow-missing-repository",
-				"--out",
-				resolvedOutputPath,
-			],
-			stageDir,
-		);
+		const packageArgs = [
+			"package",
+			"--target",
+			resolvedTarget,
+			"--allow-missing-repository",
+			"--out",
+			resolvedOutputPath,
+		];
+		if (prerelease) {
+			packageArgs.push("--pre-release");
+		}
+
+		run(vsceBinaryPath, packageArgs, stageDir);
 		console.log(`Packaged ${resolvedTarget} VSIX at ${resolvedOutputPath}`);
 	} finally {
 		fs.rmSync(stageDir, { recursive: true, force: true });
