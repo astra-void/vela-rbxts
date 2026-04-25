@@ -7,6 +7,10 @@ const {
 	SUPPORTED_VSCODE_TARGETS,
 	resolveDefaultVsCodeTarget,
 } = require("./vsix-targets.cjs");
+const {
+	resolveMarketplaceVsixVersion,
+	STRICT_VSIX_VERSION_RE,
+} = require("../../../scripts/release/utils/vsix-version.cjs");
 
 const extensionDir = path.resolve(__dirname, "..");
 const distDir = path.join(extensionDir, "dist");
@@ -181,13 +185,14 @@ function stageRuntimeDependencyTree(rootPackageName) {
 	visit(resolvePackageJsonPathFromModule(extensionRequire, rootPackageName));
 }
 
-function prepareManifest(lspVersion) {
+function prepareManifest(lspVersion, marketplaceVersion) {
 	const extensionPackageJson = JSON.parse(
 		fs.readFileSync(extensionPackageJsonPath, "utf8"),
 	);
 
 	const stagePackageJson = {
 		...extensionPackageJson,
+		version: marketplaceVersion,
 		private: false,
 		scripts: {
 			...extensionPackageJson.scripts,
@@ -215,10 +220,13 @@ function prepareManifest(lspVersion) {
 		`${JSON.stringify(stagePackageJson, null, 2)}\n`,
 	);
 
-	return extensionPackageJson;
+	return {
+		extensionPackageJson,
+		stagePackageJson,
+	};
 }
 
-function stageLspPackages(target, targetConfig) {
+function stageLspPackages(target, targetConfig, marketplaceVersion) {
 	assertExists(
 		sourceWrapperPath,
 		`[${target}] Missing wrapper launcher at ${sourceWrapperPath}. Build/stage @vela-rbxts/lsp first (for example: pnpm --filter @vela-rbxts/lsp stage:lsp).`,
@@ -233,7 +241,7 @@ function stageLspPackages(target, targetConfig) {
 		fs.readFileSync(lspPublishPackageJsonPath, "utf8"),
 	);
 	const lspVersion = String(publishedLspPackageJson.version ?? "0.1.0");
-	prepareManifest(lspVersion);
+	prepareManifest(lspVersion, marketplaceVersion);
 
 	const scopedDir = path.join(stageDir, "node_modules", "@vela-rbxts");
 	fs.mkdirSync(scopedDir, { recursive: true });
@@ -289,7 +297,11 @@ function stageLspPackages(target, targetConfig) {
 	};
 }
 
-function verifyStagedArtifacts(target, { platformPackageName, platformPackageTarget }) {
+function verifyStagedArtifacts(
+	target,
+	{ platformPackageName, platformPackageTarget },
+	marketplaceVersion,
+) {
 	const stagePackageJsonPath = path.join(stageDir, "package.json");
 	const stageExtensionEntryPath = path.join(stageDir, "dist", "extension.js");
 	const stagedRuntimeDependencyPath = path.join(
@@ -317,6 +329,12 @@ function verifyStagedArtifacts(target, { platformPackageName, platformPackageTar
 		stagePackageJsonPath,
 		`[${target}] Missing staged extension manifest at ${stagePackageJsonPath}.`,
 	);
+	const stagedPackageJson = JSON.parse(fs.readFileSync(stagePackageJsonPath, "utf8"));
+	if (stagedPackageJson.version !== marketplaceVersion) {
+		throw new Error(
+			`[${target}] Staged extension manifest version mismatch. Expected ${marketplaceVersion}, found ${String(stagedPackageJson.version)} in ${stagePackageJsonPath}.`,
+		);
+	}
 	assertExists(
 		stageExtensionEntryPath,
 		`[${target}] Missing staged extension bundle at ${stageExtensionEntryPath}. Build the extension first (for example: pnpm --filter ./packages/vscode-extension run build).`,
@@ -450,6 +468,7 @@ function verifyStagedArtifacts(target, { platformPackageName, platformPackageTar
 	}
 
 	console.log(`Staged wrapper resolved to: ${resolvedWrapperPath}`);
+	console.log(`Staged extension manifest version: ${stagedPackageJson.version}`);
 	console.log(
 		`Staged platform package resolved to: ${resolvedPlatformPackageJsonPath}`,
 	);
@@ -484,11 +503,34 @@ function main() {
 	);
 	const extensionVersion = String(extensionPackageJson.version ?? "0.1.0");
 	const releaseTag = process.env.RELEASE_TAG?.trim() ?? "";
-	const prerelease = releaseTag.includes("-") || extensionVersion.includes("-");
+	const vsixVersionOverride = process.env.VSIX_VERSION?.trim() ?? "";
+	const prerelease = releaseTag.includes("-");
+	const marketplaceVersion = resolveMarketplaceVsixVersion({
+		sourceVersion: extensionVersion,
+		releaseTag,
+		overrideVersion: vsixVersionOverride,
+	});
+	if (!STRICT_VSIX_VERSION_RE.test(marketplaceVersion)) {
+		throw new Error(
+			`Invalid VSIX marketplace version "${marketplaceVersion}". VS Code Marketplace requires major.minor.patch in the packaged extension manifest.`,
+		);
+	}
+
+	console.log(`VSIX version source: ${extensionVersion}`);
+	if (vsixVersionOverride) {
+		console.log(`VSIX version override: using VSIX_VERSION=${vsixVersionOverride}`);
+	}
+	console.log(`VSIX Marketplace manifest version: ${marketplaceVersion}`);
+	console.log(`VSIX pre-release: ${prerelease}`);
+	if (!vsixVersionOverride && /^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(extensionVersion.trim().replace(/^v/, ""))) {
+		console.warn(
+			`Warning: VS Code Marketplace does not support semver prerelease suffixes. Packaged VSIX manifest version was normalized from ${extensionVersion} to ${marketplaceVersion}. Ensure this Marketplace version has not already been published.`,
+		);
+	}
 
 	const resolvedOutputPath = path.resolve(
 		outputPath ??
-			path.join(distDir, `vela-rbxts-lsp-${extensionVersion}-${resolvedTarget}.vsix`),
+			path.join(distDir, `vela-rbxts-lsp-${marketplaceVersion}-${resolvedTarget}.vsix`),
 	);
 
 	assertExists(
@@ -504,8 +546,12 @@ function main() {
 		run("pnpm", ["--filter", "@vela-rbxts/lsp", "stage:lsp"], repoRoot);
 		copyRequiredFiles();
 		stageRuntimeDependencyTree("vscode-languageclient");
-		const stagedLsp = stageLspPackages(resolvedTarget, targetConfig);
-		verifyStagedArtifacts(resolvedTarget, stagedLsp);
+		const stagedLsp = stageLspPackages(
+			resolvedTarget,
+			targetConfig,
+			marketplaceVersion,
+		);
+		verifyStagedArtifacts(resolvedTarget, stagedLsp, marketplaceVersion);
 
 		if (dryRun) {
 			console.log(
