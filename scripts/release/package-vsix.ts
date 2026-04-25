@@ -192,6 +192,10 @@ async function main() {
 		validateStagedPublishPackagesForTarget(target);
 	}
 
+	runCommand("pnpm", ["--filter", "./packages/vscode-extension", "run", "build"], {
+		cwd: REPO_ROOT,
+	});
+
 	if (dryRun) {
 		console.log("[dry-run] VSIX packaging prerequisites validated and LSP artifacts staged.");
 		for (const target of SUPPORTED_VSCODE_TARGETS) {

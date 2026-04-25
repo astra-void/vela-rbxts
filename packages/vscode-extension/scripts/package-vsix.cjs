@@ -12,6 +12,12 @@ const extensionDir = path.resolve(__dirname, "..");
 const distDir = path.join(extensionDir, "dist");
 const stageDir = path.join(extensionDir, ".vsix-stage");
 const extensionPackageJsonPath = path.join(extensionDir, "package.json");
+const vsceBinaryPath = path.join(
+	extensionDir,
+	"node_modules",
+	".bin",
+	process.platform === "win32" ? "vsce.cmd" : "vsce",
+);
 const repoRoot = path.resolve(extensionDir, "..", "..");
 const lspPublishDir = path.join(repoRoot, "packages", "lsp", ".npm", "publish");
 const lspPublishPackageJsonPath = path.join(lspPublishDir, "package.json");
@@ -499,7 +505,7 @@ function main() {
 		const stagedLsp = stageLspPackages(resolvedTarget, targetConfig);
 		verifyStagedArtifacts(resolvedTarget, stagedLsp);
 
-		if (dryRun) {
+	if (dryRun) {
 			console.log(
 				`[dry-run] Would package target ${resolvedTarget} to ${resolvedOutputPath}`,
 			);
@@ -507,10 +513,8 @@ function main() {
 		}
 
 		run(
-			"pnpm",
+			vsceBinaryPath,
 			[
-				"exec",
-				"vsce",
 				"package",
 				"--target",
 				resolvedTarget,
