@@ -52,7 +52,8 @@
 		"lint": "biome check src",
 		"clean": "node -e \"const fs=require('node:fs');fs.rmSync('dist',{recursive:true,force:true});\"",
 		"vscode:prepublish": "pnpm run build",
-		"package:vsix": "pnpm run clean && pnpm run build && node ./scripts/package-vsix.cjs"
+		"package:vsix": "pnpm run clean && pnpm run build && node ./scripts/package-vsix.cjs",
+		"publish:vsix": "node ./scripts/publish-vsix.cjs"
 	},
 	"dependencies": {
 		"@vela-rbxts/lsp": "workspace:*",
