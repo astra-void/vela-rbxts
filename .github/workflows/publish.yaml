@@ -433,6 +433,7 @@ jobs:
 
       - name: Package VSIX
         env:
+          RELEASE_TAG: ${{ needs.release-metadata.outputs.release_tag }}
           DRY_RUN: ${{ needs.release-metadata.outputs.dry_run }}
         run: |
           if [ "${DRY_RUN}" = "true" ]; then
