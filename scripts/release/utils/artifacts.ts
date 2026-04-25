@@ -1,7 +1,10 @@
 import { join } from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 import { runCommandCapture } from "./exec";
 import { ARTIFACTS_ROOT, ARTIFACT_DIRS } from "./fs";
+import type { PackageJson } from "./package-json";
 
 export const PACK_MANIFEST_PATH = join(ARTIFACT_DIRS.npm, "pack-manifest.json");
 export const VERIFY_REPORT_PATH = join(ARTIFACT_DIRS.verify, "verification-report.json");
@@ -42,4 +45,21 @@ export function listTarEntries(tarballPath: string) {
 export function readTarTextFile(tarballPath: string, entryPath: string) {
 	const { stdout } = runCommandCapture("tar", ["-xOf", tarballPath, entryPath]);
 	return stdout;
+}
+
+export async function readTarballPackageManifest(tarballPath: string) {
+	const extractionRoot = await mkdtemp(join(tmpdir(), "vela-rbxts-tarball-"));
+	try {
+		runCommandCapture("tar", [
+			"-xf",
+			tarballPath,
+			"-C",
+			extractionRoot,
+			"package/package.json",
+		]);
+		const raw = await readFile(join(extractionRoot, "package", "package.json"), "utf8");
+		return JSON.parse(raw) as PackageJson;
+	} finally {
+		await rm(extractionRoot, { recursive: true, force: true });
+	}
 }

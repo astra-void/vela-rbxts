@@ -1,19 +1,21 @@
-import {
-	collectReleaseUnits,
-	getFlagValue,
-	parseDryRunFlag,
-	parseReleaseTag,
-} from "./release-config";
+import { getFlagValue, parseDryRunFlag, parseReleaseTag } from "./release-config";
 import {
 	PACK_MANIFEST_PATH,
+	readTarballPackageManifest,
 	type PackManifest,
 	VERIFY_REPORT_PATH,
 } from "./utils/artifacts";
 import { runCommand } from "./utils/exec";
 import { exists, readJsonFile } from "./utils/fs";
 import { packageVersionExistsOnNpm, resolveNpmCommand } from "./utils/npm";
-import type { PackageJson } from "./utils/package-json";
-import { computeDependencySafeOrder } from "./utils/package-order";
+import {
+	type ArtifactPublishCandidate,
+	assertNoDuplicateArtifactCoordinates,
+	assertPublishPlanCoverage,
+	computeOrderedPublishCandidates,
+	formatArtifactCoordinate,
+	resolvePublishDecisions,
+} from "./utils/publish-plan";
 
 async function main() {
 	const rawArgs = process.argv.slice(2);
@@ -31,72 +33,100 @@ async function main() {
 		);
 	}
 
-	const releaseUnits = await collectReleaseUnits();
-	const npmUnitNames = new Set(
-		releaseUnits.filter((unit) => unit.publishToNpm).map((unit) => unit.name),
-	);
 	const packManifest = await readJsonFile<PackManifest>(PACK_MANIFEST_PATH);
-	const manifestsByPackage = new Map<string, PackageJson>();
-	for (const artifact of packManifest.artifacts) {
-		manifestsByPackage.set(artifact.packageName, {
-			name: artifact.packageName,
-			version: artifact.version,
-		});
+	assertNoDuplicateArtifactCoordinates(packManifest.artifacts);
+
+	if (packManifest.artifacts.length === 0) {
+		throw new Error("Pack manifest has no artifacts to publish.");
 	}
 
-	const publishableArtifacts = packManifest.artifacts.filter((artifact) =>
-		npmUnitNames.has(artifact.packageName),
-	);
-	const orderedPackageNames = computeDependencySafeOrder(
-		manifestsByPackage,
-		publishableArtifacts.map((artifact) => artifact.packageName),
-	);
-	const orderedArtifacts = orderedPackageNames
-		.map((packageName) =>
-			publishableArtifacts.find(
-				(artifact) => artifact.packageName === packageName,
-			),
-		)
-		.filter((artifact): artifact is (typeof publishableArtifacts)[number] =>
-			Boolean(artifact),
-		);
+	console.log(`Total artifacts in pack manifest: ${packManifest.artifacts.length}`);
+
+	const publishCandidates: ArtifactPublishCandidate[] = [];
+	for (const artifact of packManifest.artifacts) {
+		const tarManifest = await readTarballPackageManifest(artifact.tarballPath);
+		if (tarManifest.name !== artifact.packageName) {
+			throw new Error(
+				`Tarball package name mismatch for ${artifact.tarballFileName}. Expected ${artifact.packageName}, got ${String(tarManifest.name)}.`,
+			);
+		}
+		if (tarManifest.version !== artifact.version) {
+			throw new Error(
+				`Tarball package version mismatch for ${artifact.tarballFileName}. Expected ${artifact.version}, got ${String(tarManifest.version)}.`,
+			);
+		}
+
+		publishCandidates.push({ artifact, manifest: tarManifest });
+	}
+
+	const orderedArtifacts = computeOrderedPublishCandidates(publishCandidates);
+	assertPublishPlanCoverage(publishCandidates, orderedArtifacts);
+
+	console.log(`Total publish candidates: ${publishCandidates.length}`);
 
 	console.log(`Publish plan (tag=${tag}, dryRun=${dryRun}):`);
 	for (const artifact of orderedArtifacts) {
 		console.log(
-			`- ${artifact.packageName}@${artifact.version} -> ${artifact.tarballPath}`,
+			`- ${artifact.artifact.packageName}@${artifact.artifact.version} -> ${artifact.artifact.tarballPath}`,
 		);
 	}
 
+	const decisions = await resolvePublishDecisions(
+		orderedArtifacts,
+		packageVersionExistsOnNpm,
+	);
+
 	const npmCommand = resolveNpmCommand();
-	for (const artifact of orderedArtifacts) {
-		const existsOnNpm = await packageVersionExistsOnNpm(
-			artifact.packageName,
-			artifact.version,
-		);
-		if (existsOnNpm) {
-			console.log(
-				`Skipping ${artifact.packageName}@${artifact.version} (already published).`,
-			);
+	const publishedPackages: string[] = [];
+	const skippedPackages: string[] = [];
+	const failedPackages: string[] = [];
+
+	for (const decision of decisions) {
+		const coordinate = formatArtifactCoordinate(decision.artifact);
+		if (decision.action === "skip") {
+			console.log(`skipped already published ${coordinate}`);
+			skippedPackages.push(coordinate);
+			continue;
+		}
+
+		if (dryRun) {
+			console.log(`would publish ${coordinate}`);
+			publishedPackages.push(coordinate);
 			continue;
 		}
 
 		const publishArgs = [
 			"publish",
-			artifact.tarballPath,
+			decision.artifact.tarballPath,
 			"--tag",
 			tag,
 			"--access",
 			"public",
 		];
-		if (dryRun) {
-			publishArgs.push("--dry-run");
-		}
-		if (!dryRun && process.env.CI) {
+		if (process.env.CI) {
 			publishArgs.push("--provenance");
 		}
 
-		runCommand(npmCommand, publishArgs);
+		try {
+			runCommand(npmCommand, publishArgs);
+			console.log(`published ${coordinate}`);
+			publishedPackages.push(coordinate);
+		} catch (error) {
+			failedPackages.push(coordinate);
+			const reason = error instanceof Error ? error.message : String(error);
+			console.error(`failed ${coordinate}: ${reason}`);
+		}
+	}
+
+	console.log("Publish summary:");
+	console.log(`- published count: ${publishedPackages.length}`);
+	console.log(`- skipped already-published count: ${skippedPackages.length}`);
+	console.log(`- failed count: ${failedPackages.length}`);
+	console.log(`- published packages: ${publishedPackages.length > 0 ? publishedPackages.join(", ") : "(none)"}`);
+	console.log(`- skipped packages: ${skippedPackages.length > 0 ? skippedPackages.join(", ") : "(none)"}`);
+
+	if (failedPackages.length > 0) {
+		throw new Error(`Failed to publish ${failedPackages.length} packages: ${failedPackages.join(", ")}`);
 	}
 }
 

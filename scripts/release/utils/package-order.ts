@@ -37,6 +37,7 @@ export function computeDependencySafeOrder(
 
 		const deps = {
 			...(manifest.dependencies ?? {}),
+			...(manifest.peerDependencies ?? {}),
 			...(manifest.optionalDependencies ?? {}),
 		};
 
