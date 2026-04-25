@@ -1,14 +1,21 @@
-import { cp, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import {
+	cp,
+	mkdtemp,
+	readdir,
+	readFile,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 
 import { collectReleaseUnits, parseDryRunFlag } from "./release-config";
-import { runCommand } from "./utils/exec";
 import {
 	PACK_MANIFEST_PATH,
 	type PackedArtifact,
 	type PackManifest,
 } from "./utils/artifacts";
+import { runCommand } from "./utils/exec";
 import {
 	ARTIFACT_DIRS,
 	cleanDir,
@@ -20,7 +27,8 @@ import {
 	writeJsonFile,
 } from "./utils/fs";
 import { resolveNpmCommand } from "./utils/npm";
-import { type PackageJson } from "./utils/package-json";
+import type { PackageJson } from "./utils/package-json";
+import { computeDependencySafeOrder } from "./utils/package-order";
 
 const WORKSPACE_PROTOCOL = "workspace:";
 
@@ -45,10 +53,12 @@ function rewritePublishedDependencyRanges(
 	publishedVersions: ReadonlyMap<string, string>,
 ) {
 	const nextManifest: PackageJson = { ...manifest };
-	const fields: Array<keyof Pick<
-		PackageJson,
-		"dependencies" | "peerDependencies" | "optionalDependencies"
-	>> = ["dependencies", "peerDependencies", "optionalDependencies"];
+	const fields: Array<
+		keyof Pick<
+			PackageJson,
+			"dependencies" | "peerDependencies" | "optionalDependencies"
+		>
+	> = ["dependencies", "peerDependencies", "optionalDependencies"];
 
 	for (const field of fields) {
 		const deps = manifest[field];
@@ -83,6 +93,19 @@ function rewritePublishedDependencyRanges(
 	return nextManifest;
 }
 
+function getWorkspaceBuildOrder(
+	releaseUnits: Awaited<ReturnType<typeof collectReleaseUnits>>,
+) {
+	const buildableUnits = releaseUnits.filter((unit) => unit.kind === "npm");
+	const manifests = new Map(
+		buildableUnits.map((unit) => [unit.name, unit.source.manifest]),
+	);
+	return computeDependencySafeOrder(
+		manifests,
+		buildableUnits.map((unit) => unit.name),
+	);
+}
+
 async function packWorkspacePackage(
 	unit: {
 		absPath: string;
@@ -99,9 +122,18 @@ async function packWorkspacePackage(
 		await cp(unit.absPath, stagingDir, { recursive: true });
 
 		const manifestPath = join(stagingDir, "package.json");
-		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as PackageJson;
-		const rewrittenManifest = rewritePublishedDependencyRanges(manifest, publishedVersions);
-		await writeFile(manifestPath, `${JSON.stringify(rewrittenManifest, null, 2)}\n`, "utf8");
+		const manifest = JSON.parse(
+			await readFile(manifestPath, "utf8"),
+		) as PackageJson;
+		const rewrittenManifest = rewritePublishedDependencyRanges(
+			manifest,
+			publishedVersions,
+		);
+		await writeFile(
+			manifestPath,
+			`${JSON.stringify(rewrittenManifest, null, 2)}\n`,
+			"utf8",
+		);
 
 		const before = await getTgzFiles(ARTIFACT_DIRS.npm);
 		runCommand(
@@ -146,7 +178,9 @@ async function copyBuildArtifactsIntoPackageRoots() {
 	const lspArtifactDest = join(REPO_ROOT, "packages/lsp/artifacts");
 
 	if (!exists(compilerArtifactSource)) {
-		throw new Error(`Missing compiler artifacts directory: ${compilerArtifactSource}`);
+		throw new Error(
+			`Missing compiler artifacts directory: ${compilerArtifactSource}`,
+		);
 	}
 	if (!exists(lspArtifactSource)) {
 		throw new Error(`Missing LSP artifacts directory: ${lspArtifactSource}`);
@@ -154,7 +188,10 @@ async function copyBuildArtifactsIntoPackageRoots() {
 
 	await cleanDir(compilerArtifactDest);
 	for (const filePath of await listFilesRecursive(compilerArtifactSource)) {
-		await copyFileOrDir(filePath, join(compilerArtifactDest, basename(filePath)));
+		await copyFileOrDir(
+			filePath,
+			join(compilerArtifactDest, basename(filePath)),
+		);
 	}
 
 	await cleanDir(lspArtifactDest);
@@ -173,31 +210,58 @@ async function main() {
 	const rawArgs = process.argv.slice(2);
 	const dryRun = parseDryRunFlag(rawArgs);
 	const releaseUnits = await collectReleaseUnits();
-	const publishedVersions = new Map(releaseUnits.map((unit) => [unit.name, unit.version]));
+	const publishedVersions = new Map(
+		releaseUnits.map((unit) => [unit.name, unit.version]),
+	);
+	const workspaceBuildOrder = getWorkspaceBuildOrder(releaseUnits);
 	const npmUnits = releaseUnits.filter(
-		(unit) => unit.publishToNpm && unit.kind !== "native" && unit.kind !== "lsp",
+		(unit) =>
+			unit.publishToNpm && unit.kind !== "native" && unit.kind !== "lsp",
 	);
 
 	if (!dryRun) {
+		for (const packageName of workspaceBuildOrder) {
+			runCommand("pnpm", ["--filter", packageName, "run", "build"], {
+				cwd: REPO_ROOT,
+			});
+		}
 		await ensureArtifactDirs();
 		await cleanDir(ARTIFACT_DIRS.npm);
 	}
 
 	if (dryRun) {
-		console.log("[dry-run] release:pack would stage compiler+lsp package trees and pack npm tarballs.");
-		for (const unit of npmUnits) {
-			console.log(`[dry-run] pack workspace package ${unit.name} from ${unit.path}`);
+		console.log(
+			"[dry-run] release:pack would build workspace npm packages before packing tarballs.",
+		);
+		for (const packageName of workspaceBuildOrder) {
+			console.log(`[dry-run] pnpm --filter ${packageName} run build`);
 		}
-		console.log("[dry-run] pack staged @vela-rbxts/compiler root and native subpackages");
-		console.log("[dry-run] pack staged @vela-rbxts/lsp wrapper and binary subpackages");
+		console.log(
+			"[dry-run] release:pack would stage compiler+lsp package trees and pack npm tarballs.",
+		);
+		for (const unit of npmUnits) {
+			console.log(
+				`[dry-run] pack workspace package ${unit.name} from ${unit.path}`,
+			);
+		}
+		console.log(
+			"[dry-run] pack staged @vela-rbxts/compiler root and native subpackages",
+		);
+		console.log(
+			"[dry-run] pack staged @vela-rbxts/lsp wrapper and binary subpackages",
+		);
 		return;
 	}
 
 	await copyBuildArtifactsIntoPackageRoots();
 
-	runCommand("pnpm", ["--filter", "@vela-rbxts/compiler", "run", "stage:napi"], {
-		cwd: REPO_ROOT,
-	});
+	runCommand(
+		"pnpm",
+		["--filter", "@vela-rbxts/compiler", "run", "stage:napi"],
+		{
+			cwd: REPO_ROOT,
+		},
+	);
 	runCommand("pnpm", ["--filter", "@vela-rbxts/lsp", "run", "stage:lsp"], {
 		cwd: REPO_ROOT,
 	});
@@ -206,7 +270,11 @@ async function main() {
 	const packedArtifacts: PackedArtifact[] = [];
 
 	for (const unit of npmUnits) {
-		const tarballPath = await packWorkspacePackage(unit, publishedVersions, npmCommand);
+		const tarballPath = await packWorkspacePackage(
+			unit,
+			publishedVersions,
+			npmCommand,
+		);
 		packedArtifacts.push({
 			packageName: unit.name,
 			version: unit.version,
@@ -226,13 +294,21 @@ async function main() {
 		const before = await getTgzFiles(ARTIFACT_DIRS.npm);
 		runCommand(
 			npmCommand,
-			["pack", stagedPath, "--pack-destination", ARTIFACT_DIRS.npm, "--ignore-scripts"],
+			[
+				"pack",
+				stagedPath,
+				"--pack-destination",
+				ARTIFACT_DIRS.npm,
+				"--ignore-scripts",
+			],
 			{ cwd: REPO_ROOT },
 		);
 		const after = await getTgzFiles(ARTIFACT_DIRS.npm);
 		const tarballPath = await detectSingleNewTarball(before, after, stagedPath);
 		const packageJson = JSON.parse(
-			await import("node:fs/promises").then((fs) => fs.readFile(join(stagedPath, "package.json"), "utf8")),
+			await import("node:fs/promises").then((fs) =>
+				fs.readFile(join(stagedPath, "package.json"), "utf8"),
+			),
 		) as { name: string; version: string };
 		packedArtifacts.push({
 			packageName: packageJson.name,
@@ -258,13 +334,25 @@ async function main() {
 			const before = await getTgzFiles(ARTIFACT_DIRS.npm);
 			runCommand(
 				npmCommand,
-				["pack", stageDir, "--pack-destination", ARTIFACT_DIRS.npm, "--ignore-scripts"],
+				[
+					"pack",
+					stageDir,
+					"--pack-destination",
+					ARTIFACT_DIRS.npm,
+					"--ignore-scripts",
+				],
 				{ cwd: REPO_ROOT },
 			);
 			const after = await getTgzFiles(ARTIFACT_DIRS.npm);
-			const tarballPath = await detectSingleNewTarball(before, after, `${kind}:${entry.name}`);
+			const tarballPath = await detectSingleNewTarball(
+				before,
+				after,
+				`${kind}:${entry.name}`,
+			);
 			const packageJson = JSON.parse(
-				await import("node:fs/promises").then((fs) => fs.readFile(join(stageDir, "package.json"), "utf8")),
+				await import("node:fs/promises").then((fs) =>
+					fs.readFile(join(stageDir, "package.json"), "utf8"),
+				),
 			) as { name: string; version: string };
 			packedArtifacts.push({
 				packageName: packageJson.name,
@@ -277,7 +365,9 @@ async function main() {
 		}
 	}
 
-	packedArtifacts.sort((left, right) => left.packageName.localeCompare(right.packageName));
+	packedArtifacts.sort((left, right) =>
+		left.packageName.localeCompare(right.packageName),
+	);
 	const manifest: PackManifest = {
 		createdAt: new Date().toISOString(),
 		artifactsRoot: ARTIFACT_DIRS.npm,
@@ -287,7 +377,9 @@ async function main() {
 
 	console.log("Packed tarballs:");
 	for (const artifact of packedArtifacts) {
-		console.log(`- ${artifact.packageName}@${artifact.version}: ${artifact.tarballFileName}`);
+		console.log(
+			`- ${artifact.packageName}@${artifact.version}: ${artifact.tarballFileName}`,
+		);
 	}
 	console.log(`Pack manifest: ${PACK_MANIFEST_PATH}`);
 }
