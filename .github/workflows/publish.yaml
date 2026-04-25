@@ -484,29 +484,4 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.release-metadata.outputs.release_tag }}
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: |
-          if [ -z "${VSCE_PAT}" ]; then
-            echo "VSCE_PAT is required for VS Code Marketplace publishing." >&2
-            exit 1
-          fi
-
-          prerelease_flag=""
-          if [[ "${RELEASE_TAG}" == *"-"* ]]; then
-            prerelease_flag="--pre-release"
-          fi
-
-          shopt -s nullglob
-          vsix_files=(artifacts/vsix/*.vsix)
-          if [ "${#vsix_files[@]}" -eq 0 ]; then
-            echo "No VSIX files found in artifacts/vsix." >&2
-            exit 1
-          fi
-
-          for vsix in "${vsix_files[@]}"; do
-            echo "Publishing ${vsix}"
-            if [ -n "${prerelease_flag}" ]; then
-              pnpm --filter ./packages/vscode-extension exec vsce publish --packagePath "${vsix}" ${prerelease_flag}
-            else
-              pnpm --filter ./packages/vscode-extension exec vsce publish --packagePath "${vsix}"
-            fi
-          done
+        run: pnpm --filter ./packages/vscode-extension run publish:vsix
