@@ -116,7 +116,26 @@ import "vela-rbxts";
 
 ### 5. Serve the project
 
-Use your normal Rojo project setup and serve the compiled output as usual. The transformer inlines its runtime helper into the transformed module when it is needed, so there is no extra package or Vela-specific Rojo mapping to expose.
+Use your normal Rojo project setup and serve the compiled roblox-ts output as usual.
+Vela does not require an extra runtime package, generated folder, or Vela-specific Rojo mapping.
+
+For example, a client output mapping can remain as simple as:
+
+```json
+{
+  "StarterPlayer": {
+    "$className": "StarterPlayer",
+    "StarterPlayerScripts": {
+      "$className": "StarterPlayerScripts",
+      "Client": {
+        "$path": "out/client"
+      }
+    }
+  }
+}
+```
+
+The transformer inlines its runtime helper into transformed modules only when runtime evaluation is needed.
 
 ### 6. Use `className` in TSX
 
