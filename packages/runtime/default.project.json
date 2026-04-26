@@ -1,6 +1,0 @@
-{
-  "name": "runtime",
-  "tree": {
-    "$path": "out/runtime.luau"
-  }
-}
