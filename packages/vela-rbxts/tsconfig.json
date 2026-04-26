@@ -8,7 +8,8 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": [
-    "src"
+    "src/index.ts",
+    "src/transformer.cts"
   ],
   "references": [
     {

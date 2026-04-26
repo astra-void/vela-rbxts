@@ -1,8 +1,0 @@
-{
-  "name": "vela-rbxts",
-  "tree": {
-    "runtime": {
-      "$path": "node_modules/@vela-rbxts/runtime"
-    }
-  }
-}
