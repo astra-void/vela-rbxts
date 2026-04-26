@@ -3,7 +3,14 @@ import ReactRoblox from "@rbxts/react-roblox";
 import { Players } from "@rbxts/services";
 import { App } from "./App";
 
-const playerGui = Players.LocalPlayer.WaitForChild("PlayerGui") as PlayerGui;
-const root = ReactRoblox.createRoot(playerGui);
+const localPlayer = Players.LocalPlayer;
+if (!localPlayer) {
+  error("LocalPlayer is required.");
+}
 
-root.render(React.createElement(App));
+const playerGuiInstance = localPlayer.WaitForChild("PlayerGui");
+if (!playerGuiInstance.IsA("PlayerGui")) {
+  error("PlayerGui instance is required.");
+}
+const root = ReactRoblox.createRoot(playerGuiInstance);
+root.render(<App />);
