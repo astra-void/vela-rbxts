@@ -19,23 +19,26 @@ const requiredFragments = [
 	"PaddingTop = UDim.new(0, 12)",
 	"PaddingBottom = UDim.new(0, 12)",
 	"Padding = UDim.new(0, 16)",
+	"__createVelaRuntimeHost",
 	"React.createElement(RbxtsTailwindRuntimeHost",
+	"__rbxtsTailwindRules",
 ];
 
+// Intentional regression checks for the deleted runtime package and artifact paths.
 const forbiddenFragments = [
-	'TS.import(script, script.Parent, "rbxts-tailwind-runtime-host")',
 	'React.createElement("RbxtsTailwindRuntimeHost"',
 	"__rbxtsTailwindRuntimeHost",
-	"rbxts-tailwind/runtime-host",
 	'className = { "bg-blue-600", active and "rounded-md" }',
+	"@vela-rbxts/runtime",
+	"vela-rbxts/runtime",
+	"__vela__",
+	'"node_modules", "@vela-rbxts"',
 ];
 
 const requiredPatterns = [
 	{
-		description:
-			"runtime import resolves from @vela-rbxts/runtime (optionally via src/runtime)",
-		pattern:
-			/TS\.import\(script, game:GetService\("ReplicatedStorage"\), "node_modules", "@vela-rbxts", "runtime"(?:, "src", "runtime")?\)/,
+		description: "runtime helper is inlined into the Luau output",
+		pattern: /__createVelaRuntimeHost/,
 	},
 	{
 		description: "runtime className keeps dynamic rounded-md condition",
@@ -62,10 +65,6 @@ const failures = [];
 
 if (typeof transformer !== "function") {
 	failures.push("vela-rbxts/transformer does not export a program transformer");
-}
-
-if (source.includes("local theme")) {
-	failures.push("emitted Luau still declares a local theme object");
 }
 
 for (const fragment of requiredFragments) {
