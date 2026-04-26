@@ -121,7 +121,7 @@ function reinjectTransformedSource(
 	);
 }
 
-export default function createRbxtsTailwindProgramTransformer(
+export function createVelaProgramTransformer(
 	_program: import("typescript").Program,
 	options: RbxtscProgramTransformerOptions = {},
 	extra?: {
@@ -191,3 +191,9 @@ export default function createRbxtsTailwindProgramTransformer(
 		};
 	};
 }
+
+/** @deprecated Use createVelaProgramTransformer instead. */
+export const createRbxtsTailwindProgramTransformer =
+	createVelaProgramTransformer;
+
+export default createVelaProgramTransformer;

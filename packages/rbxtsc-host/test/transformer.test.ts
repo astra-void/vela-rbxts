@@ -5,7 +5,7 @@ import { transform as compilerTransform } from "@vela-rbxts/compiler";
 import ts from "typescript";
 import { beforeEach, expect, test, vi } from "vitest";
 
-import createRbxtsTailwindProgramTransformer from "../src/transformer";
+import { createVelaProgramTransformer } from "../src/transformer";
 
 vi.mock("@vela-rbxts/compiler", () => ({
 	transform: vi.fn(() => ({
@@ -27,7 +27,7 @@ function runLifecycleTransform(sourceText: string, projectRoot: string) {
 		true,
 		ts.ScriptKind.TSX,
 	);
-	const transformerFactory = createRbxtsTailwindProgramTransformer(
+	const transformerFactory = createVelaProgramTransformer(
 		{} as ts.Program,
 		{ projectRoot },
 		{ ts },
@@ -79,7 +79,7 @@ test("skips non-eligible files before compiler invocation", () => {
 
 test("bridges compiler diagnostics into TypeScript diagnostics", () => {
 	mockedCompilerTransform.mockReturnValueOnce({
-		code: '<frame __rbxtsTailwindTag="frame" __rbxtsTailwindRules={[{ condition: { kind: "orientation", value: "portrait" }, effects: { props: [], helpers: [] } }]} />',
+		code: '<frame __velaTag="frame" __velaRules={[{ condition: { kind: "orientation", value: "portrait" }, effects: { props: [], helpers: [] } }]} />',
 		diagnostics: [
 			{
 				level: "warning",
@@ -163,8 +163,8 @@ test("injects the runtime host when the compiler reports runtime-aware className
 			'\treturn () => __VelaReact.createElement("frame", {});',
 			"}",
 			"const __VelaRuntimeConfig = { theme: { colors: {}, radius: {}, spacing: {} } };",
-			"const RbxtsTailwindRuntimeHost = __createVelaRuntimeHost(__VelaRuntimeConfig);",
-			'<RbxtsTailwindRuntimeHost __rbxtsTailwindTag="frame" __rbxtsTailwindRules={[{ condition: { kind: "width", alias: "md", minWidth: 768, maxWidth: null }, effects: { props: [{ name: "PaddingLeft", value: "new UDim(0, 12)" }], helpers: [] } }]} className={condition ? "px-4" : "px-2"} />',
+			"const VelaRuntimeHost = __createVelaRuntimeHost(__VelaRuntimeConfig);",
+			'<VelaRuntimeHost __velaTag="frame" __velaRules={[{ condition: { kind: "width", alias: "md", minWidth: 768, maxWidth: null }, effects: { props: [{ name: "PaddingLeft", value: "new UDim(0, 12)" }], helpers: [] } }]} className={condition ? "px-4" : "px-2"} />',
 		].join("\n"),
 		diagnostics: [],
 		changed: true,
@@ -207,7 +207,7 @@ test("injects the runtime host when the compiler reports runtime-aware className
 
 	expect(mockedCompilerTransform).toHaveBeenCalledTimes(1);
 	expect(result.transformedSource).toContain(
-		'RbxtsTailwindRuntimeHost __rbxtsTailwindTag="frame"',
+		'VelaRuntimeHost __velaTag="frame"',
 	);
 	expect(result.transformedSource).toContain("__createVelaRuntimeHost");
 	expect(result.transformedSource).toContain("__VelaRuntimeConfig");
@@ -216,7 +216,7 @@ test("injects the runtime host when the compiler reports runtime-aware className
 	expect(result.transformedSource).not.toContain("@vela-rbxts/runtime");
 	expect(result.transformedSource).not.toContain("vela-rbxts/runtime");
 	expect(result.transformedSource).not.toContain("../__vela__/runtime-host");
-	expect(result.transformedSource).toContain("__rbxtsTailwindRules");
+	expect(result.transformedSource).toContain("__velaRules");
 	expect(result.transformedSource).toContain(
 		'className={condition ? "px-4" : "px-2"}',
 	);

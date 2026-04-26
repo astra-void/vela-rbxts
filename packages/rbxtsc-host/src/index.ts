@@ -17,9 +17,13 @@ export {
 	transformSourceForHost,
 } from "./transform.js";
 export {
-	default as createRbxtsTailwindProgramTransformer,
+	default as createVelaProgramTransformer,
 	type RbxtscProgramTransformerOptions,
 } from "./transformer.js";
+/**
+ * @deprecated Use createVelaProgramTransformer instead.
+ */
+export { createVelaProgramTransformer as createRbxtsTailwindProgramTransformer } from "./transformer.js";
 export type {
 	HostCompiler,
 	HostDiagnostic,

@@ -121,8 +121,8 @@ test("keeps runtime-aware output self-contained when runtime rules are reported"
 			'\treturn () => __VelaReact.createElement("frame", {});',
 			"}",
 			"const __VelaRuntimeConfig = { theme: { colors: {}, radius: {}, spacing: {} } };",
-			"const RbxtsTailwindRuntimeHost = __createVelaRuntimeHost(__VelaRuntimeConfig);",
-			'<RbxtsTailwindRuntimeHost __rbxtsTailwindTag="frame" __rbxtsTailwindRules={[{ condition: { kind: "width", alias: "md", minWidth: 768, maxWidth: null }, effects: { props: [{ name: "PaddingLeft", value: "new UDim(0, 12)" }], helpers: [] } }]} className={condition ? "px-4" : "px-2"} />',
+			"const VelaRuntimeHost = __createVelaRuntimeHost(__VelaRuntimeConfig);",
+			'<VelaRuntimeHost __velaTag="frame" __velaRules={[{ condition: { kind: "width", alias: "md", minWidth: 768, maxWidth: null }, effects: { props: [{ name: "PaddingLeft", value: "new UDim(0, 12)" }], helpers: [] } }]} className={condition ? "px-4" : "px-2"} />',
 		].join("\n"),
 		diagnostics: [],
 		changed: true,
@@ -184,7 +184,7 @@ test("keeps runtime-aware output self-contained when runtime rules are reported"
 	expect(fs.existsSync(path.join(project.root, "src", "__vela__"))).toBe(false);
 	expect(result.compilerResult?.needsRuntimeHost).toBe(true);
 	expect(result.sourceText).toContain("__createVelaRuntimeHost");
-	expect(result.sourceText).toContain("RbxtsTailwindRuntimeHost");
+	expect(result.sourceText).toContain("VelaRuntimeHost");
 	expect(result.sourceText).toContain("__VelaRuntimeConfig");
 	expect(result.sourceText).toContain("__VelaReact");
 	// Intentional regression checks for the deleted runtime package imports.
