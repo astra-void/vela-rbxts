@@ -11,9 +11,6 @@
 				},
 				"@rbxts-js": {
 					"$path": "../../node_modules/@rbxts-js"
-				},
-				"@vela-rbxts": {
-					"$path": "node_modules/@vela-rbxts"
 				}
 			},
 			"TS": {

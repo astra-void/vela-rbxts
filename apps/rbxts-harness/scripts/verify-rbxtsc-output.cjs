@@ -32,7 +32,9 @@ const forbiddenFragments = [
 	"@vela-rbxts/runtime",
 	"vela-rbxts/runtime",
 	"__vela__",
+	"runtime-host",
 	'"node_modules", "@vela-rbxts"',
+	" as never",
 ];
 
 const requiredPatterns = [
