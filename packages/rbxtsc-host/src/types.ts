@@ -54,17 +54,10 @@ export type HostTransformResult = {
 	skipped: boolean;
 	eligibility: HostFileEligibility;
 	compilerResult?: HostCompilerResult;
-	runtimeArtifact?: HostRuntimeArtifact;
 };
 
 export type HostCompilerResult = Omit<CompilerTransformResult, "ir"> & {
 	ir: StyleIR[];
-};
-
-export type HostRuntimeArtifact = {
-	fileName: string;
-	moduleSpecifier: string;
-	sourceText: string;
 };
 
 export type HostCompiler = {

@@ -50,22 +50,24 @@ export function transformSourceForHost(
 	try {
 		const projectConfig = resolveProjectConfigInfo(request.fileName);
 		const config = request.config ?? options.config ?? projectConfig.config;
-		const compilerResult = compiler.transform(request.sourceText, {
+		const compilerOptions = {
 			configJson: JSON.stringify(config),
-		});
-		const normalizedCompilerResult = normalizeCompilerResult(compilerResult);
+		} as const;
+		const compilerResult = normalizeCompilerResult(
+			compiler.transform(request.sourceText, compilerOptions),
+		);
 
 		return {
 			fileName: request.fileName,
-			sourceText: normalizedCompilerResult.code,
+			sourceText: compilerResult.code,
 			diagnostics: mapCompilerDiagnosticsToHostDiagnostics(
-				normalizedCompilerResult.diagnostics,
+				compilerResult.diagnostics,
 				options.mapDiagnostic,
 			),
-			changed: normalizedCompilerResult.changed,
+			changed: compilerResult.changed,
 			skipped: false,
 			eligibility,
-			compilerResult: normalizedCompilerResult,
+			compilerResult,
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

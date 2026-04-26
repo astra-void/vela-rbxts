@@ -13,6 +13,7 @@ vi.mock("@vela-rbxts/compiler", () => ({
 		diagnostics: [],
 		changed: true,
 		ir: [],
+		needsRuntimeHost: false,
 	})),
 }));
 
@@ -57,7 +58,8 @@ test("reinjects transformed source through the TypeScript transformer lifecycle"
 	expect(result.transformedSource).toContain("BackgroundColor3");
 	expect(result.transformedSource).not.toContain("className=");
 	expect(result.diagnostics).toHaveLength(0);
-	expect(fs.existsSync(project.runtimeArtifactPath)).toBe(false);
+	// Intentional regression check for the removed __vela__ runtime artifact directory.
+	expect(fs.existsSync(path.join(project.root, "src", "__vela__"))).toBe(false);
 
 	result.dispose();
 });
@@ -108,6 +110,7 @@ test("bridges compiler diagnostics into TypeScript diagnostics", () => {
 				runtimeClassValue: false,
 			}),
 		],
+		needsRuntimeHost: false,
 	});
 
 	const project = createProject();
@@ -152,10 +155,15 @@ test("keeps host diagnostic failures visible in the rbxtsc lifecycle", () => {
 });
 
 test("injects the runtime host when the compiler reports runtime-aware className usage", () => {
-	mockedCompilerTransform.mockReturnValueOnce({
+	mockedCompilerTransform.mockImplementationOnce(() => ({
 		code: [
-			'import { createTailwindRuntimeHost } from "@vela-rbxts/runtime";',
-			"const RbxtsTailwindRuntimeHost = createTailwindRuntimeHost({ theme: { colors: {}, radius: {}, spacing: {} } });",
+			'import __VelaReact from "@rbxts/react";',
+			'import { UserInputService as __VelaUserInputService, Workspace as __VelaWorkspace } from "@rbxts/services";',
+			"function __createVelaRuntimeHost(config) {",
+			'\treturn () => __VelaReact.createElement("frame", {});',
+			"}",
+			"const __VelaRuntimeConfig = { theme: { colors: {}, radius: {}, spacing: {} } };",
+			"const RbxtsTailwindRuntimeHost = __createVelaRuntimeHost(__VelaRuntimeConfig);",
 			'<RbxtsTailwindRuntimeHost __rbxtsTailwindTag="frame" __rbxtsTailwindRules={[{ condition: { kind: "width", alias: "md", minWidth: 768, maxWidth: null }, effects: { props: [{ name: "PaddingLeft", value: "new UDim(0, 12)" }], helpers: [] } }]} className={condition ? "px-4" : "px-2"} />',
 		].join("\n"),
 		diagnostics: [],
@@ -188,7 +196,8 @@ test("injects the runtime host when the compiler reports runtime-aware className
 				runtimeClassValue: false,
 			}),
 		],
-	});
+		needsRuntimeHost: true,
+	}));
 
 	const project = createProject();
 	const result = runLifecycleTransform(
@@ -196,15 +205,23 @@ test("injects the runtime host when the compiler reports runtime-aware className
 		project.root,
 	);
 
+	expect(mockedCompilerTransform).toHaveBeenCalledTimes(1);
 	expect(result.transformedSource).toContain(
 		'RbxtsTailwindRuntimeHost __rbxtsTailwindTag="frame"',
 	);
-	expect(result.transformedSource).toContain("createTailwindRuntimeHost");
+	expect(result.transformedSource).toContain("__createVelaRuntimeHost");
+	expect(result.transformedSource).toContain("__VelaRuntimeConfig");
+	expect(result.transformedSource).toContain("__VelaReact");
+	// Intentional regression checks for the deleted runtime package imports.
+	expect(result.transformedSource).not.toContain("@vela-rbxts/runtime");
+	expect(result.transformedSource).not.toContain("vela-rbxts/runtime");
+	expect(result.transformedSource).not.toContain("../__vela__/runtime-host");
 	expect(result.transformedSource).toContain("__rbxtsTailwindRules");
 	expect(result.transformedSource).toContain(
 		'className={condition ? "px-4" : "px-2"}',
 	);
-	expect(fs.existsSync(project.runtimeArtifactPath)).toBe(false);
+	// Intentional regression check for the removed __vela__ runtime artifact directory.
+	expect(fs.existsSync(path.join(project.root, "src", "__vela__"))).toBe(false);
 
 	result.dispose();
 });
@@ -212,7 +229,6 @@ test("injects the runtime host when the compiler reports runtime-aware className
 function createProject(): {
 	root: string;
 	sourceFile: string;
-	runtimeArtifactPath: string;
 } {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), "vela-transformer-"));
 	const sourceFile = path.join(root, "src", "client", "App.tsx");
@@ -220,11 +236,5 @@ function createProject(): {
 	return {
 		root,
 		sourceFile,
-		runtimeArtifactPath: path.join(
-			root,
-			"include",
-			"vela-rbxts",
-			"runtime-host.ts",
-		),
 	};
 }
