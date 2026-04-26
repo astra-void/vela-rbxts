@@ -1,7 +1,7 @@
 # vela-rbxts
 
 `vela-rbxts` is a Tailwind-style `className` integration layer for [roblox-ts](https://roblox-ts.com/).
-This monorepo contains the native compiler, the `rbxtsc` host adapter, shared config and type packages, the runtime host, a standalone Rust LSP adapter, and two harness apps.
+This monorepo contains the native compiler, the `rbxtsc` host adapter, shared config and type packages, the inline runtime helper used by the transformer, a standalone Rust LSP adapter, and two harness apps.
 
 Release workflow documentation is available in `docs/release.md`.
 
@@ -11,7 +11,7 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 
 - `className?: ClassValue` is added to `React.Attributes` through `vela-rbxts`.
 - Supported TSX files are lowered by the `rbxtsc` transformer when they target supported Roblox host elements.
-- Dynamic `ClassValue` expressions and supported Roblox-oriented variants are rewritten to a generated runtime host when needed.
+- Dynamic `ClassValue` expressions and supported Roblox-oriented variants are rewritten with an inline runtime helper when needed.
 - The standalone Rust LSP server under `packages/lsp` provides completions, hover, and diagnostics in editors.
 - Unsupported utility families and unknown theme keys produce diagnostics instead of being silently ignored.
 
@@ -19,11 +19,10 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 
 | Path | What it does |
 | --- | --- |
-| `packages/vela-rbxts` | Main public package. Re-exports config helpers, `createTransformer`, shared types, and the `./runtime` and `./transformer` subpath exports. |
+| `packages/vela-rbxts` | Main public package. Re-exports config helpers, `createTransformer`, shared types, and the `./transformer` subpath export. |
 | `packages/compiler` | Native compiler implementation that resolves, validates, and lowers utility classes. |
 | `packages/lsp` | Early standalone Rust stdio LSP server that adapts compiler editor APIs for completions, hover, and diagnostics. |
 | `packages/rbxtsc-host` | Host adapter that filters eligible files, loads project config, and bridges compiler diagnostics into `rbxtsc`. |
-| `packages/runtime` | Runtime host bundle used when class values need runtime evaluation. |
 | `packages/config` | Config schema, defaults, and `defineConfig()` helper. |
 | `packages/core` | Semantic boundary and supported host element contracts. |
 | `packages/ir` | Internal shared IR and supporting types. |
@@ -37,7 +36,7 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 
 ### 1. Install the packages
 
-Install Vela and the runtime package alongside the normal roblox-ts React dependencies:
+Install Vela alongside the normal roblox-ts React dependencies:
 
 ```bash
 pnpm add vela-rbxts @rbxts/react @rbxts/react-roblox @rbxts/services
@@ -115,34 +114,9 @@ Add a declaration file such as `src/vela-rbxts.d.ts` so `className` is available
 import "vela-rbxts";
 ```
 
-### 5. Expose the runtime folders through Rojo
+### 5. Serve the project
 
-Map the Roblox TS dependency folders and the Vela package folders into `ReplicatedStorage`:
-
-```json
-{
-  "tree": {
-    "$className": "DataModel",
-    "ReplicatedStorage": {
-      "$className": "ReplicatedStorage",
-      "node_modules": {
-        "$className": "Folder",
-        "@rbxts": {
-          "$path": "node_modules/@rbxts"
-        },
-        "@rbxts-js": {
-          "$path": "node_modules/@rbxts-js"
-        },
-        "@vela-rbxts": {
-          "$path": "node_modules/@vela-rbxts"
-        }
-      }
-    }
-  }
-}
-```
-
-`@vela-rbxts/runtime` must be visible to Roblox Studio because transformed files can emit a runtime host import for `@vela-rbxts/runtime` when `className` needs runtime evaluation. If Studio cannot see that package through Rojo, the generated code cannot resolve the runtime host at run time.
+Use your normal Rojo project setup and serve the compiled output as usual. The transformer inlines its runtime helper into the transformed module when it is needed, so there is no extra package or Vela-specific Rojo mapping to expose.
 
 ### 6. Use `className` in TSX
 
@@ -216,7 +190,7 @@ Supported variants:
 - `portrait:` and `landscape:`
 - `touch:`, `mouse:`, and `gamepad:`
 
-These variants can be used in static literals and are also resolved at runtime when a file needs the runtime path.
+These variants can be used in static literals and are also resolved through the inline runtime helper when a file needs the runtime path.
 
 ### Supported Utility Classes
 
