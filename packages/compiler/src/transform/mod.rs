@@ -3,6 +3,7 @@ pub(crate) mod emit;
 pub(crate) mod jsx;
 pub(crate) mod module;
 pub(crate) mod runtime;
+pub(crate) mod runtime_host;
 
 use crate::api::{Diagnostic, TransformOptions, TransformResult};
 use crate::config::resolve::parse_config;
@@ -49,6 +50,7 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
                 }],
                 changed: false,
                 ir: Vec::new(),
+                needs_runtime_host: false,
             };
         }
     };
@@ -64,6 +66,7 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
             }],
             changed: false,
             ir: Vec::new(),
+            needs_runtime_host: false,
         };
     }
 
@@ -72,7 +75,7 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
         config,
         diagnostics: Vec::new(),
         ir: Vec::new(),
-        runtime_import_needed: false,
+        runtime_host_needed: false,
         class_value_scopes: crate::class_value::scope::ClassValueScopeStack::default(),
     };
     module.visit_mut_with(&mut transformer);
@@ -96,5 +99,6 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
             .into_iter()
             .map(|style| serde_json::to_string(&style).expect("style IR must serialize to JSON"))
             .collect(),
+        needs_runtime_host: transformer.runtime_host_needed,
     }
 }

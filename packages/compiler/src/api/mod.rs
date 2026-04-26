@@ -24,6 +24,7 @@ pub struct TransformResult {
     pub diagnostics: Vec<Diagnostic>,
     pub changed: bool,
     pub ir: Vec<String>,
+    pub needs_runtime_host: bool,
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), napi(object))]

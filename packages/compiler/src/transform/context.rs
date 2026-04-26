@@ -1,7 +1,10 @@
 use crate::api::Diagnostic;
 use crate::class_value::scope::ClassValueScopeStack;
 use crate::ir::model::{PropEntry, StyleIr};
-use crate::swc::builders::{create_helper_child, create_prop_attr};
+use crate::swc::builders::{
+    create_helper_child, create_helper_child_cast_any, create_prop_attr,
+    create_prop_attr_cast_any,
+};
 use crate::transform::jsx::lower_class_name;
 use crate::transform::module::{
     create_runtime_host_module_items, element_tag_name, is_supported_host_element,
@@ -20,7 +23,7 @@ pub(crate) struct TailwindTransformer {
     pub(crate) config: crate::config::model::TailwindConfig,
     pub(crate) diagnostics: Vec<Diagnostic>,
     pub(crate) ir: Vec<StyleIr>,
-    pub(crate) runtime_import_needed: bool,
+    pub(crate) runtime_host_needed: bool,
     pub(crate) class_value_scopes: ClassValueScopeStack,
 }
 
@@ -30,7 +33,7 @@ impl VisitMut for TailwindTransformer {
         module.visit_mut_children_with(self);
         self.class_value_scopes.pop();
 
-        if self.runtime_import_needed {
+        if self.runtime_host_needed {
             let mut runtime_items = create_runtime_host_module_items(&self.config);
             runtime_items.append(&mut module.body);
             module.body = runtime_items;
@@ -100,18 +103,22 @@ impl VisitMut for TailwindTransformer {
             .base
             .helpers
             .into_iter()
-            .map(create_helper_child)
+            .map(if lowered.needs_runtime_host {
+                create_helper_child_cast_any
+            } else {
+                create_helper_child
+            })
             .collect::<Vec<_>>();
 
         if lowered.needs_runtime_host {
-            self.runtime_import_needed = true;
+            self.runtime_host_needed = true;
             attrs.extend(
                 lowered
                     .style_ir
                     .base
                     .props
                     .into_iter()
-                    .map(create_prop_attr),
+                    .map(create_prop_attr_cast_any),
             );
             if !lowered.style_ir.runtime_rules.is_empty() {
                 attrs.push(create_prop_attr(PropEntry {

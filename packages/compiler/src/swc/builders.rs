@@ -2,24 +2,47 @@ use crate::ir::model::{HelperEntry, PropEntry};
 use swc_core::{
     common::DUMMY_SP,
     ecma::ast::{
-        Expr, Ident, IdentName, ImportDecl, ImportNamedSpecifier, ImportSpecifier, JSXAttr,
-        JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXElement, JSXElementChild, JSXElementName,
-        JSXExpr, JSXExprContainer, JSXOpeningElement, ModuleDecl, Str,
+        Expr, Ident, IdentName, JSXAttr, JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXElement,
+        JSXElementChild, JSXElementName, JSXExpr, JSXExprContainer, JSXOpeningElement,
     },
 };
 
 pub(crate) fn create_prop_attr(prop: PropEntry) -> JSXAttrOrSpread {
+    let PropEntry { name, value } = prop;
+    create_prop_attr_with_expr(name.to_string(), parse_expression(&value))
+}
+
+pub(crate) fn create_prop_attr_cast_any(prop: PropEntry) -> JSXAttrOrSpread {
+    let PropEntry { name, value } = prop;
+    create_prop_attr_with_expr(
+        name.to_string(),
+        parse_expression(&format!("({value} as never)")),
+    )
+}
+
+fn create_prop_attr_with_expr(name: String, expr: Box<Expr>) -> JSXAttrOrSpread {
     JSXAttrOrSpread::JSXAttr(JSXAttr {
         span: DUMMY_SP,
-        name: JSXAttrName::Ident(IdentName::new(prop.name.into(), DUMMY_SP)),
+        name: JSXAttrName::Ident(IdentName::new(name.into(), DUMMY_SP)),
         value: Some(JSXAttrValue::JSXExprContainer(JSXExprContainer {
             span: DUMMY_SP,
-            expr: JSXExpr::Expr(parse_expression(&prop.value)),
+            expr: JSXExpr::Expr(expr),
         })),
     })
 }
 
 pub(crate) fn create_helper_child(helper: HelperEntry) -> JSXElementChild {
+    create_helper_child_with_expr(helper, create_prop_attr)
+}
+
+pub(crate) fn create_helper_child_cast_any(helper: HelperEntry) -> JSXElementChild {
+    create_helper_child_with_expr(helper, create_prop_attr_cast_any)
+}
+
+fn create_helper_child_with_expr(
+    helper: HelperEntry,
+    create_prop_attr: fn(PropEntry) -> JSXAttrOrSpread,
+) -> JSXElementChild {
     JSXElementChild::JSXElement(Box::new(JSXElement {
         span: DUMMY_SP,
         opening: JSXOpeningElement {
@@ -32,26 +55,6 @@ pub(crate) fn create_helper_child(helper: HelperEntry) -> JSXElementChild {
         children: vec![],
         closing: None,
     }))
-}
-
-pub(crate) fn create_runtime_import_declaration() -> ModuleDecl {
-    ModuleDecl::Import(ImportDecl {
-        span: DUMMY_SP,
-        specifiers: vec![ImportSpecifier::Named(ImportNamedSpecifier {
-            span: DUMMY_SP,
-            local: Ident::new_no_ctxt("createTailwindRuntimeHost".into(), DUMMY_SP),
-            imported: None,
-            is_type_only: false,
-        })],
-        src: Box::new(Str {
-            span: DUMMY_SP,
-            value: "@vela-rbxts/runtime".into(),
-            raw: None,
-        }),
-        type_only: false,
-        with: None,
-        phase: Default::default(),
-    })
 }
 
 pub(crate) fn parse_expression(value: &str) -> Box<Expr> {
