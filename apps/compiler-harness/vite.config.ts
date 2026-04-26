@@ -13,6 +13,7 @@ type TransformResult = {
 	code: string;
 	diagnostics: Diagnostic[];
 	changed: boolean;
+	needsRuntimeHost: boolean;
 };
 
 type CompilerBinding = {

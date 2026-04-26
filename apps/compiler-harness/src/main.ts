@@ -12,6 +12,7 @@ type TransformResponse =
 			code: string;
 			diagnostics: Diagnostic[];
 			changed: boolean;
+			needsRuntimeHost: boolean;
 			implementationKind: string;
 	  }
 	| {
