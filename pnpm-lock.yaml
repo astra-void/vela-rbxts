@@ -57,9 +57,6 @@ importers:
       '@rbxts/services':
         specifier: ^1.6.0
         version: 1.6.0
-      '@vela-rbxts/runtime':
-        specifier: workspace:*
-        version: link:../../packages/runtime
       vela-rbxts:
         specifier: workspace:*
         version: link:../../packages/vela-rbxts

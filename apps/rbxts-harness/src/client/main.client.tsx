@@ -5,12 +5,12 @@ import { App } from "./App";
 
 const localPlayer = Players.LocalPlayer;
 if (!localPlayer) {
-  error("LocalPlayer is required.");
+	error("LocalPlayer is required.");
 }
 
 const playerGuiInstance = localPlayer.WaitForChild("PlayerGui");
 if (!playerGuiInstance.IsA("PlayerGui")) {
-  error("PlayerGui instance is required.");
+	error("PlayerGui instance is required.");
 }
 const root = ReactRoblox.createRoot(playerGuiInstance);
 root.render(<App />);
