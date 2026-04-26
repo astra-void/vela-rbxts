@@ -364,8 +364,12 @@ test("carries z-index utilities through the runtime variant path", () => {
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).toContain("__createVelaRuntimeHost");
-	expect(result.code).toContain("RbxtsTailwindRuntimeHost");
-	expect(result.code).toContain("__rbxtsTailwindRules");
+	expect(result.code).toContain("VelaRuntimeHost");
+	expect(result.code).toContain("__velaRules");
+	expect(result.code).toContain("string.len");
+	expect(result.code).not.toContain(".size()");
+	expect(result.code).not.toContain("size(): number");
+	expect(result.code).not.toMatch(/[:.]size\s*\(/);
 	expect(result.code).not.toContain("className=");
 	expect(result.code).toContain("ZIndex={(10 as never)}");
 
@@ -1085,7 +1089,7 @@ test("keeps static-only className fully compile-time without runtime helper inje
 	expect(result.changed).toBe(true);
 	expect(result.needsRuntimeHost).toBe(false);
 	expect(result.code).not.toContain("__createVelaRuntimeHost");
-	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("VelaRuntimeHost");
 	expect(result.code).not.toContain("@vela-rbxts/runtime");
 	expect(result.code).not.toContain("vela-rbxts/runtime");
 	expect(result.code).not.toContain("__vela__");
@@ -1099,7 +1103,7 @@ test("rewrites dynamic array className through the inline runtime helper", () =>
 	expect(result.changed).toBe(true);
 	expect(result.needsRuntimeHost).toBe(true);
 	expect(result.code).toContain("__createVelaRuntimeHost");
-	expect(result.code).toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("VelaRuntimeHost");
 	expect(result.code).toContain('className={active && "rounded-md"}');
 	expect(result.code).not.toContain("@vela-rbxts/runtime");
 	expect(result.code).not.toContain("vela-rbxts/runtime");
@@ -1114,7 +1118,7 @@ test("rewrites dynamic object-map className through the inline runtime helper", 
 	expect(result.changed).toBe(true);
 	expect(result.needsRuntimeHost).toBe(true);
 	expect(result.code).toContain("__createVelaRuntimeHost");
-	expect(result.code).toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("VelaRuntimeHost");
 	expect(result.code).toContain('"px-4": roomy');
 	expect(result.code).toContain('"px-2": !roomy');
 });
@@ -1126,7 +1130,7 @@ test("rewrites runtime-aware variants through the inline runtime rule path", () 
 
 	expect(result.changed).toBe(true);
 	expect(result.needsRuntimeHost).toBe(true);
-	expect(result.code).toContain("__rbxtsTailwindRules");
+	expect(result.code).toContain("__velaRules");
 	expect(result.code).toContain("__createVelaRuntimeHost");
 	expect(result.code).not.toContain(
 		'className="rounded-md md:px-4 portrait:w-80 touch:px-3"',
@@ -1143,12 +1147,22 @@ test("rewrites dynamic ClassValue expressions through the runtime wrapper", () =
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).toContain("__createVelaRuntimeHost");
 	expect(result.code).toContain('import __VelaReact from "@rbxts/react";');
-	expect(result.code).toContain("const RbxtsTailwindRuntimeHost =");
-	expect(result.code).toContain("<RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("const VelaRuntimeHost =");
+	expect(result.code).toContain("<VelaRuntimeHost");
+	expect(result.code).toContain("__velaTag");
+	expect(result.code).toContain("__velaRules");
 	// Intentional regression checks for the removed runtime package import path.
 	expect(result.code).not.toContain("@vela-rbxts/runtime");
 	expect(result.code).not.toContain("vela-rbxts/runtime");
 	expect(result.code).not.toContain("../__vela__/runtime-host");
+	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("__rbxtsTailwindRules");
+	expect(result.code).not.toContain("__rbxtsTailwindTag");
+	expect(result.code).not.toContain("__rbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("rbxts-tailwind");
+	expect(result.code).not.toContain("rbxtsTailwind");
+	expect(result.code).not.toContain("createTailwindRuntimeHost");
+	expect(result.code).not.toContain("TailwindRuntimeHost");
 	expect(result.code).not.toContain("@vela-rbxts/types");
 	expect(result.code).not.toContain("@vela-rbxts/config");
 	expect(result.code).toContain("BackgroundColor3");
@@ -1179,7 +1193,7 @@ test("folds a fully static array className without injecting the runtime wrapper
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).not.toContain("__createVelaRuntimeHost");
-	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("VelaRuntimeHost");
 	expect(result.code).not.toContain("className=");
 	expect(result.code).toContain("BackgroundColor3");
 	expect(result.code).toContain("uicorner");
@@ -1212,7 +1226,7 @@ test("folds a locally constant identifier before lowering the className", () => 
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).not.toContain("__createVelaRuntimeHost");
-	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("VelaRuntimeHost");
 	expect(result.code).not.toContain("className=");
 	expect(result.code).toContain("BackgroundColor3");
 	expect(result.code).toContain("uicorner");
@@ -1226,7 +1240,7 @@ test("folds a constant object map down to the surviving static key", () => {
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).not.toContain("__createVelaRuntimeHost");
-	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("VelaRuntimeHost");
 	expect(result.code).not.toContain("className=");
 	expect(result.code).toMatch(/PaddingLeft=\{new UDim\(0, 8\)\}/);
 	expect(result.code).toMatch(/PaddingRight=\{new UDim\(0, 8\)\}/);
@@ -1240,7 +1254,7 @@ test("folds a constant ternary to a static utility class", () => {
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).not.toContain("__createVelaRuntimeHost");
-	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("VelaRuntimeHost");
 	expect(result.code).not.toContain("className=");
 	expect(result.code).toMatch(/Size=\{UDim2\.fromOffset\(160, 0\)\}/);
 });
@@ -1253,7 +1267,7 @@ test("keeps the runtime wrapper when a dynamic remainder survives constant foldi
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).toContain("__createVelaRuntimeHost");
-	expect(result.code).toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("VelaRuntimeHost");
 	expect(result.code).toContain("className={dynamicToken}");
 	expect(result.code).not.toContain("active && dynamicToken");
 	expect(result.code).toContain("BackgroundColor3");
@@ -1267,7 +1281,7 @@ test("keeps dynamic object-map className values on the runtime wrapper", () => {
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).toContain("__createVelaRuntimeHost");
-	expect(result.code).toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("VelaRuntimeHost");
 	expect(result.code).toContain("BackgroundColor3");
 	expect(result.code).toContain("className={{");
 	expect(result.code).toContain('"px-4": roomy');
@@ -1283,8 +1297,8 @@ test("keeps variant-prefixed literals on the runtime rule path when they survive
 	expect(enabledResult.changed).toBe(true);
 	expect(enabledResult.diagnostics).toEqual([]);
 	expect(enabledResult.code).toContain("__createVelaRuntimeHost");
-	expect(enabledResult.code).toContain("RbxtsTailwindRuntimeHost");
-	expect(enabledResult.code).toContain("__rbxtsTailwindRules");
+	expect(enabledResult.code).toContain("VelaRuntimeHost");
+	expect(enabledResult.code).toContain("__velaRules");
 	expect(enabledResult.code).not.toContain("className=");
 	expect(enabledResult.code).toContain("uicorner");
 
@@ -1295,8 +1309,8 @@ test("keeps variant-prefixed literals on the runtime rule path when they survive
 	expect(disabledResult.changed).toBe(true);
 	expect(disabledResult.diagnostics).toEqual([]);
 	expect(disabledResult.code).not.toContain("__createVelaRuntimeHost");
-	expect(disabledResult.code).not.toContain("RbxtsTailwindRuntimeHost");
-	expect(disabledResult.code).not.toContain("__rbxtsTailwindRules");
+	expect(disabledResult.code).not.toContain("VelaRuntimeHost");
+	expect(disabledResult.code).not.toContain("__velaRules");
 	expect(disabledResult.code).not.toContain("className=");
 	expect(disabledResult.code).toContain("uicorner");
 });
@@ -1311,13 +1325,13 @@ test("lifts variant-prefixed literal utilities into runtime rules", () => {
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).toContain("__createVelaRuntimeHost");
 	expect(result.code).toContain('import __VelaReact from "@rbxts/react";');
-	expect(result.code).toContain("const RbxtsTailwindRuntimeHost =");
-	expect(result.code).toContain("<RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain("const VelaRuntimeHost =");
+	expect(result.code).toContain("<VelaRuntimeHost");
 	// Intentional regression checks for the removed runtime package import path.
 	expect(result.code).not.toContain("@vela-rbxts/runtime");
 	expect(result.code).not.toContain("vela-rbxts/runtime");
 	expect(result.code).not.toContain("../__vela__/runtime-host");
-	expect(result.code).toContain("__rbxtsTailwindRules");
+	expect(result.code).toContain("__velaRules");
 	expect(result.code).not.toContain(
 		'className="rounded-md md:px-4 portrait:w-80"',
 	);

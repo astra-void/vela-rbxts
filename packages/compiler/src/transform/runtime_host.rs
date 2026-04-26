@@ -16,7 +16,7 @@ type ClassValue =
 	| ClassDictionary
 	| ClassValue[];
 
-type TailwindConfig = {
+type VelaRuntimeConfig = {
 	theme: {
 		colors: Record<string, string | Record<string, string>>;
 		radius: Record<string, string>;
@@ -137,34 +137,34 @@ type RuntimeResolution = {
 	helpers: RuntimeHelper[];
 };
 
-type TailwindRuntimeHostProps = {
-	__rbxtsTailwindTag: SupportedHostElementTag;
-	__rbxtsTailwindRules?: readonly RuntimeRule[];
+type VelaRuntimeHostProps = {
+	__velaTag: SupportedHostElementTag;
+	__velaRules?: readonly RuntimeRule[];
 	className?: ClassValue;
 	children?: defined | readonly defined[];
 } & Record<string, unknown>;
 
-function __createVelaRuntimeHost(config: TailwindConfig) {
+function __createVelaRuntimeHost(config: VelaRuntimeConfig) {
 	const theme = normalizeTheme(config);
 
-	return (props: TailwindRuntimeHostProps) => {
+	return (props: VelaRuntimeHostProps) => {
 		const environment = useRuntimeEnvironment();
-		const __rbxtsTailwindTag = props.__rbxtsTailwindTag;
-		const __rbxtsTailwindRules = props.__rbxtsTailwindRules ?? [];
+		const __velaTag = props.__velaTag;
+		const __velaRules = props.__velaRules ?? [];
 		const className = props.className;
 		const children = props.children;
 
 		const resolution = resolveRuntimeResolution(
 			theme,
 			environment,
-			__rbxtsTailwindRules as RuntimeRule[],
+			__velaRules as RuntimeRule[],
 			className,
 		);
 		const hostProps: Record<string, unknown> = {};
 		for (const [name, value] of pairs(props as Record<string, unknown>)) {
 			if (
-				name !== "__rbxtsTailwindTag" &&
-				name !== "__rbxtsTailwindRules" &&
+				name !== "__velaTag" &&
+				name !== "__velaRules" &&
 				name !== "className" &&
 				name !== "children"
 			) {
@@ -189,7 +189,7 @@ function __createVelaRuntimeHost(config: TailwindConfig) {
 			}
 		}
 
-		return __VelaReact.createElement(__rbxtsTailwindTag, hostProps, ...allChildren);
+		return __VelaReact.createElement(__velaTag, hostProps, ...allChildren);
 	};
 }
 
@@ -267,7 +267,7 @@ function detectInputMode(): RuntimeEnvironment["input"] {
 	return "mouse";
 }
 
-function normalizeTheme(config: TailwindConfig): RuntimeTheme {
+function normalizeTheme(config: VelaRuntimeConfig): RuntimeTheme {
 	return {
 		colors: normalizeColorRegistry(config.theme.colors),
 		radius: normalizeRadiusScale(config.theme.radius),
@@ -1147,8 +1147,19 @@ function isWholeNumber(value: number): boolean {
 	return mathAbs(value - rounded) < 1e-9;
 }
 
+declare const string:
+	| {
+			sub(value: string, start: number, stop?: number): string;
+			len(value: string): number;
+	  }
+	| undefined;
+
 function stringLength(value: string): number {
-	return (value as unknown as { size(): number }).size();
+	if (string) {
+		return string.len(value);
+	}
+
+	return value.length;
 }
 
 function startsWith(value: string, prefix: string): boolean {
@@ -1317,14 +1328,14 @@ function isNaNNumber(value: number): boolean {
 }
 
 function arraySize<T>(value: T[]): number {
-	return (value as unknown as { size(): number }).size();
+	return (value as unknown as { length: number }).length;
 }
 "###;
 
 pub(crate) fn create_runtime_host_module_items(config: &TailwindConfig) -> Vec<ModuleItem> {
     let config_json = serde_json::to_string(config).expect("runtime config must serialize to JSON");
     let source = format!(
-        "{RUNTIME_HOST_TEMPLATE}\nconst __VelaRuntimeConfig = {config_json};\nconst RbxtsTailwindRuntimeHost = __createVelaRuntimeHost(__VelaRuntimeConfig);"
+		"{RUNTIME_HOST_TEMPLATE}\nconst __VelaRuntimeConfig = {config_json};\nconst VelaRuntimeHost = __createVelaRuntimeHost(__VelaRuntimeConfig);"
     );
     let items = parse_module_items(&source);
 

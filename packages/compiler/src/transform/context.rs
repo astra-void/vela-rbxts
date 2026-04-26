@@ -18,7 +18,7 @@ use swc_core::{
     ecma::visit::{VisitMut, VisitMutWith},
 };
 
-pub(crate) struct TailwindTransformer {
+pub(crate) struct VelaTransformer {
     pub(crate) changed: bool,
     pub(crate) config: crate::config::model::TailwindConfig,
     pub(crate) diagnostics: Vec<Diagnostic>,
@@ -27,7 +27,7 @@ pub(crate) struct TailwindTransformer {
     pub(crate) class_value_scopes: ClassValueScopeStack,
 }
 
-impl VisitMut for TailwindTransformer {
+impl VisitMut for VelaTransformer {
     fn visit_mut_module(&mut self, module: &mut Module) {
         self.class_value_scopes.push();
         module.visit_mut_children_with(self);
@@ -122,17 +122,17 @@ impl VisitMut for TailwindTransformer {
             );
             if !lowered.style_ir.runtime_rules.is_empty() {
                 attrs.push(create_prop_attr(PropEntry {
-                    name: "__rbxtsTailwindRules",
+                    name: "__velaRules",
                     value: serde_json::to_string(&lowered.style_ir.runtime_rules)
                         .expect("runtime rules must serialize to JSON"),
                 }));
             }
             attrs.push(create_prop_attr(PropEntry {
-                name: "__rbxtsTailwindTag",
+                name: "__velaTag",
                 value: format!("\"{}\"", element_tag_name(&element.opening.name)),
             }));
             element.opening.name = JSXElementName::Ident(Ident::new_no_ctxt(
-                "RbxtsTailwindRuntimeHost".into(),
+                "VelaRuntimeHost".into(),
                 DUMMY_SP,
             ));
         } else {

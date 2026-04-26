@@ -7,7 +7,7 @@ pub(crate) mod runtime_host;
 
 use crate::api::{Diagnostic, TransformOptions, TransformResult};
 use crate::config::resolve::parse_config;
-use crate::transform::context::TailwindTransformer;
+use crate::transform::context::VelaTransformer;
 use swc_core::{
     common::{FileName, SourceMap, sync::Lrc},
     ecma::{
@@ -70,7 +70,7 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
         };
     }
 
-    let mut transformer = TailwindTransformer {
+    let mut transformer = VelaTransformer {
         changed: false,
         config,
         diagnostics: Vec::new(),
