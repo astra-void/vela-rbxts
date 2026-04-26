@@ -121,31 +121,6 @@ importers:
         specifier: workspace:*
         version: link:../types
 
-  packages/runtime:
-    dependencies:
-      '@rbxts/react':
-        specifier: ^17.3.7-ts.1
-        version: 17.3.7-ts.1
-      '@rbxts/services':
-        specifier: ^1.6.0
-        version: 1.6.0
-      '@vela-rbxts/config':
-        specifier: workspace:*
-        version: link:../config
-      '@vela-rbxts/types':
-        specifier: workspace:*
-        version: link:../types
-    devDependencies:
-      '@rbxts/compiler-types':
-        specifier: ^3.0.0-types.0
-        version: 3.0.0-types.0
-      '@rbxts/types':
-        specifier: ^1.0.916
-        version: 1.0.916
-      roblox-ts:
-        specifier: ^3.0.0
-        version: 3.0.0
-
   packages/types: {}
 
   packages/vela-rbxts:
@@ -162,9 +137,6 @@ importers:
       '@vela-rbxts/rbxtsc-host':
         specifier: workspace:*
         version: link:../rbxtsc-host
-      '@vela-rbxts/runtime':
-        specifier: workspace:*
-        version: link:../runtime
       '@vela-rbxts/types':
         specifier: workspace:*
         version: link:../types

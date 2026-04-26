@@ -13,9 +13,6 @@
       "vela-rbxts": [
         "./packages/vela-rbxts/src/index.ts"
       ],
-      "vela-rbxts/runtime": [
-        "./packages/vela-rbxts/src/runtime.ts"
-      ],
       "@vela-rbxts/core": [
         "./packages/core/src/index.ts"
       ],
