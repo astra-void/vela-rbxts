@@ -1155,6 +1155,12 @@ declare const string: {
 const __velaStringLen = string.len;
 const __velaStringSub = string.sub;
 
+declare const table: {
+	getn: (value: unknown[]) => number;
+};
+
+const __velaTableGetn = table.getn;
+
 function stringLength(value: string): number {
 	return __velaStringLen(value);
 }
@@ -1177,21 +1183,6 @@ function startsWith(value: string, prefix: string): boolean {
 function endsWith(value: string, suffix: string): boolean {
 	const suffixLength = stringLength(suffix);
 	return substring(value, stringLength(value) - suffixLength) === suffix;
-}
-
-function substring(value: string, start: number, stop?: number): string {
-	const resolvedStop =
-		stop === undefined
-			? undefined
-			: stop < 0
-				? stringLength(value) + stop
-				: stop;
-
-	if (string) {
-		return string.sub(value, start + 1, resolvedStop);
-	}
-
-	return value;
 }
 
 function lastIndexOf(value: string, needle: string): number {
@@ -1336,7 +1327,7 @@ function isNaNNumber(value: number): boolean {
 }
 
 function arraySize<T>(value: T[]): number {
-	return (value as unknown as { length: number }).length;
+	return __velaTableGetn(value);
 }
 "###;
 
