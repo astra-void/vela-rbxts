@@ -68,6 +68,10 @@ beforeEach(() => {
 		}
 		return typeof value;
 	});
+	vi.stubGlobal(
+		"typeIs",
+		(value: unknown, expected: string) => typeof value === expected,
+	);
 	vi.stubGlobal("pairs", (value: Record<string, unknown>) =>
 		Object.entries(value),
 	);

@@ -19,7 +19,6 @@ const requiredFragments = [
 	"PaddingTop = UDim.new(0, 12)",
 	"PaddingBottom = UDim.new(0, 12)",
 	"Padding = UDim.new(0, 16)",
-	'TS.import(script, game:GetService("ReplicatedStorage"), "node_modules", "@vela-rbxts", "runtime")',
 	"React.createElement(RbxtsTailwindRuntimeHost",
 ];
 
@@ -32,6 +31,12 @@ const forbiddenFragments = [
 ];
 
 const requiredPatterns = [
+	{
+		description:
+			"runtime import resolves from @vela-rbxts/runtime (optionally via src/runtime)",
+		pattern:
+			/TS\.import\(script, game:GetService\("ReplicatedStorage"\), "node_modules", "@vela-rbxts", "runtime"(?:, "src", "runtime")?\)/,
+	},
 	{
 		description: "runtime className keeps dynamic rounded-md condition",
 		pattern: /className\s*=\s*[^\n]*rounded-md/,

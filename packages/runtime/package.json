@@ -1,6 +1,15 @@
 {
   "name": "@vela-rbxts/runtime",
   "version": "0.1.0-next.0",
+  "main": "./src/runtime.ts",
+  "module": "./src/runtime.ts",
+  "exports": {
+    ".": {
+      "types": "./runtime.d.ts",
+      "import": "./src/runtime.ts",
+      "default": "./src/runtime.ts"
+    }
+  },
   "types": "./runtime.d.ts",
   "publishConfig": {
     "access": "public"
@@ -12,10 +21,12 @@
   "files": [
     "default.project.json",
     "runtime.luau",
-    "runtime.d.ts"
+    "runtime.d.ts",
+    "src/runtime.ts"
   ],
   "scripts": {
     "build": "rbxtsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check . --fix --unsafe",
     "clean": "node -e \"const fs=require('node:fs');fs.rmSync('roblox',{recursive:true,force:true});fs.rmSync('runtime.luau',{force:true});\""
