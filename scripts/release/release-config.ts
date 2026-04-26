@@ -19,7 +19,6 @@ export type ReleaseUnit = {
 export const EXPECTED_PUBLIC_RELEASE_NAMES = [
   "vela-rbxts",
   "@vela-rbxts/compiler",
-  "@vela-rbxts/runtime",
   "@vela-rbxts/config",
   "@vela-rbxts/core",
   "@vela-rbxts/ir",
@@ -34,7 +33,6 @@ export const WORKSPACE_PUBLISH_PRIORITY = [
   "@vela-rbxts/config",
   "@vela-rbxts/ir",
   "@vela-rbxts/core",
-  "@vela-rbxts/runtime",
   "@vela-rbxts/rbxtsc-host",
   "@vela-rbxts/compiler",
   "@vela-rbxts/lsp",

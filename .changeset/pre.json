@@ -10,7 +10,6 @@
     "@vela-rbxts/ir": "0.1.0",
     "@vela-rbxts/lsp": "0.1.0",
     "@vela-rbxts/rbxtsc-host": "0.1.0",
-    "@vela-rbxts/runtime": "0.1.0",
     "@vela-rbxts/types": "0.1.0",
     "vela-rbxts": "0.1.0",
     "vela-rbxts-lsp": "0.1.0"

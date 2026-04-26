@@ -127,7 +127,6 @@ async function main() {
 			"@vela-rbxts/config",
 			"@vela-rbxts/ir",
 			"@vela-rbxts/core",
-			"@vela-rbxts/runtime",
 			"@vela-rbxts/rbxtsc-host",
 			"vela-rbxts",
 			"vela-rbxts-lsp",
