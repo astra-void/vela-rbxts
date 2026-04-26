@@ -1077,6 +1077,62 @@ test("removes className even when only unsupported utilities remain", () => {
 	);
 });
 
+test("keeps static-only className fully compile-time without runtime helper injection", () => {
+	const result = transform(
+		'<frame className="rounded-md bg-slate-700 px-4 py-3" />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.needsRuntimeHost).toBe(false);
+	expect(result.code).not.toContain("__createVelaRuntimeHost");
+	expect(result.code).not.toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).not.toContain("@vela-rbxts/runtime");
+	expect(result.code).not.toContain("vela-rbxts/runtime");
+	expect(result.code).not.toContain("__vela__");
+});
+
+test("rewrites dynamic array className through the inline runtime helper", () => {
+	const result = transform(
+		'<frame className={["bg-blue-600", active && "rounded-md"]} />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.needsRuntimeHost).toBe(true);
+	expect(result.code).toContain("__createVelaRuntimeHost");
+	expect(result.code).toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain('className={active && "rounded-md"}');
+	expect(result.code).not.toContain("@vela-rbxts/runtime");
+	expect(result.code).not.toContain("vela-rbxts/runtime");
+	expect(result.code).not.toContain("../__vela__/runtime-host");
+});
+
+test("rewrites dynamic object-map className through the inline runtime helper", () => {
+	const result = transform(
+		'<frame className={{ "px-4": roomy, "px-2": !roomy }} />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.needsRuntimeHost).toBe(true);
+	expect(result.code).toContain("__createVelaRuntimeHost");
+	expect(result.code).toContain("RbxtsTailwindRuntimeHost");
+	expect(result.code).toContain('"px-4": roomy');
+	expect(result.code).toContain('"px-2": !roomy');
+});
+
+test("rewrites runtime-aware variants through the inline runtime rule path", () => {
+	const result = transform(
+		'<frame className="rounded-md md:px-4 portrait:w-80 touch:px-3" />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.needsRuntimeHost).toBe(true);
+	expect(result.code).toContain("__rbxtsTailwindRules");
+	expect(result.code).toContain("__createVelaRuntimeHost");
+	expect(result.code).not.toContain(
+		'className="rounded-md md:px-4 portrait:w-80 touch:px-3"',
+	);
+});
+
 test("rewrites dynamic ClassValue expressions through the runtime wrapper", () => {
 	const result = transform(
 		'<frame className={["bg-slate-500", active && "rounded-md"]} />',
@@ -1093,6 +1149,8 @@ test("rewrites dynamic ClassValue expressions through the runtime wrapper", () =
 	expect(result.code).not.toContain("@vela-rbxts/runtime");
 	expect(result.code).not.toContain("vela-rbxts/runtime");
 	expect(result.code).not.toContain("../__vela__/runtime-host");
+	expect(result.code).not.toContain("@vela-rbxts/types");
+	expect(result.code).not.toContain("@vela-rbxts/config");
 	expect(result.code).toContain("BackgroundColor3");
 	expect(result.code).toContain('className={active && "rounded-md"}');
 	expect(result.code).not.toContain("unsupported-classname-expression");
