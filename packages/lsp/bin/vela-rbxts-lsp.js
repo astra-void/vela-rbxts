@@ -46,6 +46,7 @@ async function main() {
 	const child = spawn(runtimeBinaryPath, process.argv.slice(2), {
 		cwd: process.cwd(),
 		stdio: "inherit",
+		windowsHide: true,
 	});
 
 	child.on("error", (error) => {
