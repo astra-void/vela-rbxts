@@ -20,14 +20,24 @@ const requiredFragments = [
 	"PaddingBottom = UDim.new(0, 12)",
 	"Padding = UDim.new(0, 16)",
 	"__createVelaRuntimeHost",
-	"React.createElement(RbxtsTailwindRuntimeHost",
-	"__rbxtsTailwindRules",
+	"React.createElement(VelaRuntimeHost",
+	"__velaRules",
+	"__velaTag",
 ];
 
 // Intentional regression checks for the deleted runtime package and artifact paths.
 const forbiddenFragments = [
 	'React.createElement("RbxtsTailwindRuntimeHost"',
 	"__rbxtsTailwindRuntimeHost",
+	"RbxtsTailwindRuntimeHost",
+	"__rbxtsTailwindRules",
+	"__rbxtsTailwindTag",
+	"rbxts-tailwind",
+	"rbxtsTailwind",
+	"createTailwindRuntimeHost",
+	".size(",
+	":size(",
+	"size()",
 	'className = { "bg-blue-600", active and "rounded-md" }',
 	"@vela-rbxts/runtime",
 	"vela-rbxts/runtime",
@@ -54,12 +64,20 @@ const requiredPatterns = [
 		description: "runtime className map keeps px-2 key",
 		pattern: /\["px-2"\]\s*=/,
 	},
+	{
+		description: "runtime helper uses Luau string len",
+		pattern: /string[:.]len\s*\(/,
+	},
 ];
 
 const forbiddenPatterns = [
 	{
 		description: "legacy className array literal should not remain",
 		pattern: /className\s*=\s*\{\s*"bg-blue-600"\s*,/,
+	},
+	{
+		description: "runtime helper must not call string size method",
+		pattern: /[:.]size\s*\(/,
 	},
 ];
 
