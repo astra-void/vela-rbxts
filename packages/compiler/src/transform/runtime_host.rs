@@ -1147,19 +1147,27 @@ function isWholeNumber(value: number): boolean {
 	return mathAbs(value - rounded) < 1e-9;
 }
 
-declare const string:
-	| {
-			sub(value: string, start: number, stop?: number): string;
-			len(value: string): number;
-	  }
-	| undefined;
+declare const string: {
+	len: (value: string) => number;
+	sub: (value: string, start: number, stop?: number) => string;
+};
+
+const __velaStringLen = string.len;
+const __velaStringSub = string.sub;
 
 function stringLength(value: string): number {
-	if (string) {
-		return string.len(value);
-	}
+	return __velaStringLen(value);
+}
 
-	return value.length;
+function substring(value: string, start: number, stop?: number): string {
+	const resolvedStop =
+		stop === undefined
+			? undefined
+			: stop < 0
+				? stringLength(value) + stop
+				: stop;
+
+	return __velaStringSub(value, start + 1, resolvedStop);
 }
 
 function startsWith(value: string, prefix: string): boolean {
