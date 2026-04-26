@@ -26,7 +26,7 @@
     "url": "https://github.com/astra-void/vela-rbxts"
   },
   "scripts": {
-    "build": "pnpm run build:types",
+    "build": "pnpm run clean && pnpm run build:types",
     "build:types": "tsc -b tsconfig.json",
     "dev": "tsc -b tsconfig.json --watch",
     "lint": "biome check .",
