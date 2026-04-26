@@ -1,9 +1,8 @@
-import {
-	createRbxtsTailwindProgramTransformer,
-} from "@vela-rbxts/rbxtsc-host";
+import { createVelaProgramTransformer } from "@vela-rbxts/rbxtsc-host";
 
-export {
-	createRbxtsTailwindProgramTransformer as createTransformer,
-};
+export { createVelaProgramTransformer as createTransformer };
 
-export default createRbxtsTailwindProgramTransformer;
+/** @deprecated Use createVelaProgramTransformer instead. */
+export { createVelaProgramTransformer as createRbxtsTailwindProgramTransformer };
+
+export default createVelaProgramTransformer;
