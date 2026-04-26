@@ -20,7 +20,7 @@
   },
   "files": [
     "default.project.json",
-    "runtime.luau",
+    "out/runtime.luau",
     "runtime.d.ts",
     "src/runtime.ts"
   ],
@@ -29,7 +29,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check . --fix --unsafe",
-    "clean": "node -e \"const fs=require('node:fs');fs.rmSync('roblox',{recursive:true,force:true});fs.rmSync('runtime.luau',{force:true});\""
+    "clean": "node -e \"const fs=require('node:fs');fs.rmSync('roblox',{recursive:true,force:true});fs.rmSync('out',{recursive:true,force:true});fs.rmSync('runtime.luau',{force:true});\""
   },
   "dependencies": {
     "@rbxts/react": "^17.3.7-ts.1",
