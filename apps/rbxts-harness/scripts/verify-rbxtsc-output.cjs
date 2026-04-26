@@ -65,8 +65,28 @@ const requiredPatterns = [
 		pattern: /\["px-2"\]\s*=/,
 	},
 	{
-		description: "runtime helper uses Luau string len",
-		pattern: /string[:.]len\s*\(/,
+		description: "runtime helper aliases string.len locally",
+		pattern: /local __velaStringLen = string\.len/,
+	},
+	{
+		description: "runtime helper aliases string.sub locally",
+		pattern: /local __velaStringSub = string\.sub/,
+	},
+	{
+		description: "runtime helper calls the string len alias",
+		pattern: /__velaStringLen\([^)]*\)/,
+	},
+	{
+		description: "runtime helper calls the string sub alias",
+		pattern: /__velaStringSub\([^)]*\)/,
+	},
+	{
+		description: "runtime helper aliases table.getn locally",
+		pattern: /local __velaTableGetn = table\.getn/,
+	},
+	{
+		description: "runtime helper calls the table getn alias",
+		pattern: /__velaTableGetn\([^)]*\)/,
 	},
 ];
 
@@ -76,8 +96,36 @@ const forbiddenPatterns = [
 		pattern: /className\s*=\s*\{\s*"bg-blue-600"\s*,/,
 	},
 	{
+		description: "runtime helper must not call string.len as a method",
+		pattern: /string:len\s*\(/,
+	},
+	{
+		description: "runtime helper must not call string.sub as a method",
+		pattern: /string:sub\s*\(/,
+	},
+	{
+		description: "runtime helper must not call string.len directly",
+		pattern: /string\.len\s*\(/,
+	},
+	{
+		description: "runtime helper must not call string.sub directly",
+		pattern: /string\.sub\s*\(/,
+	},
+	{
+		description: "runtime helper must not call table.getn as a method",
+		pattern: /table:getn\s*\(/,
+	},
+	{
+		description: "runtime helper must not call table.getn directly",
+		pattern: /table\.getn\s*\(/,
+	},
+	{
 		description: "runtime helper must not call string size method",
 		pattern: /[:.]size\s*\(/,
+	},
+	{
+		description: "runtime helper must not use emitted length property",
+		pattern: /\.length\b/,
 	},
 ];
 
