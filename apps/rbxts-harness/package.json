@@ -15,7 +15,6 @@
 	},
 	"dependencies": {
 		"vela-rbxts": "workspace:*",
-		"@vela-rbxts/runtime": "workspace:*",
 		"@rbxts/react": "^17.3.7-ts.1",
 		"@rbxts/react-roblox": "^17.3.7-ts.1",
 		"@rbxts/services": "^1.6.0"

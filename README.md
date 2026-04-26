@@ -40,7 +40,7 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 Install Vela and the runtime package alongside the normal roblox-ts React dependencies:
 
 ```bash
-pnpm add vela-rbxts @vela-rbxts/runtime @rbxts/react @rbxts/react-roblox @rbxts/services
+pnpm add vela-rbxts @rbxts/react @rbxts/react-roblox @rbxts/services
 pnpm add -D @rbxts/compiler-types @rbxts/types roblox-ts typescript
 ```
 
