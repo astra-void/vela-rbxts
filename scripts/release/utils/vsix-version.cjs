@@ -14,7 +14,7 @@ function normalizeMarketplaceVsixVersion(rawVersion) {
 		);
 	}
 
-	const version = `${match[1]}.${match[2]}.${match[3]}`;
+	const version = `${parseInt(match[1], 10)}.${parseInt(match[2], 10)}.${parseInt(match[3], 10)}`;
 	if (!STRICT_VSIX_VERSION_RE.test(version)) {
 		throw new Error(
 			`Invalid VSIX version source "${String(rawVersion)}". VS Code Marketplace requires major.minor.patch in the packaged extension manifest.`,
