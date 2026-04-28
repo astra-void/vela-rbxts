@@ -44,13 +44,22 @@ describe("marketplace vsix version normalization", () => {
 		).toBe("0.1.1");
 	});
 
-	test("strips v prefix from explicit Marketplace override", () => {
+	test("strips v prefix and normalizes leading zeros from explicit Marketplace override", () => {
 		expect(
 			resolveMarketplaceVsixVersion({
 				sourceVersion: "0.1.0-next.0",
 				overrideVersion: "v2026.04.28001",
 			}),
-		).toBe("2026.04.28001");
+		).toBe("2026.4.28001");
+	});
+
+	test("normalizes leading zeros from explicit Marketplace override without v prefix", () => {
+		expect(
+			resolveMarketplaceVsixVersion({
+				sourceVersion: "0.1.0-next.0",
+				overrideVersion: "2026.04.28001",
+			}),
+		).toBe("2026.4.28001");
 	});
 
 	test("falls back to RELEASE_TAG when no source version is available", () => {

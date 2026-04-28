@@ -2,7 +2,7 @@
 
 const MARKETPLACE_VSIX_VERSION_RE =
 	/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/;
-const STRICT_VSIX_VERSION_RE = /^\d+\.\d+\.\d+$/;
+const STRICT_VSIX_VERSION_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 function normalizeMarketplaceVsixVersion(rawVersion) {
 	const normalized = String(rawVersion ?? "").trim().replace(/^v/, "");
@@ -31,13 +31,14 @@ function resolveMarketplaceVsixVersion({
 } = {}) {
 	const explicitVersion = String(overrideVersion ?? "").trim().replace(/^v/, "");
 	if (explicitVersion) {
-		if (!STRICT_VSIX_VERSION_RE.test(explicitVersion)) {
+		const match = explicitVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
+		if (!match) {
 			throw new Error(
 				`Invalid VSIX_VERSION "${overrideVersion}". VS Code Marketplace requires major.minor.patch in the packaged extension manifest.`,
 			);
 		}
 
-		return explicitVersion;
+		return `${parseInt(match[1], 10)}.${parseInt(match[2], 10)}.${parseInt(match[3], 10)}`;
 	}
 
 	const versionSource = String(sourceVersion ?? "").trim() || String(releaseTag ?? "").trim();
