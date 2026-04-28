@@ -29,7 +29,7 @@ function resolveMarketplaceVsixVersion({
 	releaseTag,
 	overrideVersion,
 } = {}) {
-	const explicitVersion = String(overrideVersion ?? "").trim();
+	const explicitVersion = String(overrideVersion ?? "").trim().replace(/^v/, "");
 	if (explicitVersion) {
 		if (!STRICT_VSIX_VERSION_RE.test(explicitVersion)) {
 			throw new Error(

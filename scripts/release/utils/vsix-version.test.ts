@@ -44,6 +44,15 @@ describe("marketplace vsix version normalization", () => {
 		).toBe("0.1.1");
 	});
 
+	test("strips v prefix from explicit Marketplace override", () => {
+		expect(
+			resolveMarketplaceVsixVersion({
+				sourceVersion: "0.1.0-next.0",
+				overrideVersion: "v2026.04.28001",
+			}),
+		).toBe("2026.04.28001");
+	});
+
 	test("falls back to RELEASE_TAG when no source version is available", () => {
 		expect(
 			resolveMarketplaceVsixVersion({
