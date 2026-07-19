@@ -33,7 +33,7 @@
     "@changesets/cli": "^2.31.0",
     "@types/node": "^24.12.2",
     "tsx": "^4.20.6",
-    "turbo": "^2.5.8",
+    "turbo": "^2.9.14",
     "typescript": "5.9.3",
     "vitest": "^4.1.4"
   }
