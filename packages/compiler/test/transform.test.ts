@@ -895,6 +895,40 @@ test("lets fractional height override only the height axis after size", () => {
 	expect(result.code).toMatch(/Size=\{new UDim2\(0, 16, 0\.5, 0\)\}/);
 });
 
+test("keeps each size axis separate across variant rules", () => {
+	const result = transform('<frame className="w-32 md:h-32 md:w-64" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+
+	const style = JSON.parse(result.ir[0]);
+	expect(style.base.props).toContainEqual({
+		name: "Size",
+		value: "UDim2.fromOffset(128, 0)",
+	});
+	expect(
+		style.runtimeRules.map(
+			(rule: { effects: { props: unknown[] } }) => rule.effects.props,
+		),
+	).toEqual([
+		[{ name: "SizeY", value: "new UDim(0, 128)" }],
+		[{ name: "SizeX", value: "new UDim(0, 256)" }],
+	]);
+});
+
+test("splits both axes of a variant size utility", () => {
+	const result = transform('<frame className="md:size-8" />');
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+
+	const style = JSON.parse(result.ir[0]);
+	expect(style.runtimeRules[0].effects.props).toEqual([
+		{ name: "SizeX", value: "new UDim(0, 32)" },
+		{ name: "SizeY", value: "new UDim(0, 32)" },
+	]);
+});
+
 test("prefers explicit spacing config for size utilities", () => {
 	const config = defineConfig({
 		theme: {
@@ -1537,8 +1571,8 @@ test("lifts variant-prefixed literal utilities into runtime rules", () => {
 					effects: expect.objectContaining({
 						props: expect.arrayContaining([
 							expect.objectContaining({
-								name: "Size",
-								value: "UDim2.fromOffset(320, 0)",
+								name: "SizeX",
+								value: "new UDim(0, 320)",
 							}),
 						]),
 					}),

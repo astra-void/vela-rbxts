@@ -212,6 +212,8 @@ type RuntimeResolution = {
 	textDecoration?: string;
 	margin?: RuntimeMarginState;
 	divide?: RuntimeDivideState;
+	sizeWidth?: UDim;
+	sizeHeight?: UDim;
 	usesHover?: boolean;
 };
 
@@ -302,6 +304,8 @@ function __createVelaRuntimeHost(config: VelaRuntimeConfig) {
 		for (const [name, value] of pairs(resolution.props)) {
 			hostProps[name] = value;
 		}
+
+		applyResolvedSize(hostProps, resolution);
 
 		if (resolution.usesHover === true) {
 			attachHoverTracking(hostProps, setHovered);
@@ -1651,7 +1655,7 @@ function resolveUtilityToken(
 		}
 
 		return {
-			props: [{ name: "Size", value: formatSizeProp(value, undefined) }],
+			props: [{ name: "SizeX", value: formatSizeAxis(value) }],
 			helpers: [],
 		};
 	}
@@ -1664,7 +1668,7 @@ function resolveUtilityToken(
 		}
 
 		return {
-			props: [{ name: "Size", value: formatSizeProp(undefined, value) }],
+			props: [{ name: "SizeY", value: formatSizeAxis(value) }],
 			helpers: [],
 		};
 	}
@@ -1677,7 +1681,10 @@ function resolveUtilityToken(
 		}
 
 		return {
-			props: [{ name: "Size", value: formatSizeProp(value, value) }],
+			props: [
+				{ name: "SizeX", value: formatSizeAxis(value) },
+				{ name: "SizeY", value: formatSizeAxis(value) },
+			],
 			helpers: [],
 		};
 	}
@@ -1883,27 +1890,8 @@ function resolveFractionScale(key: string): number | undefined {
 	return wholeNumerator / wholeDenominator;
 }
 
-function formatSizeProp(
-	width: RuntimeSizeAxisValue | undefined,
-	height: RuntimeSizeAxisValue | undefined,
-): UDim2 {
-	const resolvedWidth = width ?? { scale: 0, offset: 0 };
-	const resolvedHeight = height ?? { scale: 0, offset: 0 };
-
-	if (resolvedWidth.scale === 0 && resolvedHeight.scale === 0) {
-		return UDim2.fromOffset(resolvedWidth.offset, resolvedHeight.offset);
-	}
-
-	if (resolvedWidth.offset === 0 && resolvedHeight.offset === 0) {
-		return UDim2.fromScale(resolvedWidth.scale, resolvedHeight.scale);
-	}
-
-	return new UDim2(
-		resolvedWidth.scale,
-		resolvedWidth.offset,
-		resolvedHeight.scale,
-		resolvedHeight.offset,
-	);
+function formatSizeAxis(value: RuntimeSizeAxisValue): UDim {
+	return new UDim(value.scale, value.offset);
 }
 
 function parseBracketNumericValue(key: string): number | undefined {
@@ -2073,7 +2061,11 @@ function applyEffectBundle(
 	effects: RuntimeEffectBundle,
 ) {
 	for (const prop of effects.props) {
-		setProp(resolution.props, prop.name, parseRuntimePropValue(prop.value));
+		applyResolutionProp(
+			resolution,
+			prop.name,
+			parseRuntimePropValue(prop.value),
+		);
 	}
 
 	for (const helper of effects.helpers) {
@@ -2086,12 +2078,59 @@ function applyResolvedEffectBundle(
 	effects: RuntimeResolvedEffectBundle,
 ) {
 	for (const prop of effects.props) {
-		setProp(resolution.props, prop.name, prop.value);
+		applyResolutionProp(resolution, prop.name, prop.value);
 	}
 
 	for (const helper of effects.helpers) {
 		setResolvedHelperProp(resolution.helpers, helper.tag, helper.props);
 	}
+}
+
+/// `Size` carries two independent utility families, so a bundle that names one
+/// axis travels as that axis alone and only meets the other one at the merge.
+function applyResolutionProp(
+	resolution: RuntimeResolution,
+	name: string,
+	value: RuntimePropValue,
+) {
+	if (name === "SizeX") {
+		if (typeIs(value, "UDim")) {
+			resolution.sizeWidth = value;
+		}
+		return;
+	}
+
+	if (name === "SizeY") {
+		if (typeIs(value, "UDim")) {
+			resolution.sizeHeight = value;
+		}
+		return;
+	}
+
+	setProp(resolution.props, name, value);
+}
+
+function applyResolvedSize(
+	hostProps: Record<string, unknown>,
+	resolution: RuntimeResolution,
+) {
+	const width = resolution.sizeWidth;
+	const height = resolution.sizeHeight;
+	if (width === undefined && height === undefined) {
+		return;
+	}
+
+	const declared = hostProps["Size"];
+	const base = typeIs(declared, "UDim2") ? declared : new UDim2(0, 0, 0, 0);
+	const resolvedWidth = width ?? base.X;
+	const resolvedHeight = height ?? base.Y;
+
+	hostProps["Size"] = new UDim2(
+		resolvedWidth.Scale,
+		resolvedWidth.Offset,
+		resolvedHeight.Scale,
+		resolvedHeight.Offset,
+	);
 }
 
 function setProp(props: RuntimePropMap, name: string, value: RuntimePropValue) {

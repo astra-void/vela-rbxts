@@ -88,7 +88,7 @@ where
         apply_analyzed_token(&analysis, config, diagnostics, &mut style, &mut pending);
     }
 
-    pending.flush(&mut style);
+    pending.flush(&mut style, SizeEmission::Combined);
     default_list_layout_sort_order(&mut style);
     reset_variant_color_opacity(&mut style);
     style
@@ -185,6 +185,14 @@ fn reset_variant_color_opacity(style: &mut StyleIr) {
     }
 }
 
+/// A variant bundle overlays a base it cannot see, so a whole `Size` would drop
+/// the axis the variant never named; per-axis props let the runtime keep it.
+#[derive(Clone, Copy)]
+enum SizeEmission {
+    Combined,
+    PerAxis,
+}
+
 #[derive(Default)]
 struct PendingAxes {
     size_width: Option<SizeAxisValue>,
@@ -227,9 +235,21 @@ struct PendingAxes {
 }
 
 impl PendingAxes {
-    fn flush(self, style: &mut StyleIr) {
-        if self.size_width.is_some() || self.size_height.is_some() {
-            style.set_prop("Size", format_udim2_prop(self.size_width, self.size_height));
+    fn flush(self, style: &mut StyleIr, size_emission: SizeEmission) {
+        match size_emission {
+            SizeEmission::Combined => {
+                if self.size_width.is_some() || self.size_height.is_some() {
+                    style.set_prop("Size", format_udim2_prop(self.size_width, self.size_height));
+                }
+            }
+            SizeEmission::PerAxis => {
+                if let Some(width) = self.size_width {
+                    style.set_prop("SizeX", format_udim_axis(width));
+                }
+                if let Some(height) = self.size_height {
+                    style.set_prop("SizeY", format_udim_axis(height));
+                }
+            }
         }
 
         // A fractional translate is a shift by the element's own size, which is
@@ -420,7 +440,7 @@ fn resolve_single_analyzed_token(
     let mut style = StyleIr::default();
     let mut pending = PendingAxes::default();
     apply_analyzed_token(analysis, config, diagnostics, &mut style, &mut pending);
-    pending.flush(&mut style);
+    pending.flush(&mut style, SizeEmission::PerAxis);
     style
 }
 
@@ -1682,6 +1702,10 @@ fn format_translate_number(value: f64) -> String {
         .trim_end_matches('0')
         .trim_end_matches('.')
         .to_owned()
+}
+
+fn format_udim_axis(axis: SizeAxisValue) -> String {
+    format!("new UDim({}, {})", axis.scale, axis.offset)
 }
 
 fn format_udim2_prop(width: Option<SizeAxisValue>, height: Option<SizeAxisValue>) -> String {
