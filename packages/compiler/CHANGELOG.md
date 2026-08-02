@@ -1,5 +1,36 @@
 # @vela-rbxts/compiler
 
+## 0.5.0
+
+### Minor Changes
+
+- c84f22b: Neutralize the Roblox host defaults, and add a `preflight` config flag to turn
+  that off. Roblox paints every `GuiObject` as an opaque gray box with a 1px
+  border, and a framework that only ever adds properties can never take that
+  back — so `bg-transparent` had to be repeated on almost every element. Any host
+  element carrying a `className` now starts from `BackgroundTransparency = 1` and
+  `BorderSizePixel = 0` unless a `bg-*` utility or an explicitly declared prop
+  says otherwise, and a background painted by a variant or a dynamic class value
+  reopens it. Elements without a `className`, and components, are untouched.
+
+  **Breaking for existing UI:** anywhere the default gray background was
+  load-bearing, the element now renders invisible. Add the `bg-*` it was relying
+  on, or set `preflight: false` in `vela.config.ts` to keep the old behavior.
+
+### Patch Changes
+
+- 7a4dfa4: Fix `order-*` being ignored inside a flex container. The lowered `UIListLayout`
+  left `SortOrder` at its engine default of `Name`, so children sorted
+  alphabetically by instance name — `order-1` on a `textlabel` still landed after
+  `order-2` on a `textbutton` — while `UIGridLayout` already set
+  `SortOrder = LayoutOrder`. Every `UIListLayout` the compiler emits now sets it,
+  statically and through the runtime host, unless something else already did.
+- 6e20817: Stop emitting the deprecated `table.getn` from the inlined runtime host. The
+  array-length helper aliased it locally because an earlier `.length` spelling
+  compiled straight through as a nil field, but Luau's script analysis flags
+  every `table.getn` reference as deprecated in consumer places. The helper now
+  uses `size()`, which roblox-ts lowers to the `#` operator.
+
 ## 0.4.2
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@vela-rbxts/rbxtsc-host",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "type": "commonjs",
   "description": "roblox-ts host adapter that bridges the vela-rbxts compiler into the rbxtsc transform pipeline.",
   "license": "MIT",
