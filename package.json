@@ -1,6 +1,6 @@
 {
   "name": "vela-rbxts-monorepo",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Monorepo for vela-rbxts, a Tailwind-style className integration layer for roblox-ts.",
   "private": true,
   "packageManager": "pnpm@10.33.2",

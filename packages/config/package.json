@@ -1,6 +1,6 @@
 {
   "name": "@vela-rbxts/config",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "type": "module",
   "description": "Config schema, defaults, and defineConfig() helper for vela-rbxts.",
   "license": "MIT",
