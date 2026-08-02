@@ -5,11 +5,16 @@ import { describe, expect, test } from "vitest";
 const require = createRequire(import.meta.url);
 const {
 	STRICT_VSIX_VERSION_RE,
+	nextFreeVsixBuildNumber,
 	normalizeMarketplaceVsixVersion,
 	resolveDateVsixVersion,
 	resolveMarketplaceVsixVersion,
 } = require("./vsix-version.cjs") as {
 	STRICT_VSIX_VERSION_RE: RegExp;
+	nextFreeVsixBuildNumber: (input?: {
+		publishedVersions?: readonly string[];
+		now?: Date;
+	}) => number;
 	normalizeMarketplaceVsixVersion: (rawVersion: string) => string;
 	resolveDateVsixVersion: (input?: {
 		now?: Date;
@@ -123,4 +128,60 @@ describe("date-based vsix versions", () => {
 			);
 		},
 	);
+});
+
+describe("next free vsix build number", () => {
+	const august2 = new Date("2026-08-02T11:30:00Z");
+
+	test("starts at 1 when nothing is published for the date", () => {
+		expect(nextFreeVsixBuildNumber({ publishedVersions: [], now: august2 })).toBe(1);
+	});
+
+	test("clears every build already published for the same UTC date", () => {
+		expect(
+			nextFreeVsixBuildNumber({
+				publishedVersions: ["2026.8.2001", "2026.8.2002"],
+				now: august2,
+			}),
+		).toBe(3);
+	});
+
+	test("clears a gap rather than filling it, since the Marketplace orders by version", () => {
+		expect(
+			nextFreeVsixBuildNumber({
+				publishedVersions: ["2026.8.2001", "2026.8.2004"],
+				now: august2,
+			}),
+		).toBe(5);
+	});
+
+	test("ignores other dates, including the same day in another month", () => {
+		expect(
+			nextFreeVsixBuildNumber({
+				publishedVersions: ["2026.7.31003", "2026.7.2009", "2025.8.2007", "2026.8.1005"],
+				now: august2,
+			}),
+		).toBe(1);
+	});
+
+	test("ignores versions that are not date versions", () => {
+		expect(
+			nextFreeVsixBuildNumber({
+				publishedVersions: ["0.1.0", "not-a-version", "2026.8.2001"],
+				now: august2,
+			}),
+		).toBe(2);
+	});
+
+	test("round-trips the version it feeds", () => {
+		const published = ["2026.8.2001"];
+		const buildNumber = nextFreeVsixBuildNumber({ publishedVersions: published, now: august2 });
+		expect(resolveDateVsixVersion({ now: august2, buildNumber })).toBe("2026.8.2002");
+	});
+
+	test("refuses to wrap past the last build number of the date", () => {
+		expect(() =>
+			nextFreeVsixBuildNumber({ publishedVersions: ["2026.8.2999"], now: august2 }),
+		).toThrow(/build number/);
+	});
 });

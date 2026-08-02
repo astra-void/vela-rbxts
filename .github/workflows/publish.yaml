@@ -22,11 +22,6 @@ on:
         description: Optional Marketplace VSIX version override
         required: false
         type: string
-      vsix_build_number:
-        description: "Same-day VSIX build counter (1-999); bump when re-releasing on the same UTC date"
-        required: false
-        default: "1"
-        type: string
       dry_run:
         description: Run dry-run publish steps
         required: false
@@ -60,7 +55,6 @@ jobs:
       release_tag: ${{ steps.meta.outputs.release_tag }}
       npm_tag: ${{ steps.meta.outputs.npm_tag }}
       vsix_version: ${{ steps.meta.outputs.vsix_version }}
-      vsix_build_number: ${{ steps.meta.outputs.vsix_build_number }}
       dry_run: ${{ steps.meta.outputs.dry_run }}
       publish_vscode_extension: ${{ steps.meta.outputs.publish_vscode_extension }}
     steps:
@@ -71,7 +65,6 @@ jobs:
           INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
           INPUT_NPM_TAG: ${{ inputs.npm_tag }}
           INPUT_VSIX_VERSION: ${{ inputs.vsix_version }}
-          INPUT_VSIX_BUILD_NUMBER: ${{ inputs.vsix_build_number }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
           INPUT_PUBLISH_VSCODE_EXTENSION: ${{ inputs.publish_vscode_extension }}
           REF_NAME: ${{ github.ref_name }}
@@ -102,7 +95,6 @@ jobs:
             release_tag="${INPUT_RELEASE_TAG}"
             npm_tag="${INPUT_NPM_TAG}"
             vsix_version="${INPUT_VSIX_VERSION}"
-            vsix_build_number="${INPUT_VSIX_BUILD_NUMBER:-1}"
             dry_run="$(normalize_bool "${INPUT_DRY_RUN}" "true")"
             publish_vscode_extension="$(normalize_bool "${INPUT_PUBLISH_VSCODE_EXTENSION}" "false")"
           else
@@ -113,7 +105,6 @@ jobs:
               npm_tag="latest"
             fi
             vsix_version=""
-            vsix_build_number="1"
             dry_run="false"
             publish_vscode_extension="true"
           fi
@@ -121,17 +112,11 @@ jobs:
           echo "Resolved release_tag=${release_tag}"
           echo "Resolved npm_tag=${npm_tag}"
           echo "Resolved vsix_version=${vsix_version}"
-          echo "Resolved vsix_build_number=${vsix_build_number}"
           echo "Resolved dry_run=${dry_run}"
           echo "Resolved publish_vscode_extension=${publish_vscode_extension}"
 
           if [ -z "${release_tag}" ]; then
             echo "release_tag is required" >&2
-            exit 1
-          fi
-
-          if ! echo "${vsix_build_number}" | grep -Eq '^[1-9][0-9]{0,2}$'; then
-            echo "vsix_build_number must be an integer between 1 and 999" >&2
             exit 1
           fi
 
@@ -143,7 +128,6 @@ jobs:
           echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
           echo "npm_tag=${npm_tag}" >> "${GITHUB_OUTPUT}"
           echo "vsix_version=${vsix_version}" >> "${GITHUB_OUTPUT}"
-          echo "vsix_build_number=${vsix_build_number}" >> "${GITHUB_OUTPUT}"
           echo "dry_run=${dry_run}" >> "${GITHUB_OUTPUT}"
           echo "publish_vscode_extension=${publish_vscode_extension}" >> "${GITHUB_OUTPUT}"
 
@@ -463,105 +447,35 @@ jobs:
             exit 1
           fi
 
-  package-vsix:
-    name: package vsix
+  dispatch-vscode-extension:
+    name: dispatch vscode extension
     runs-on: ubuntu-24.04
     needs:
       - publish-npm
       - release-metadata
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Download verified artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: verified-release-artifacts
-          path: artifacts
-
-      - name: Package VSIX
-        env:
-          RELEASE_TAG: ${{ needs.release-metadata.outputs.release_tag }}
-          VSIX_VERSION: ${{ needs.release-metadata.outputs.vsix_version }}
-          VSIX_BUILD_NUMBER: ${{ needs.release-metadata.outputs.vsix_build_number }}
-          DRY_RUN: ${{ needs.release-metadata.outputs.dry_run }}
-        run: |
-          if [ "${DRY_RUN}" = "true" ]; then
-            pnpm release:vsix --dry-run
-          else
-            pnpm release:vsix
-          fi
-
-      - name: Upload VSIX artifact
-        if: ${{ needs.release-metadata.outputs.dry_run != 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: vela-rbxts-vsix
-          path: artifacts/vsix/*.vsix
-          if-no-files-found: error
-
-  publish-vscode-marketplace:
-    name: publish vscode marketplace
-    runs-on: ubuntu-24.04
-    needs:
-      - package-vsix
-      - release-metadata
     permissions:
       contents: read
+      actions: write
     steps:
-      - name: Skip VS Code Marketplace publish
-        if: needs.release-metadata.outputs.publish_vscode_extension != 'true'
-        run: |
-          echo "Skipping VS Code Marketplace publish because publish_vscode_extension=false."
-          echo "VSIX artifacts were still packaged and uploaded."
+      - name: Skip VS Code extension release
+        if: ${{ needs.release-metadata.outputs.publish_vscode_extension != 'true' }}
+        run: echo "Skipping the VS Code extension release because publish_vscode_extension=false."
 
-      - name: Skip VS Code Marketplace publish for dry-run
-        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run == 'true'
-        run: |
-          echo "Skipping real VS Code Marketplace publish because dry_run=true."
-
-      - name: Checkout
-        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
-        uses: actions/checkout@v6
-
-      - name: Setup pnpm
-        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
-        uses: pnpm/action-setup@v6
-
-      - name: Setup Node.js
-        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install dependencies
-        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
-        run: pnpm install --frozen-lockfile
-
-      - name: Download VSIX artifacts
-        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
-        uses: actions/download-artifact@v4
-        with:
-          name: vela-rbxts-vsix
-          path: artifacts/vsix
-
-      - name: Publish VSIX files
-        if: needs.release-metadata.outputs.publish_vscode_extension == 'true' && needs.release-metadata.outputs.dry_run != 'true'
+      # The extension is packaged from the binaries this run just published, so
+      # it is handed to its own workflow rather than rebuilt here. That workflow
+      # can also be re-run alone when only the Marketplace step needs a retry.
+      - name: Start the VS Code extension release
+        if: ${{ needs.release-metadata.outputs.publish_vscode_extension == 'true' }}
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.release-metadata.outputs.release_tag }}
           VSIX_VERSION: ${{ needs.release-metadata.outputs.vsix_version }}
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: pnpm --filter ./packages/vscode-extension run publish:vsix
+          DRY_RUN: ${{ needs.release-metadata.outputs.dry_run }}
+        run: |
+          gh workflow run publish-vscode.yaml \
+            --ref "${RELEASE_TAG}" \
+            -f release_tag="${RELEASE_TAG}" \
+            -f vsix_version="${VSIX_VERSION}" \
+            -f dry_run="${DRY_RUN}"
+
+          echo "Dispatched publish-vscode.yaml for ${RELEASE_TAG} (dry_run=${DRY_RUN})."

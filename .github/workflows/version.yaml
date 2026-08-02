@@ -99,7 +99,6 @@ jobs:
             --ref "${RELEASE_TAG}" \
             -f release_tag="${RELEASE_TAG}" \
             -f npm_tag="${npm_tag}" \
-            -f vsix_build_number=1 \
             -f dry_run=false \
             -f publish_vscode_extension=true
 

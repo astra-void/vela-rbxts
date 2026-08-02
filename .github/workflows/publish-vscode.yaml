@@ -1,0 +1,108 @@
+name: Publish VS Code Extension
+
+# The VSIX is cut from the LSP binaries already on npm, so this workflow needs
+# no Rust toolchain and can re-run on its own after the npm release has landed.
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to package the extension from (example: v0.1.0)"
+        required: true
+        type: string
+      vsix_version:
+        description: Optional Marketplace VSIX version override
+        required: false
+        type: string
+      vsix_build_number:
+        description: "Same-day VSIX build counter (1-999); empty takes the next free counter for the UTC date"
+        required: false
+        type: string
+      dry_run:
+        description: Package and upload the VSIX files without publishing them
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 24
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish-vscode-extension:
+    name: publish vscode extension
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_tag }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # A dispatch over the API can deliver a typed boolean as a string, so the
+      # publish gate is decided once here rather than in six `if` expressions.
+      - name: Resolve publish mode
+        id: mode
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          case "${DRY_RUN}" in
+            false|False|FALSE|0|no|No|NO|off|Off|OFF) mode="publish" ;;
+            true|True|TRUE|1|yes|Yes|YES|on|On|ON|"") mode="dry-run" ;;
+            *) echo "Invalid dry_run value: ${DRY_RUN}" >&2; exit 1 ;;
+          esac
+
+          echo "Publish mode: ${mode}."
+          echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
+
+      # Asking the Marketplace which counters are taken is what keeps a second
+      # release on one UTC date from failing on a version that cannot be reused.
+      - name: Resolve VSIX version
+        id: vsix
+        env:
+          VSIX_VERSION: ${{ inputs.vsix_version }}
+          VSIX_BUILD_NUMBER: ${{ inputs.vsix_build_number }}
+        run: pnpm release:vsix:version
+
+      - name: Fetch published LSP binaries
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: pnpm release:lsp:fetch --version "${RELEASE_TAG#v}"
+
+      - name: Package VSIX
+        env:
+          VSIX_VERSION: ${{ steps.vsix.outputs.vsix_version }}
+        run: pnpm release:vsix
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vela-rbxts-vsix
+          path: artifacts/vsix/*.vsix
+          if-no-files-found: error
+
+      - name: Skip Marketplace publish
+        if: ${{ steps.mode.outputs.mode == 'dry-run' }}
+        run: echo "dry_run=true, so the packaged VSIX files were uploaded but not published."
+
+      - name: Publish VSIX files
+        if: ${{ steps.mode.outputs.mode == 'publish' }}
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: pnpm --filter ./packages/vscode-extension run publish:vsix
