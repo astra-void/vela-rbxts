@@ -1,6 +1,6 @@
 {
   "name": "@vela-rbxts/compiler-wasm",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": false,
   "type": "module",
   "description": "WebAssembly build of the vela-rbxts compiler, for hosts that cannot load the native addon.",

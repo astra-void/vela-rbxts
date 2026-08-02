@@ -1,6 +1,6 @@
 {
   "name": "@vela-rbxts/types",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "description": "Shared public types such as ClassValue and StylableProps for vela-rbxts.",
   "license": "MIT",

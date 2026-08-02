@@ -1,5 +1,14 @@
 # @vela-rbxts/rbxtsc-host
 
+## 0.5.1
+
+### Patch Changes
+
+- @vela-rbxts/compiler@0.5.1
+- @vela-rbxts/config@0.5.1
+- @vela-rbxts/ir@0.5.1
+- @vela-rbxts/types@0.5.1
+
 ## 0.5.0
 
 ### Patch Changes
