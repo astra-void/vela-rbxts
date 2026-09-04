@@ -8,13 +8,16 @@ standalone Rust language server and wires it to TypeScript and TSX files.
 
 Inside a `className` (and nowhere else) you get:
 
-- Completions with theme color swatches, fuzzy-ranked and variant-aware
+- Completions with theme color swatches, fuzzy-ranked and variant-aware,
+  including the breakpoints and state variants your own config defines, and the
+  inline `attr-[Name=value]:` form
 - Hover documentation for every supported utility and variant
 - Diagnostics for unsupported families, unknown theme keys, and invalid values,
   anchored to the offending token
 - Document colors and color presentations for `bg-*`, `text-*`, and the other
   color families
 - Quickfix code actions and document highlight
+- Optional inlay hints showing what each class lowers to
 
 The server reuses the vela-rbxts native compiler as its semantic engine, so
 what the editor tells you about a class is exactly what the build would do
@@ -40,14 +43,15 @@ changes to the server, so custom theme keys complete and validate live.
 | `velaRbxts.lsp.enabled` | `true` | Enable the LSP integration for TypeScript and TSX files. |
 | `velaRbxts.lsp.serverPath` | `""` | Optional path to a standalone `vela-rbxts-lsp` executable. When empty, the bundled `@vela-rbxts/lsp` wrapper resolves the platform binary. |
 | `velaRbxts.lsp.trace.server` | `off` | LSP trace level (`off`, `messages`, `verbose`) for debugging. |
+| `velaRbxts.inlayHints.enabled` | `false` | Show what each class lowers to (the Roblox properties and helper instances) inline after the class. |
 
 Output lands in the **vela-rbxts-lsp** output channel.
 
 ## Not Provided
 
-Go-to-definition, references, rename, formatting, semantic tokens, inlay
-hints, and signature help are out of scope — the server only understands
-`className` values.
+Go-to-definition, references, rename, formatting, semantic tokens, and
+signature help are out of scope; the server only understands `className`
+values.
 
 ## Development
 

@@ -2,7 +2,7 @@
 
 Tailwind-style `className` support for [roblox-ts](https://roblox-ts.com/) React UI.
 
-`vela-rbxts` is the main public package. It adds `className?: ClassValue` to `React.Attributes`, exposes `defineConfig()` for `vela.config.ts`, and ships the `rbxtsc` transformer entry used during the roblox-ts build.
+`vela-rbxts` is the main public package. It adds `className?: ClassValue` to `React.Attributes`, exposes `defineConfig()`, `definePreset()` and `plugin()` for `vela.config.ts`, and ships the `rbxtsc` transformer entry used during the roblox-ts build.
 
 ## Install
 
@@ -51,7 +51,25 @@ export function App() {
 
 Supported utility classes are lowered into Roblox UI props at build time and `className` is removed from the emitted output. No extra runtime package or Rojo mapping is required.
 
-See the [repository README](https://github.com/astra-void/vela-rbxts#readme) for the full list of supported utilities, host elements, and variants.
+State a UI has of its own (open, selected, disabled) is a variant you register, reading a Roblox attribute off the styled instance:
+
+```ts
+import { defineConfig, plugin } from "vela-rbxts";
+
+export default defineConfig({
+  plugins: [
+    plugin(({ addVariant }) => {
+      addVariant("selected", { attribute: "Selected", equals: true });
+    }),
+  ],
+});
+```
+
+```tsx
+<textbutton className="bg-slate-800 selected:bg-blue-600 md:px-6 max-md:px-3 transition-colors" />
+```
+
+See the [repository README](https://github.com/astra-void/vela-rbxts#readme) for the full list of supported utilities, host elements, and variants, plus responsive ranges, configurable breakpoints, and presets.
 
 ## License
 

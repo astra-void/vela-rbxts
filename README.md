@@ -12,7 +12,8 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 - `className?: ClassValue` is added to `React.Attributes` — and to `Vide.Attributes`, for projects that set `framework: "vide"` — through `vela-rbxts`.
 - Supported TSX files are lowered by the `rbxtsc` transformer when they target supported Roblox host elements or your own components.
 - The `vela` CLI lowers the same files ahead of `rbxtsc` for projects that cannot register a transform plugin.
-- Dynamic `ClassValue` expressions and supported Roblox-oriented variants are rewritten against an imported runtime helper when needed.
+- Dynamic `ClassValue` expressions and Roblox-oriented variants (responsive ranges, input and interaction states, and the attribute-backed states a project defines for itself) are rewritten against an imported runtime helper when needed.
+- Configuration is shareable: `presets` fold a design system's theme, plugins and variants into a project in one line.
 - The standalone Rust LSP server under `packages/lsp` provides completions, hover, document colors, quickfixes, and diagnostics in editors.
 - Unsupported utility families and unknown theme keys produce diagnostics instead of being silently ignored.
 
@@ -258,6 +259,7 @@ The current config model supports these theme families:
 - `radius`
 - `spacing`
 - `fontFamily`
+- `screens`
 - `rem`
 
 `spacing` feeds padding, gap, and sizing utilities in the current compiler slice.
@@ -308,6 +310,8 @@ export default defineConfig({
 ```
 
 `font-*` then covers both scales the way Tailwind does: the weight names (`font-bold`, `font-medium`, …) win, and every other payload is looked up as a font family key — `font-display` above, or `unknown-theme-key` when there is no such key.
+
+`screens` names the viewport widths the responsive variants are built from. It ships Tailwind's five (`sm` 640, `md` 768, `lg` 1024, `xl` 1280, `2xl` 1536) because a Roblox viewport is measured in the same pixels a browser one is, and a 1920×1080 desktop, a tablet, and a phone land in the same buckets either way. Each name gives you two variants: `md:` from that width up, and `max-md:` strictly below it. See [Responsive Variants](#responsive-variants) for the whole story, including how to replace the scale.
 
 ### Rem
 
@@ -400,15 +404,18 @@ Per-element utility restrictions do not apply to components, because the eventua
 
 ### Runtime-Aware Variants
 
-Supported variants:
+Built-in variants:
 
-- `sm:`, `md:`, and `lg:` as min-width buckets at 640, 768, and 1024 pixels
+- `sm:`, `md:`, `lg:`, `xl:`, and `2xl:` as min-width buckets at 640, 768, 1024, 1280, and 1536 pixels
+- `max-sm:` … `max-2xl:` as the complementary max-width buckets
 - `portrait:` and `landscape:`
 - `touch:`, `mouse:`, and `gamepad:`
 - `hover:`, tracked per element through `MouseEnter`/`MouseLeave`
 - `active:`, tracked through `InputBegan`/`InputEnded` for mouse and touch presses
 - `focus:`, tracked through `Focused`/`FocusLost` on a `textbox` and through `SelectionGained`/`SelectionLost` everywhere else
 - `dark:`, read from the local player's `VelaColorScheme` attribute
+
+Two more come from the project rather than from vela: variants a plugin [registers with `addVariant`](#state-variants), and the inline `attr-[Name=value]:` that reads a Roblox attribute without registering anything.
 
 Prefixes chain, and every condition has to match. Orientation is derived from the viewport as `width >= height ? landscape : portrait`. Input mode resolves gamepad first, then touch, then mouse. When the element also carries `transition`, a state change tweens instead of snapping.
 
@@ -420,9 +427,117 @@ Players.LocalPlayer.SetAttribute("VelaColorScheme", dark ? "dark" : "light");
 
 An attribute rather than a React context or a settings module: the attribute is readable from anywhere, including code that never rendered a Vela element, and it survives the player rejoining a place.
 
-The three interaction variants attach their listeners only when a rule actually uses them, and compose with whatever handlers you declared in `Event` — yours still run. A press that ends outside the element never reaches its `InputEnded`, so `active:` also clears on `MouseLeave`. There is no `disabled:`: Roblox has no disabled state to observe. Model it with your own prop and `pointer-events-none`.
+The three interaction variants attach their listeners only when a rule actually uses them, and compose with whatever handlers you declared in `Event`; yours still run. A press that ends outside the element never reaches its `InputEnded`, so `active:` also clears on `MouseLeave`. There is no built-in `disabled:`, because Roblox has no disabled state to observe, but it is two lines of config away and [State Variants](#state-variants) below is how.
 
 A variant on a utility that actually resolves forces the runtime path for that element, including inside a plain string literal — `className="sm:w-full"` moves that element onto the runtime resolver. (A variant on an unsupported utility resolves to nothing and stays static, which is not a feature to rely on.) Use variants where they earn it rather than by reflex.
+
+What the variant does **not** do is send the utility behind it to the in-game parser. `open:rounded-lg` resolves `rounded-lg` at compile time exactly as a bare `rounded-lg` would; only the condition travels, as a rule the host evaluates. That holds for every variant, built-in or your own.
+
+### Responsive Variants
+
+`md:` applies from a breakpoint up; `max-md:` applies strictly below it. The bounds meet rather than overlap, because the minimum is inclusive and the maximum is not, so at exactly 768px `md:` applies and `max-md:` does not, and between them the two cover every viewport exactly once.
+
+```tsx
+<frame className="hidden md:flex max-lg:px-2" />
+```
+
+They chain into a range, which is how you address one bucket and nothing else:
+
+```tsx
+<frame className="md:max-lg:flex" />
+```
+
+A range whose bounds leave no viewport, such as `md:max-sm:`, is reported as `invalid-breakpoint-range` rather than emitted as a rule that silently never fires.
+
+#### Configurable breakpoints
+
+`theme.screens` is a theme axis like any other: `theme.extend.screens` adds to the built-in scale, and a top-level `theme.screens` replaces it.
+
+```ts
+export default defineConfig({
+  theme: {
+    screens: {
+      phone: 480,
+      tablet: 768,
+      desktop: 1280,
+    },
+  },
+});
+```
+
+```tsx
+<frame className="tablet:flex desktop:w-96 max-tablet:hidden" />
+```
+
+Every name you define gets both forms, and the editor completes both. Replacing the scale drops the built-in names with it, so `md:` in the config above is an unknown variant, which is the point of replacing rather than extending. A `max-` prefix in front of a name that is not a breakpoint is reported as `unknown-breakpoint`, with the names you did define, rather than as a generic unknown variant.
+
+Widths are whole pixels. The runtime carries the default scale, so a project that only extends it sends nothing but the names it added.
+
+### State Variants
+
+A `hover:` is a state Roblox already exposes. Everything else a UI has states for, a panel that is open, a row that is selected, a button that is disabled, a tier a player has reached, is the application's own, and vela does not guess at it. `addVariant` is how you tell vela where that state lives: a Roblox attribute on the styled instance, and the value it has to hold.
+
+```ts
+// vela.config.ts
+import { defineConfig, plugin } from "vela-rbxts";
+
+export default defineConfig({
+  plugins: [
+    plugin(({ addVariant }) => {
+      addVariant("open", { attribute: "State", equals: "open" });
+      addVariant("selected", { attribute: "Selected", equals: true });
+      addVariant("disabled", { attribute: "Disabled", equals: true });
+    }),
+  ],
+});
+```
+
+```tsx
+<textbutton
+  className="
+    bg-slate-800
+    selected:bg-blue-600
+    selected:ring-2
+    hover:bg-slate-700
+    transition-colors
+  "
+/>
+```
+
+The attribute is read off **the Roblox instance the class list styles**, not off a context, a prop, or a store. Nothing in vela sets it; your application does, from wherever the state actually lives:
+
+```ts
+row.SetAttribute("Selected", isSelected);
+```
+
+That is deliberate. An attribute is readable from any script, replicates from the server, survives a rejoin, and shows up in Studio's property panel, so the state a variant reads is the same state the rest of the game reads, rather than a second copy of it living inside the styling layer.
+
+`equals` takes a string, a number, or a boolean, and is compared by value: a missing attribute matches nothing, which is what leaves a state variant inert until the game sets it. Names go through the same rules class names do (letters, digits, `-` and `_`), and a name vela already reads as something else is rejected where it is written: a built-in variant, a configured breakpoint, or anything starting with `max-` or `attr-`.
+
+#### The inline escape hatch
+
+Not every state deserves a name in the config. `attr-[Name=value]:` reads an attribute inline:
+
+```tsx
+<frame className="attr-[State=open]:bg-blue-600" />
+<frame className="attr-[Disabled=true]:opacity-50" />
+<frame className="attr-[Level=3]:ring-2" />
+```
+
+The value is taken at face value: `true`/`false` compare as booleans, a number as a number, anything else as the literal text. Nothing inside the brackets is evaluated: there is no expression language here, and there is not going to be one. The first `=` separates, so `attr-[State=a=b]` compares against the literal `a=b`.
+
+It composes like any other variant:
+
+```tsx
+<frame className="hover:attr-[State=open]:bg-blue-600" />
+<frame className="md:attr-[Selected=true]:ring-2" />
+```
+
+A malformed one (`attr-[`, `attr-[State]`, `attr-[=open]`, `attr-[State=]`, `attr-[State=open`) is reported as `malformed-attribute-variant`, naming what is missing, rather than degrading into an unknown-utility error about a family called `attr`.
+
+#### What it costs
+
+Nothing, on an element that does not use one. The runtime host subscribes to `GetAttributeChangedSignal` for exactly the attributes this element's rules and class value name, and to nothing at all otherwise; there is no generic attribute listener anywhere. A class value the compiler could not read is scanned for the same names as it resolves, so a state that only appears behind a call is subscribed to as soon as the class list names it and unsubscribed when it stops. Subscriptions are disconnected when the element goes away, on both React and Vide.
 
 ### Supported Utility Classes
 
@@ -457,7 +572,7 @@ The exhaustive table of accepted values lives in the [utility reference](https:/
 | Transform | `rotate-*`, `-rotate-*`, `scale-*` | `Rotation`, `UIScale` |
 | Effects | `opacity-*` | Every channel the element paints itself, integers 0 to 100: `BackgroundTransparency`, `TextTransparency` on text hosts, `ImageTransparency` on image hosts, and the `Transparency` of a stroke or shadow drawn with it. It multiplies with the color's own alpha and composes into the subtree, across component boundaries in both directions. On `canvasgroup` it lowers to `GroupTransparency`, which composites the subtree in one pass and ends the fade there. |
 | Typography | `text-{xs..9xl}`, `font-*`, `italic`, `not-italic`, `text-{left,center,right}`, `align-*`, `leading-*`, `text-wrap`, `text-nowrap`, `whitespace-{normal,nowrap}`, `truncate`, `uppercase`, `lowercase`, `capitalize`, `underline`, `line-through` | `TextSize`, `FontFace` (family, weight, and style), `TextXAlignment`, `TextYAlignment`, `LineHeight`, `TextWrapped`, `TextTruncate`; case transforms rewrite `Text` (at compile time for literals, at runtime otherwise) and decorations render through `RichText`. `font-{family}` selects the family from `theme.fontFamily`, and family, weight, and style merge into one `FontFace`. |
-| Motion | `transition`, `transition-{all,colors,opacity,transform,none}`, `duration-*`, `ease-{linear,in,out,in-out}`, `delay-*`, `animate-{spin,pulse,bounce,none}` | Runtime style changes tween through `TweenService` instead of snapping; the property group narrows which props tween (`colors` → `*Color3`, `opacity` → `*Transparency`, `transform` → `Position`/`Size`/`Rotation`/`AnchorPoint`), and everything outside it applies instantly. `animate-*` runs looping presets. Warns `motion-on-component` on component elements. |
+| Motion | `transition`, `transition-{all,colors,opacity,transform,shadow,none}`, `duration-*`, `ease-{linear,in,out,in-out}`, `delay-*`, `animate-{spin,pulse,bounce,none}` | Runtime style changes tween through `TweenService` instead of snapping, on the element **and on the UI\* helpers under it**; the property group narrows which props tween and everything outside it applies instantly. `animate-*` runs looping presets. Warns `motion-on-component` on component elements. See [Transitions](#transitions). |
 | Interaction | `pointer-events-{none,auto}` | `Interactable` |
 | Image fit | `object-{cover,contain,fill,tile}` | `ScaleType` on image hosts (`object-tile` is a Roblox-only extension) |
 | Visibility | `hidden`, `visible`, `overflow-{hidden,clip,visible}`, `overscroll-{auto,contain,none}` | `Visible`, `ClipsDescendants`, `ElasticBehavior` on scrolling frames |
@@ -467,6 +582,30 @@ Two value forms work across every color family (`bg-`, `text-`, `image-`, `place
 
 - Arbitrary hex colors: `bg-[#ff0000]` and the short `bg-[#f00]` resolve to `Color3.fromRGB`. Non-hex bracket payloads keep the `unsupported-arbitrary-value` diagnostic.
 - Opacity modifiers: a trailing `/N` (0–100) lowers to the family's transparency channel — `bg-blue-600/50` sets `BackgroundTransparency = 0.5`, `border-slate-500/25` sets the `UIStroke` `Transparency`, `divide-slate-500/10` fades the separator frames, and a gradient stop such as `from-blue-600/50` becomes a `UIGradient.Transparency` keypoint. `placeholder-` is the one family Roblox gives no transparency channel, so it still reports `unsupported-opacity-modifier`.
+
+### Transitions
+
+`transition` tweens whatever a runtime style change moves: a variant firing, a branch flipping, a class value re-resolving. Since 0.13 that includes the helper instances vela renders under the element, which is where a corner radius, a stroke and a shadow actually live:
+
+```tsx
+<textbutton className="rounded-md hover:rounded-xl transition duration-200" />
+<textbutton className="border-2 border-slate-500 hover:border-blue-500 transition-colors" />
+<frame className="shadow-sm hover:shadow-lg transition-shadow" />
+```
+
+The helpers are the ones the element already has; nothing is duplicated for the sake of animating it, and a [custom motion driver](#replacing-the-motion-driver) is handed the helper tweens too rather than being bypassed for them.
+
+What each group covers:
+
+| Group | On the element | On the helpers |
+| --- | --- | --- |
+| `transition` / `transition-all` | every tweenable prop | every tweenable helper prop |
+| `transition-colors` | `*Color3` | `UIStroke.Color`, `UIShadow.Color` |
+| `transition-opacity` | `*Transparency` | `UIStroke.Transparency`, `UIShadow.Transparency` |
+| `transition-transform` | `Position`, `Size`, `Rotation`, `AnchorPoint` | `UIScale.Scale` |
+| `transition-shadow` | nothing | every `UIShadow` prop |
+
+`UICorner.CornerRadius` and the layout helpers belong to no narrow group; `transition` covers them. A value Roblox cannot tween, such as the `ColorSequence` or `NumberSequence` a `UIGradient` holds, is written instantly whatever the group says.
 
 ### Arbitrary Values
 
@@ -519,9 +658,13 @@ Two branches that touch the same property are applied in the order they were wri
 
 **The runtime resolver handles only these prefixes:** `bg-*`, `text-{color}` (colors only — `text-lg` and `text-left` stay static-only), `border` and `border-*`, `rounded-*` (bare `rounded` is static-only), `p-*` through `pl-*`, `gap-*`, `w-*`, `h-*`, `size-*`, the positive margin forms `m-*` through `ml-*`, `divide-*`, the text transforms (`uppercase`, `lowercase`, `capitalize`, `underline`, `line-through` and their resets), and motion (`transition*`, `duration-*`, `delay-*`, `ease-*`, `animate-*`). Anything else in a class value that reaches the runtime is dropped with no diagnostic. Arbitrary length values resolve on both paths and agree; arbitrary hex colors, supported statically, do not resolve dynamically. It drops `fit` and `auto`, and lets a later `w-`/`h-` overwrite an earlier one instead of merging both into one `Size`.
 
+**Variants resolve the same on both paths.** The runtime reads a `md:`, an `open:` or an `attr-[State=open]:` prefix through the same table the compiler resolved it against: the breakpoints and registrations travel with the config to any file that hands the host a class value to parse, and a file that hands it none carries neither.
+
 ### Diagnostics
 
 - unsupported utility families and unknown theme keys emit warnings and are not lowered
+- a prefix vela recognises and cannot read is reported as itself rather than as a generic unknown variant: `unknown-breakpoint` for a `max-` in front of a name that is not a breakpoint, `malformed-attribute-variant` for an `attr-[…]` that does not parse, and `invalid-breakpoint-range` for a chain whose width bounds leave no viewport
+- `invalid-custom-variant` reports a `plugins.variants` registration that would shadow something vela already reads
 - unsupported `className` patterns emit diagnostics instead of being silently dropped
 - `className` on an element that is neither a supported host nor a component emits `classname-on-unsupported-host` and is left in the output
 - diagnostics reach `rbxtsc` through `context.addDiagnostic`; a host that does not expose it drops them
@@ -534,7 +677,69 @@ Two branches that touch the same property are applied in the order they were wri
 
 The project config file is named `vela.config.ts` or `vela.config.json` — those exact filenames, with no `.js`, `.mjs`, or `.cjs` variant. The host resolves it by walking upward from each source file and loading the nearest one it finds, preferring `.ts` within a directory and falling back to the built-in defaults when there is none. See [step 3](#3-add-velaconfigts) for the shape and [Theme Axes](#theme-axes) for the merge rules.
 
-The schema is only `framework`, `preflight`, `plugins`, `theme.colors`, `theme.radius`, `theme.spacing`, `theme.fontFamily`, `theme.rem`, and their `theme.extend` counterparts. There is no `content`, `presets`, `darkMode`, `prefix`, `safelist`, or `variants` option.
+The schema is only `presets`, `framework`, `preflight`, `plugins`, `theme.colors`, `theme.radius`, `theme.spacing`, `theme.fontFamily`, `theme.screens`, `theme.rem`, and their `theme.extend` counterparts. There is no `content`, `darkMode`, `prefix`, `safelist`, or top-level `variants` option; a variant is registered by a plugin, not listed in the config.
+
+### `presets`
+
+A preset is a shareable slice of configuration: a design system's colors, spacing, radii, breakpoints, plugins and custom variants, packaged so a project can adopt the whole thing in one line.
+
+```ts
+// vela.config.ts
+import { defineConfig } from "vela-rbxts";
+import { gameUiPreset } from "@example/vela-preset";
+
+export default defineConfig({
+  presets: [gameUiPreset()],
+  theme: {
+    extend: {
+      colors: { brand: "Color3.fromRGB(255, 136, 0)" },
+    },
+  },
+});
+```
+
+Presets resolve **before** the config that names them, in the order they were written:
+
+```text
+built-in defaults
+  → presets, first to last
+    → this config
+```
+
+So a later preset overrides an earlier one, and the local config always wins. This is a fold over configuration *inputs*, not a merge of finished configs, which is what keeps the existing replace-vs-extend rules coherent: a preset that sets `theme.radius` replaces the scale, and a project's `theme.extend.radius` then extends *what the preset left* rather than racing it back to the built-in defaults. Plugins accumulate the same way: every preset's plugins run before the project's own, each against the theme resolved so far, so a later `addUtilities` or `addVariant` overrides an earlier registration of the same name.
+
+Write a preset with `definePreset`, which types it without resolving it:
+
+```ts
+// @example/vela-preset
+import { definePreset, plugin } from "vela-rbxts";
+
+export const gameUiPreset = () =>
+  definePreset({
+    theme: {
+      extend: {
+        colors: { surface: "Color3.fromRGB(29, 41, 61)" },
+        screens: { tablet: 900 },
+      },
+    },
+    plugins: [
+      plugin(({ addUtilities, addVariant }) => {
+        addUtilities({ card: "bg-surface rounded-lg p-4" });
+        addVariant("open", { attribute: "State", equals: "open" });
+      }),
+    ],
+  });
+```
+
+Presets nest: a preset may name presets of its own. A structure that includes itself is rejected rather than expanded forever.
+
+A `vela.config.json` can inline a preset, which is just a config object, but it cannot import one from a package, because a JSON file has no imports and vela will not evaluate a module path to give it some. **A preset distributed as a package is a `vela.config.ts` capability.** If that is what you need, that is the config format to use.
+
+```json
+{
+  "presets": [{ "theme": { "extend": { "spacing": { "gutter": "new UDim(0, 24)" } } } }]
+}
+```
 
 ### `framework`
 
@@ -602,12 +807,34 @@ Both forms are ordinary class tokens once registered:
 - **They work on both lowering paths.** A plugin utility inside a dynamic `className` resolves in-game through the same table, which the runtime helper carries.
 - **They can reach each other.** `addUtilities({ card: "panel rounded-xl" })` expands `panel` in turn. A cycle is dropped rather than expanded forever.
 - **Sorting puts them first.** `source.sortVelaClasses` moves a plugin utility ahead of the plain utilities, so a `bg-*` written beside it is the one that wins.
-- **They are not the only extension point.** `setMotionDriver` below replaces what drives `transition` and `animate-*`.
+- **They are not the only extension point.** `addVariant` below registers a runtime condition of your own, and `setMotionDriver` replaces what drives `transition` and `animate-*`.
 - **Names are class tokens, not selectors.** A leading `.` is accepted and stripped, since Tailwind plugins are written that way; a `:` is not, because variants belong at the use site.
 
 What a plugin utility expands to is checked where it is used, and a class the body cannot resolve is reported on the token you wrote: `Plugin utility "btn" expands to "bg-nope-500": Unknown theme key "nope-500" …`. A property map is **not** checked — the property name and the expression are emitted as written, and neither is validated against the host element, so `panel` on a `textlabel` is your responsibility.
 
 `theme("colors.slate.800")` reads the resolved theme, including your own `theme.extend` values, and throws when the key is missing unless a second argument gives a fallback. Later plugins overwrite an earlier utility of the same name.
+
+#### Registering a variant
+
+`addVariant` registers a `name:` prefix that reads a Roblox attribute off the styled instance. It is the same extension point `addUtilities` is, and what it produces is a runtime condition indistinguishable from a built-in one:
+
+```ts
+plugin(({ addVariant }) => {
+  addVariant("selected", { attribute: "Selected", equals: true });
+});
+```
+
+[State Variants](#state-variants) covers the semantics, the escape hatch that needs no registration, and what it costs. Registrations are checked where they are written: a name vela already reads as something else (a built-in variant, a configured breakpoint, or anything starting with `max-` or `attr-`) is rejected with a message saying which. A `vela.config.json` states the same thing under `plugins.variants`, and one that registers such a name is reported as `invalid-custom-variant` and ignored rather than silently shadowing a built-in.
+
+```json
+{
+  "plugins": {
+    "variants": {
+      "selected": { "attribute": "Selected", "equals": true }
+    }
+  }
+}
+```
 
 #### Replacing the motion driver
 
@@ -629,7 +856,10 @@ export const springDriver = {
   // ({ time, style, direction, delay, property }). `style` and `direction` are
   // `EasingStyle`/`EasingDirection` member names — "Linear", "InOut" — so they
   // index the enums directly.
-  transition(instance: Instance, goal: Record<string, unknown>, spec) { … },
+  // `target` (added in 0.13) says what `instance` is: `{ owner }` for the
+  // styled GuiObject, and `{ owner, helper: "uicorner" }` for one of the UI*
+  // helpers vela renders under it.
+  transition(instance: Instance, goal: Record<string, unknown>, spec, target?) { … },
   // `animate-spin` and friends, by name. Return a cleanup for when the
   // animation is taken away.
   animate(instance: Instance, animation: string) { … return () => {}; },
@@ -639,6 +869,8 @@ export const springDriver = {
 Write them as methods, as above — not as arrow properties. roblox-ts gives a method an implicit `self` and the runtime calls it as one; `transition: (instance, goal, spec) => { … }` is rejected with `Attempted to assign non-method where method was expected`.
 
 Each method is taken over independently, so a driver that only implements `transition` keeps the built-in `animate-*` presets. **A driver that implements `transition` owns writing those properties**: while a transition is in play the element renders its held value and never assigns the new one itself, so a driver that does nothing leaves the instance where it was.
+
+`transition` is also called for the UI* helpers vela renders under the element: a `UICorner` a `hover:rounded-xl` reshapes, a `UIStroke` a border variant repaints, a `UIShadow` a `shadow-*` variant grows. The instance passed is the helper itself, and the fourth argument names it, so a driver keying state off the element can still tell the two apart. The argument is optional and additive: a driver written against the three-argument shape keeps working and simply tweens the helper as it would any other instance.
 
 Because a JSON config cannot hold a function, `vela.config.json` states the resolved result instead:
 
@@ -654,7 +886,9 @@ Because a JSON config cannot hold a function, `vela.config.json` states the reso
 }
 ```
 
-The `.ts` config is transpiled and executed rather than type-checked, so a type error in it passes silently while a syntax error fails the build. The `.json` config is parsed, with a `$schema` key ignored. Project `paths` and ambient types are not available inside it. It is also re-read and re-executed for every eligible source file, so keep it cheap.
+The `.ts` config is transpiled and executed rather than type-checked, so a type error in it passes silently while a syntax error fails the build. The `.json` config is parsed, with a `$schema` key ignored. Project `paths` and ambient types are not available inside it.
+
+It is executed **once** per build rather than once per source file: the host resolves a config per directory and reuses it, re-reading the file only when its contents change, which is also what makes a config that throws recoverable without restarting a watch process. Its failure is cached alongside its result, so the error is reported once and the fix takes effect on the next read.
 
 Transformer options can be passed through the `tsconfig.json` plugin entry: `filter.skipNodeModules`, `filter.requireClassName`, `filter.requireJsxSyntax`, `diagnosticCodeBase` (default `89000`), `projectRoot`, and `config`.
 
@@ -666,7 +900,28 @@ Install **Vela LSP** (`astra-void.vela-rbxts-lsp`) for VS Code, or point any oth
 
 The standalone Rust LSP lives in `packages/lsp`. It reuses the native compiler as the semantic engine and only handles transport, document state, and protocol translation, so what the editor tells you about a class is what the compiler would do with it.
 
-It provides completions inside a `className` (and nowhere else), hover, push diagnostics, document colors and color presentations, quickfix code actions, class sorting, and document highlight. It does not provide go-to-definition, references, rename, formatting, semantic tokens, inlay hints, or signature help.
+It provides completions inside a `className` (and nowhere else), hover, push diagnostics, document colors and color presentations, quickfix code actions, class sorting, document highlight, and optional inlay hints. It does not provide go-to-definition, references, rename, formatting, semantic tokens, or signature help.
+
+Everything a project configures is part of that vocabulary: a breakpoint you defined completes as `tablet:` and `max-tablet:`, a variant a plugin registered completes with the attribute it reads, and `attr-[` completes to the inline form, plus every attribute your config already names, written out. Completing a variant inside a chain rewrites that segment alone, so the utility behind it survives.
+
+### Inlay Hints
+
+Off by default. Turned on, the editor shows what each class lowers to, after the class:
+
+```tsx
+<frame className="p-4 bg-blue-600 rounded-lg" />
+//                    ↑ UIPadding.PaddingTop/Right/Bottom/Left
+//                              ↑ BackgroundColor3
+//                                          ↑ UICorner.CornerRadius
+```
+
+```json
+{
+  "velaRbxts.inlayHints.enabled": true
+}
+```
+
+The summaries name the Roblox properties and helper instances, not the expressions behind them; that is what hover is for. They come from the compiler's own lowering read back through an editor API, so a hint cannot say something the emit would not do, and a class already carrying a diagnostic gets no hint beside the squiggle.
 
 ### Sorting Classes
 
@@ -681,6 +936,8 @@ The `source.sortVelaClasses` action rewrites every `className` in the file into 
 ```
 
 Sorting never changes what an element renders. Utilities that can write the same Roblox property — `gap-*` with `space-*`, `border-*`/`ring-*`/`outline-*`, `w-*`/`h-*`/`size-*`, `opacity-*` with a `bg-*/N` modifier — sort as one group, so the one you wrote last stays last.
+
+Variant prefixes sort in a fixed order, narrow to broad: min-width breakpoints ascending, then max-width breakpoints widest-first, then orientation, input mode, your own state variants (registered ones before inline `attr-[…]`), then `hover:`/`active:`/`focus:`, then `dark:`. The order the v0.12 variants already sorted into is unchanged, because the new kinds slot into bands of their own and moving one past another would change which rule wins where both apply.
 
 Prebuilt binaries cover darwin arm64 and x64, linux x64 gnu and musl, linux arm64 gnu, and win32 x64. Linux arm64 musl and Windows on ARM have no binary on any channel and need a build from source.
 
@@ -713,6 +970,21 @@ export function Example() {
     <frame className="bg-slate-700 border border-slate-700 rounded-md px-4 py-3 w-80 h-27 gap-4">
       <textlabel Text="rbxts consumer harness" TextScaled TextWrapped />
       <textlabel Text="layout and spacing baseline" TextScaled TextWrapped />
+      <textbutton
+        Text="stateful"
+        className="
+          w-full
+          rounded-lg
+          bg-slate-800
+          hover:bg-slate-700
+          open:bg-blue-600
+          attr-[Selected=true]:ring-2
+          md:px-6
+          max-md:px-3
+          transition-all
+          duration-200
+        "
+      />
     </frame>
   );
 }

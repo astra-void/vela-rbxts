@@ -10,11 +10,15 @@ Source package for the standalone vela-rbxts Rust LSP wrapper.
 - Quick-fix code actions: replace a token with the nearest valid suggestion, or
   remove it.
 - Document highlight for every occurrence of the class token under the cursor.
+- Optional inlay hints summarizing what each class lowers to, off until the
+  client sends `velaRbxts.inlayHints.enabled` (through
+  `initializationOptions.inlayHints` at startup or
+  `workspace/didChangeConfiguration` later).
 - Project-config aware: the editor client loads each `vela.config.ts` and pushes
   the resolved theme via the `vela-rbxts/setConfigs` notification (and through
   `initializationOptions.configs` at startup). The server picks the config
-  nearest to each source file, so custom theme tokens resolve instead of being
-  flagged as unknown.
+  nearest to each source file, so custom theme tokens, configured breakpoints
+  and registered variants resolve instead of being flagged as unknown.
 
 The release flow stages publish artifacts under `packages/lsp/.npm/publish`:
 
