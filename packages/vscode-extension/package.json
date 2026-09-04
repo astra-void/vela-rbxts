@@ -64,6 +64,11 @@
 					"type": "boolean",
 					"default": true,
 					"description": "Enable the standalone vela-rbxts Rust LSP integration for TypeScript and TSX files."
+				},
+				"velaRbxts.inlayHints.enabled": {
+					"type": "boolean",
+					"default": false,
+					"description": "Show what each vela class lowers to \u2014 the Roblox properties and helper instances \u2014 inline after the class. Off by default: the summaries are for reading a class list back rather than for every edit."
 				}
 			}
 		}

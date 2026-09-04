@@ -1,7 +1,7 @@
 use crate::api::{
     CompletionRequest, CompletionResponse, DiagnosticsRequest, DiagnosticsResponse,
-    DocumentColorsRequest, DocumentColorsResponse, HoverRequest, HoverResponse,
-    SortClassNamesRequest, SortClassNamesResponse,
+    DocumentColorsRequest, DocumentColorsResponse, HoverRequest, HoverResponse, InlayHintsRequest,
+    InlayHintsResponse, SortClassNamesRequest, SortClassNamesResponse,
 };
 
 pub(crate) fn get_completions_impl(request: CompletionRequest) -> CompletionResponse {
@@ -18,6 +18,10 @@ pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsRe
 
 pub(crate) fn get_document_colors_impl(request: DocumentColorsRequest) -> DocumentColorsResponse {
     crate::editor::colors::get_document_colors_impl(request)
+}
+
+pub(crate) fn get_inlay_hints_impl(request: InlayHintsRequest) -> InlayHintsResponse {
+    crate::editor::inlay::get_inlay_hints_impl(request)
 }
 
 pub(crate) fn sort_class_names_impl(request: SortClassNamesRequest) -> SortClassNamesResponse {

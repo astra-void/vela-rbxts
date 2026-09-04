@@ -66,6 +66,34 @@ pub struct DiagnosticsRequest {
 
 #[cfg_attr(not(target_arch = "wasm32"), napi(object))]
 #[derive(Clone, Debug)]
+pub struct InlayHintsRequest {
+    pub source: String,
+    pub options: Option<EditorOptions>,
+}
+
+/// What one class token lowers to, for an editor that wants to show it inline.
+/// It is the compiler's own lowering read back, so a hint cannot drift from the
+/// emit the way a second semantic model would.
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug)]
+pub struct InlayHint {
+    /// UTF-16 offset just past the token the hint belongs to.
+    pub position: u32,
+    /// The summary as it should render inline, trimmed to stay on the line.
+    pub label: String,
+    /// The untrimmed summary, for a hover over the hint.
+    pub tooltip: String,
+    pub token: String,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug)]
+pub struct InlayHintsResponse {
+    pub hints: Vec<InlayHint>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), napi(object))]
+#[derive(Clone, Debug)]
 pub struct DocumentColorsRequest {
     pub source: String,
     pub options: Option<EditorOptions>,

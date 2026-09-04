@@ -20,6 +20,7 @@ pub struct ServerState {
     project_root: Option<PathBuf>,
     configs: Vec<ConfigEntry>,
     documents: HashMap<Url, Document>,
+    inlay_hints_enabled: bool,
 }
 
 impl ServerState {
@@ -29,6 +30,14 @@ impl ServerState {
 
     pub fn set_project_root(&mut self, project_root: Option<PathBuf>) {
         self.project_root = project_root;
+    }
+
+    pub fn set_inlay_hints_enabled(&mut self, enabled: bool) {
+        self.inlay_hints_enabled = enabled;
+    }
+
+    pub fn inlay_hints_enabled(&self) -> bool {
+        self.inlay_hints_enabled
     }
 
     pub fn set_configs(&mut self, mut configs: Vec<ConfigEntry>) {

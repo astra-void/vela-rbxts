@@ -19,8 +19,8 @@ pub use api::{
     ClassNameEdit, ClassTokenSpan, CompletionItem, CompletionRequest, CompletionResponse,
     Diagnostic, DiagnosticsRequest, DiagnosticsResponse, DocumentColor, DocumentColorsRequest,
     DocumentColorsResponse, EditorDiagnostic, EditorOptions, EditorRange, HoverContent,
-    HoverRequest, HoverResponse, SortClassNamesRequest, SortClassNamesResponse, TransformOptions,
-    TransformResult,
+    HoverRequest, HoverResponse, InlayHint, InlayHintsRequest, InlayHintsResponse,
+    SortClassNamesRequest, SortClassNamesResponse, TransformOptions, TransformResult,
 };
 
 /// All class tokens in `className` attributes of supported host elements,
@@ -76,6 +76,15 @@ pub fn get_diagnostics(request: DiagnosticsRequest) -> DiagnosticsResponse {
 #[napi(js_name = "getDocumentColors")]
 pub fn get_document_colors(request: DocumentColorsRequest) -> DocumentColorsResponse {
     api::editor::get_document_colors_impl(request)
+}
+
+/// What every class in one document lowers to, for an editor that shows it
+/// inline. Off by default in the clients that offer it: the summaries are for
+/// reading a class list back, not for every edit.
+#[cfg(not(target_arch = "wasm32"))]
+#[napi(js_name = "getInlayHints")]
+pub fn get_inlay_hints(request: InlayHintsRequest) -> InlayHintsResponse {
+    api::editor::get_inlay_hints_impl(request)
 }
 
 /// Canonical class order for one document, as replacement edits over each

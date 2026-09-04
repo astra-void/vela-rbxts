@@ -11,19 +11,21 @@ use tower_lsp::lsp_types::{
     CodeActionProviderCapability, CodeActionResponse, Color, ColorInformation, ColorPresentation,
     ColorPresentationParams, ColorProviderCapability, CompletionItem, CompletionItemKind,
     CompletionList, CompletionOptions, CompletionParams, CompletionResponse, CompletionTextEdit,
-    Diagnostic, DiagnosticSeverity, DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentColorParams, DocumentHighlight,
-    DocumentHighlightKind, DocumentHighlightParams, Hover, HoverContents, HoverParams,
-    HoverProviderCapability, InitializeParams, InitializeResult, InitializedParams, MarkupContent,
-    MarkupKind, NumberOrString, OneOf, Position, PositionEncodingKind, Range, ServerCapabilities,
-    ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
+    Diagnostic, DiagnosticSeverity, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
+    DocumentColorParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, Hover,
+    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+    InitializedParams, InlayHint as LspInlayHint, InlayHintKind, InlayHintLabel, InlayHintParams,
+    MarkupContent, MarkupKind, NumberOrString, OneOf, Position, PositionEncodingKind, Range,
+    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
+    Url, WorkspaceEdit,
 };
 use tower_lsp::{Client, LanguageServer};
 use vela_rbxts_compiler::{
     ClassTokenSpan, CompletionRequest, DiagnosticsRequest, DocumentColor as CompilerDocumentColor,
     DocumentColorsRequest, EditorDiagnostic as CompilerDiagnostic, EditorOptions, HoverRequest,
-    SortClassNamesRequest, get_class_tokens, get_completions, get_diagnostics, get_document_colors,
-    get_hover,
+    InlayHintsRequest, SortClassNamesRequest, get_class_tokens, get_completions, get_diagnostics,
+    get_document_colors, get_hover, get_inlay_hints,
 };
 
 use crate::documents::Document;
@@ -41,6 +43,32 @@ struct InitializationOptions {
     workspace_root: Option<String>,
     #[serde(default)]
     configs: Vec<ConfigPayload>,
+    #[serde(default)]
+    inlay_hints: Option<bool>,
+}
+
+/// What a `workspace/didChangeConfiguration` may carry. Only the settings this
+/// server actually reads are named; everything else in the payload is the
+/// client's business.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SettingsPayload {
+    #[serde(default, rename = "velaRbxts")]
+    vela_rbxts: Option<VelaSettings>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct VelaSettings {
+    #[serde(default)]
+    inlay_hints: Option<InlayHintSettings>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InlayHintSettings {
+    #[serde(default)]
+    enabled: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -166,6 +194,10 @@ impl LanguageServer for RbxtsLanguageServer {
                     .map(ConfigPayload::into_entry)
                     .collect(),
             );
+
+            if let Some(enabled) = options.inlay_hints {
+                state.set_inlay_hints_enabled(enabled);
+            }
         }
 
         self.client
@@ -206,6 +238,10 @@ impl LanguageServer for RbxtsLanguageServer {
                     },
                 )),
                 document_highlight_provider: Some(OneOf::Left(true)),
+                // Advertised whatever the setting says, so turning it on does
+                // not need a restart; the handler answers with nothing while it
+                // is off.
+                inlay_hint_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
         })
@@ -222,6 +258,61 @@ impl LanguageServer for RbxtsLanguageServer {
 
     async fn shutdown(&self) -> Result<()> {
         Ok(())
+    }
+
+    async fn did_change_configuration(&self, params: DidChangeConfigurationParams) {
+        let Ok(settings) = serde_json::from_value::<SettingsPayload>(params.settings) else {
+            return;
+        };
+
+        if let Some(enabled) = settings
+            .vela_rbxts
+            .and_then(|vela| vela.inlay_hints)
+            .and_then(|hints| hints.enabled)
+        {
+            self.state.write().await.set_inlay_hints_enabled(enabled);
+        }
+    }
+
+    /// Off unless the client asked for them: a summary beside every class is
+    /// for reading a class list back, not for every keystroke.
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<LspInlayHint>>> {
+        if !self.state.read().await.inlay_hints_enabled() {
+            return Ok(None);
+        }
+
+        let uri = params.text_document.uri;
+        let Some((document, options)) = self.document_with_options(&uri).await else {
+            return Ok(None);
+        };
+
+        let start = document.position_to_offset(params.range.start);
+        let end = document.position_to_offset(params.range.end);
+        let hints = get_inlay_hints(InlayHintsRequest {
+            source: document.text.clone(),
+            options: Some(options),
+        })
+        .hints
+        .into_iter()
+        .filter(|hint| hint.position >= start && hint.position <= end)
+        .map(|hint| LspInlayHint {
+            position: document.offset_to_position(hint.position),
+            label: InlayHintLabel::String(format!(" \u{2192} {}", hint.label)),
+            kind: Some(InlayHintKind::TYPE),
+            text_edits: None,
+            tooltip: Some(tower_lsp::lsp_types::InlayHintTooltip::MarkupContent(
+                MarkupContent {
+                    kind: MarkupKind::Markdown,
+                    value: format!("`{}` \u{2192} {}", hint.token, hint.tooltip),
+                },
+            )),
+            padding_left: Some(false),
+            padding_right: Some(false),
+            data: None,
+        })
+        .collect();
+
+        Ok(Some(hints))
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {

@@ -60,6 +60,11 @@ export async function activate(
 
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration((event) => {
+			// The server reads this one live, so it costs no restart.
+			if (event.affectsConfiguration("velaRbxts.inlayHints")) {
+				void pushInlayHintSetting();
+			}
+
 			if (!event.affectsConfiguration("velaRbxts.lsp")) {
 				return;
 			}
@@ -148,6 +153,7 @@ async function startClient(
 			),
 			workspaceRoot,
 			configs,
+			inlayHints: areInlayHintsEnabled(),
 		},
 		outputChannel,
 		outputChannelName: OUTPUT_CHANNEL_NAME,
@@ -390,6 +396,28 @@ function isLspEnabled(): boolean {
 	return vscode.workspace
 		.getConfiguration("velaRbxts.lsp")
 		.get<boolean>("enabled", true);
+}
+
+function areInlayHintsEnabled(): boolean {
+	return vscode.workspace
+		.getConfiguration("velaRbxts.inlayHints")
+		.get<boolean>("enabled", false);
+}
+
+async function pushInlayHintSetting(): Promise<void> {
+	if (!client) {
+		return;
+	}
+
+	try {
+		await client.sendNotification("workspace/didChangeConfiguration", {
+			settings: {
+				velaRbxts: { inlayHints: { enabled: areInlayHintsEnabled() } },
+			},
+		});
+	} catch (error) {
+		log(`Failed to push the inlay hint setting: ${formatError(error)}`);
+	}
 }
 
 function getTraceSetting(): TraceSetting {
