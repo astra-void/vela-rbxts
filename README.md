@@ -551,7 +551,7 @@ The exhaustive table of accepted values lives in the [utility reference](https:/
 | Gradient | `bg-gradient-to-*` (alias `bg-linear-to-*`), `from-*`, `via-*`, `to-*` | `UIGradient`. Any stop also forces `BackgroundColor3` to white, overriding an accompanying `bg-*` regardless of token order. |
 | Border | `border`, `border-{0,1,2,4}`, `border-{color}`, `border-{round,bevel,miter}` | `UIStroke` thickness, color, and `LineJoinMode` |
 | Ring / outline | `ring`, `ring-{0,1,2,4,8}`, `ring-{color}`, `outline`, `outline-{0,1,2,4,8}`, `outline-{color}`, `outline-none` | The same `UIStroke` as `border-*`, with `ApplyStrokeMode = Border` |
-| Radius | `rounded`, `rounded-*` | `UICorner.CornerRadius`, resolved from the theme |
+| Radius | `rounded`, `rounded-*`, `rounded-{t,r,b,l,tl,tr,bl,br}-*` | `UICorner` all-corner or directional radius properties, resolved from the theme |
 | Shadow | `shadow`, `shadow-{sm,md,lg,xl,2xl}`, `shadow-none`, `shadow-{color}` | `UIShadow` |
 | Stacking | `z-{0,10,20,30,40,50}` | `ZIndex` |
 | Padding | `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, `pl-*` | `UIPadding` |
@@ -577,6 +577,8 @@ The exhaustive table of accepted values lives in the [utility reference](https:/
 | Image fit | `object-{cover,contain,fill,tile}` | `ScaleType` on image hosts (`object-tile` is a Roblox-only extension) |
 | Visibility | `hidden`, `visible`, `overflow-{hidden,clip,visible}`, `overscroll-{auto,contain,none}` | `Visible`, `ClipsDescendants`, `ElasticBehavior` on scrolling frames |
 | Scrolling | `scroll-{x,y,xy}`, `scroll-none`, `scrollbar-w-*`, `scrollbar-none`, `scrollbar-{color}`, `canvas-{auto,auto-x,auto-y,none}` | `ScrollingDirection`, `ScrollingEnabled`, `ScrollBarThickness` (from the spacing scale), `ScrollBarImageColor3`, `AutomaticCanvasSize` — scrolling frames only. `scrollbar-*` and `canvas-*` are Roblox-only extensions. |
+
+A per-corner `rounded-{t,r,b,l,tl,tr,bl,br}-*` beats the all-corner `rounded-*` on the corners it names, whichever order the two are written in, the way the two rules stack in Tailwind's own stylesheet. `rounded-l-lg rounded-md` and `rounded-md rounded-l-lg` both round the left corners to `lg` and the right ones to `md`. A corner no utility names is squared off rather than left at the Roblox default, so `rounded-r-lg` alone keeps the left side flat. Under a variant the shorthand still repaints what the base left open: `rounded-l-lg hover:rounded-md` holds the left corners at `lg` and rounds the right pair on hover.
 
 Two value forms work across every color family (`bg-`, `text-`, `image-`, `placeholder-`, `border-`, `divide-`, `shadow-`, `ring-`, `outline-`, and the gradient stops):
 
@@ -618,7 +620,7 @@ Length families read a `[...]` payload directly, so a one-off value does not nee
 | `[50%]` | scale `0.5` |
 | `[-8px]` | negative offset |
 
-It works on `p-*`/`m-*`/`gap-*`/`space-*`, `w-*`/`h-*`/`size-*`/`min-*`/`max-*`/`basis-*`, `top-*`/`left-*`/`right-*`/`bottom-*`/`inset-*`/`translate-*`, `rounded-*`, and `scrollbar-w-*`. A few families read the number in their own unit instead: `text-[13px]` (`TextSize`), `leading-[1.6]` (`LineHeight`), `rotate-[17deg]` (`Rotation`), `z-[15]` (`ZIndex`, integers only), and `border-[3px]`/`ring-[3px]`/`outline-[3px]` (`UIStroke.Thickness`). Every family that counts in pixels reads `rem` as well as `px`, so `text-[1.5rem]` and `border-[0.125rem]` say what `text-[24px]` and `border-[2px]` say.
+It works on `p-*`/`m-*`/`gap-*`/`space-*`, `w-*`/`h-*`/`size-*`/`min-*`/`max-*`/`basis-*`, `top-*`/`left-*`/`right-*`/`bottom-*`/`inset-*`/`translate-*`, `rounded-*` (including directional forms such as `rounded-l-[10%]`, `rounded-r-[7px]`, and `rounded-tr-[0.625rem]`), and `scrollbar-w-*`. A few families read the number in their own unit instead: `text-[13px]` (`TextSize`), `leading-[1.6]` (`LineHeight`), `rotate-[17deg]` (`Rotation`), `z-[15]` (`ZIndex`, integers only), and `border-[3px]`/`ring-[3px]`/`outline-[3px]` (`UIStroke.Thickness`). Every family that counts in pixels reads `rem` as well as `px`, so `text-[1.5rem]` and `border-[0.125rem]` say what `text-[24px]` and `border-[2px]` say.
 
 `rem` is resolved against `theme.rem.base`, the same base the viewport scaling divides by, so a rem payload is worth exactly what one written on the spacing scale is — and it follows the viewport from there like any other offset. A payload the family cannot read — `w-[3em]`, `z-[1.5]` — still reports `unsupported-arbitrary-value` rather than being guessed at. CSS units other than `px`, `rem` and `%` have no Roblox meaning.
 
@@ -656,7 +658,7 @@ Three things send a branch back to the runtime resolver:
 
 Two branches that touch the same property are applied in the order they were written, so `[a && "bg-red-500", b && "bg-blue-500"]` paints blue when both hold. Two branches that touch different halves of one property are not merged: `[a && "w-40", b && "h-10"]` is two writes to `Size`, and the later one wins — write the pair inside a single branch when both axes matter.
 
-**The runtime resolver handles only these prefixes:** `bg-*`, `text-{color}` (colors only — `text-lg` and `text-left` stay static-only), `border` and `border-*`, `rounded-*` (bare `rounded` is static-only), `p-*` through `pl-*`, `gap-*`, `w-*`, `h-*`, `size-*`, the positive margin forms `m-*` through `ml-*`, `divide-*`, the text transforms (`uppercase`, `lowercase`, `capitalize`, `underline`, `line-through` and their resets), and motion (`transition*`, `duration-*`, `delay-*`, `ease-*`, `animate-*`). Anything else in a class value that reaches the runtime is dropped with no diagnostic. Arbitrary length values resolve on both paths and agree; arbitrary hex colors, supported statically, do not resolve dynamically. It drops `fit` and `auto`, and lets a later `w-`/`h-` overwrite an earlier one instead of merging both into one `Size`.
+**The runtime resolver handles only these prefixes:** `bg-*`, `text-{color}` (colors only — `text-lg` and `text-left` stay static-only), `border` and `border-*`, `rounded` and `rounded-*` (including directional forms), `p-*` through `pl-*`, `gap-*`, `w-*`, `h-*`, `size-*`, the positive margin forms `m-*` through `ml-*`, `divide-*`, the text transforms (`uppercase`, `lowercase`, `capitalize`, `underline`, `line-through` and their resets), and motion (`transition*`, `duration-*`, `delay-*`, `ease-*`, `animate-*`). Anything else in a class value that reaches the runtime is dropped with no diagnostic. Arbitrary length values resolve on both paths and agree; arbitrary hex colors, supported statically, do not resolve dynamically. It drops `fit` and `auto`, and lets a later `w-`/`h-` overwrite an earlier one instead of merging both into one `Size`.
 
 **Variants resolve the same on both paths.** The runtime reads a `md:`, an `open:` or an `attr-[State=open]:` prefix through the same table the compiler resolved it against: the breakpoints and registrations travel with the config to any file that hands the host a class value to parse, and a file that hands it none carries neither.
 

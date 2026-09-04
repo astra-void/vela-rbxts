@@ -38,6 +38,9 @@ function StaticUtilities() {
 			<Row label="bg + rounded + p">
 				<frame className="w-24 h-6 bg-slate-800 rounded-lg p-2" />
 			</Row>
+			<Row label="directional rounded">
+				<frame className="w-24 h-6 bg-slate-800 rounded-l-lg" />
+			</Row>
 			<Row label="border">
 				<frame className="w-24 h-6 bg-slate-800 border-2 border-blue-500 rounded-md" />
 			</Row>

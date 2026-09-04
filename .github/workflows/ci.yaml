@@ -105,8 +105,17 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
 
+      # `typecheck` pulls `compiler-wasm#build` in through turbo, so this job
+      # needs the same wasm toolchain the build and test jobs install.
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
 
       - name: Cache Rust builds
         uses: Swatinem/rust-cache@v2

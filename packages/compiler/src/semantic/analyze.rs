@@ -263,7 +263,7 @@ fn supports_arbitrary_value(utility: &UtilityKind) -> bool {
             | UtilityKind::Inset
             | UtilityKind::TranslateX
             | UtilityKind::TranslateY
-            | UtilityKind::Radius
+            | UtilityKind::Radius(_)
     )
 }
 

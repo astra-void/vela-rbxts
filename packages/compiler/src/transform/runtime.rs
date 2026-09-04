@@ -149,6 +149,58 @@ where
     style
 }
 
+/// `UICorner.CornerRadius` writes all four directional properties. React does
+/// not guarantee prop assignment order, so mixing that shorthand with an
+/// individual radius can erase the individual value. Once a directional
+/// utility is present, expand the shorthand into all four explicit properties.
+///
+/// Only a helper that ships statically is filled in here. One hoisted onto a
+/// rule is filled by the runtime instead, once every rule that writes a corner
+/// has been merged — filling it early would pin the untouched corners to zero
+/// and leave a later `rounded-*` under a variant with nothing to overwrite.
+pub(crate) fn normalize_directional_corner_radii(style: &mut StyleIr) {
+    const DIRECTIONAL_PROPS: [&str; 4] = [
+        "TopLeftRadius",
+        "TopRightRadius",
+        "BottomLeftRadius",
+        "BottomRightRadius",
+    ];
+
+    let Some(helper) = style
+        .base
+        .helpers
+        .iter_mut()
+        .find(|helper| helper.tag == "uicorner")
+    else {
+        return;
+    };
+
+    if !helper
+        .props
+        .iter()
+        .any(|prop| DIRECTIONAL_PROPS.contains(&prop.name.as_ref()))
+    {
+        return;
+    }
+
+    let baseline = helper
+        .props
+        .iter()
+        .find(|prop| prop.name == "CornerRadius")
+        .map(|prop| prop.value.clone())
+        .unwrap_or_else(|| "new UDim(0, 0)".to_owned());
+    helper.props.retain(|prop| prop.name != "CornerRadius");
+
+    for name in DIRECTIONAL_PROPS {
+        if helper.props.iter().all(|prop| prop.name != name) {
+            helper.props.push(PropEntry {
+                name: name.into(),
+                value: baseline.clone(),
+            });
+        }
+    }
+}
+
 /// A plugin utility that names Roblox properties bypasses the utility tables,
 /// so it lands on the base bundle or, under a variant, on a runtime rule.
 fn apply_plugin_props(
@@ -781,7 +833,7 @@ fn apply_analyzed_token(
         | UtilityKind::GradientTo => {
             apply_color_token(analysis, config, diagnostics, style, pending)
         }
-        UtilityKind::Border | UtilityKind::Radius | UtilityKind::Ring | UtilityKind::Outline => {
+        UtilityKind::Border | UtilityKind::Radius(_) | UtilityKind::Ring | UtilityKind::Outline => {
             apply_border_token(analysis, config, diagnostics, style, pending)
         }
         UtilityKind::Padding(_)
@@ -1023,10 +1075,12 @@ fn apply_border_token(
                 style.set_helper_prop("uistroke", "Thickness", value.offset(config));
             }
         }
-        UtilityKind::Radius => {
+        UtilityKind::Radius(kind) => {
             if let Some(radius_key) = analysis.payload() {
                 if let Some(value) = resolve_radius_value(config, radius_key) {
-                    style.set_helper_prop("uicorner", "CornerRadius", value);
+                    for prop in kind.props() {
+                        style.set_helper_prop("uicorner", *prop, value.clone());
+                    }
                 } else {
                     diagnostics.push(unknown_theme_key_diagnostic(
                         "radius",
