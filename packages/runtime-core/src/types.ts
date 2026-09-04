@@ -31,13 +31,24 @@ export type VelaRuntimeConfig = {
 		radius: Record<string, string>;
 		spacing: Record<string, string>;
 		fontFamily: Record<string, string>;
+		screens?: Record<string, number>;
 		rem?: RuntimeRemConfig;
 		replaced?: string[];
 	};
 	plugins?: {
 		utilities?: Record<string, string | Record<string, string>>;
+		variants?: Record<string, RuntimeVariantDefinition>;
 	};
 };
+
+/// A variant the project registered. Both this and an inline `attr-[Name=value]`
+/// resolve to the same attribute condition, so the two behave identically.
+export type RuntimeVariantDefinition = {
+	attribute: string;
+	equals: RuntimeAttributeValue;
+};
+
+export type RuntimeAttributeValue = string | number | boolean;
 
 export type SupportedHostElements = {
 	frame: Frame;
@@ -93,8 +104,12 @@ export type RuntimeCondition =
 	  }
 	| {
 			kind: "width";
-			alias: "sm" | "md" | "lg";
+			/// The breakpoint the variant was written with. Projects configure
+			/// their own under `theme.screens`, so this is any name.
+			alias: string;
 			minWidth: number;
+			/// Exclusive, so `md:` and `max-md:` partition every viewport between
+			/// them instead of overlapping at the breakpoint itself.
 			maxWidth?: number;
 	  }
 	| {
@@ -118,6 +133,13 @@ export type RuntimeCondition =
 	| {
 			kind: "focus";
 	  }
+	/// A Roblox attribute on the styled instance. The host subscribes to the
+	/// attribute only where a rule reads it, and to nothing otherwise.
+	| {
+			kind: "attribute";
+			name: string;
+			value: RuntimeAttributeValue;
+	  }
 	/// A branch of a class value the transformer read but could not decide. The
 	/// tokens were resolved there; only which of them apply is settled here.
 	| {
@@ -136,7 +158,11 @@ export type RuntimeTheme = {
 	radius: Record<string, UDim>;
 	spacing: Record<string, UDim>;
 	fontFamily: Record<string, string>;
+	screens: Record<string, number>;
 	pluginUtilities: Record<string, RuntimePluginUtility>;
+	/// What `addVariant` registered, read the same way the compiler reads it so
+	/// a token means one thing on both lowering paths.
+	pluginVariants: Record<string, RuntimeVariantDefinition>;
 };
 
 export type RuntimePluginUtility = string | Record<string, string>;
@@ -159,6 +185,10 @@ export type RuntimeEnvironment = {
 	hovered: boolean;
 	pressed: boolean;
 	focused: boolean;
+	/// The attributes this element's rules read, as the styled instance last
+	/// reported them. Absent where nothing reads one, which is every element
+	/// that never named an attribute variant.
+	attributes?: Readonly<Record<string, unknown>>;
 	/// What the element's own `__velaTests` came to this render, which only the
 	/// host that was handed them can answer.
 	tests?: readonly boolean[];
@@ -223,6 +253,18 @@ export type RuntimeTransitionState = {
 export type VelaMotionSpec = RuntimeTransition;
 
 /**
+ * What the tweening properties belong to. `helper` names the UI* child a
+ * property lives on (`"uicorner"`, `"uistroke"`, `"uishadow"`, `"uiscale"`),
+ * and is absent when the target is the styled GuiObject itself. `owner` is
+ * always that GuiObject, so a driver can key its state off the element even
+ * while it moves a helper.
+ */
+export type VelaMotionTarget = {
+	owner: Instance;
+	helper?: string;
+};
+
+/**
  * The seam `plugins.motion` replaces. A driver takes over the method it
  * implements and leaves the rest to the built-in TweenService one, so a driver
  * that only springs transitions keeps the stock `animate-*` presets.
@@ -242,6 +284,10 @@ export type VelaMotionDriver = {
 		instance: Instance,
 		goal: Record<string, RuntimePropValue>,
 		spec: VelaMotionSpec,
+		/// Added in 0.13, and optional so a driver written against the older
+		/// three-argument shape keeps working. It says what `instance` is: the
+		/// styled GuiObject, or one of the UI* helpers vela renders under it.
+		target?: VelaMotionTarget,
 	): void;
 	animate?(instance: Instance, animation: string): (() => void) | undefined;
 };

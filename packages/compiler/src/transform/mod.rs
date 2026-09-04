@@ -43,7 +43,7 @@ fn parse_error_diagnostic(cm: &SourceMap, file_start: BytePos, error: &ParseErro
 }
 
 pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) -> TransformResult {
-    let (config, config_diagnostic) = parse_config_with_diagnostic(
+    let (config, config_diagnostics) = parse_config_with_diagnostic(
         options
             .as_ref()
             .and_then(|value| value.config_json.as_deref()),
@@ -63,7 +63,7 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
         &mut recovered_errors,
     );
 
-    let mut diagnostics: Vec<Diagnostic> = config_diagnostic.into_iter().collect();
+    let mut diagnostics: Vec<Diagnostic> = config_diagnostics;
 
     let mut module = match parsed_module {
         Ok(module) => module,

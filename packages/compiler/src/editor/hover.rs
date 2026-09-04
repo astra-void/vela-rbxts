@@ -72,8 +72,9 @@ fn describe_token(
     config: &crate::config::model::TailwindConfig,
     element_tag: Option<&str>,
 ) -> Option<HoverContent> {
-    let analysis = analyze_class_token(token);
-    let variant_prefix = variant_prefix(&analysis);
+    let variants = crate::semantic::variant::VariantRegistry::new(config);
+    let analysis = analyze_class_token(token, &variants);
+    let variant_prefix = variant_prefix(&analysis, &variants);
 
     if let Some(utility) = crate::semantic::plugin::lookup_plugin_utility(
         config,
@@ -1259,11 +1260,8 @@ fn describe_motion_family(
             Some(HoverContent {
                 display: format!("`{token}` -> TweenService"),
                 documentation: if enabled {
-                    let scope = if property == "all" {
-                        "every tweenable prop".to_owned()
-                    } else {
-                        format!("the `{property}` props only")
-                    };
+                    let scope =
+                        crate::semantic::utility::transition_property_scope(property).to_owned();
                     format!(
                         "{variant_prefix}Tweens runtime style changes with TweenService ({DEFAULT_TRANSITION_TIME}s by default), covering {scope}. Combine with `duration-*`, `ease-*`, and `delay-*`."
                     )
@@ -1468,9 +1466,36 @@ fn padding_target(axis: &PaddingKind) -> &'static str {
     }
 }
 
-fn variant_prefix(analysis: &crate::semantic::result::AnalyzedClassToken) -> String {
+fn variant_prefix(
+    analysis: &crate::semantic::result::AnalyzedClassToken,
+    variants: &crate::semantic::variant::VariantRegistry<'_>,
+) -> String {
+    use crate::semantic::variant::{VariantError, describe_variant_kind};
+
     if analysis.parsed.variants.is_empty() {
         return String::new();
+    }
+
+    // A prefix vela recognised and could not read says what is wrong with it;
+    // one it never heard of is simply unknown.
+    for variant in &analysis.parsed.variants {
+        match &variant.error {
+            Some(VariantError::UnknownBreakpoint { name }) => {
+                return format!(
+                    "Unknown breakpoint `{name}` in `{}`; configured breakpoints are {}. This class never applies at runtime. ",
+                    variant.raw,
+                    variants.screen_names().join(", ")
+                );
+            }
+            Some(VariantError::MalformedAttribute { detail }) => {
+                return format!(
+                    "Malformed attribute variant `{}`: {}. This class never applies at runtime. ",
+                    variant.raw,
+                    detail.message()
+                );
+            }
+            _ => {}
+        }
     }
 
     let unknown: Vec<&str> = analysis
@@ -1498,7 +1523,8 @@ fn variant_prefix(analysis: &crate::semantic::result::AnalyzedClassToken) -> Str
         .parsed
         .variants
         .iter()
-        .filter_map(|variant| crate::semantic::variant::variant_condition(&variant.raw))
+        .filter_map(|variant| variant.kind.as_ref())
+        .map(describe_variant_kind)
         .collect::<Vec<_>>()
         .join(" and ");
     format!("Runtime variant `{variant_label}`; applies when {conditions}. ")

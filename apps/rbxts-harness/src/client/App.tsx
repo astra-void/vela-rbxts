@@ -17,6 +17,12 @@ const FadedLabel = (props: { text: string }) => (
 const surfaceClass = (active: boolean) =>
 	active ? "harness-card" : "harness-plate";
 
+// The state variants behind a call, so the runtime resolver is what reads them
+// and the attribute subscription has to follow the class value rather than a
+// rule baked at compile time.
+const stateClass = (active: boolean) =>
+	active ? "open:bg-blue-600 attr-[Tier=2]:rounded-lg" : "selected:bg-rose-500";
+
 // The rem unit behind the same call, so the length is parsed by the runtime
 // resolver rather than by the compiler.
 const remClass = (active: boolean) =>
@@ -57,6 +63,26 @@ export const SurfacePanel = () => (
 export const SurfaceMount = (props: { children?: React.Element }) => (
 	<surfacegui>{props.children}</surfacegui>
 );
+
+/// The state variants read a Roblox attribute off the instance they style, so
+/// the harness drives one the way an application would: from outside the class
+/// list entirely.
+const StateProbe = (props: { open: boolean }) => {
+	const ref = React.useRef<Frame>();
+
+	React.useEffect(() => {
+		ref.current?.SetAttribute("State", props.open ? "open" : "closed");
+		ref.current?.SetAttribute("Selected", props.open);
+		ref.current?.SetAttribute("Tier", props.open ? 2 : 1);
+	}, [props.open]);
+
+	return (
+		<frame
+			ref={ref}
+			className="size-8 bg-slate-800 open:bg-blue-600 selected:ring-2 selected:ring-rose-500 tier:rounded-lg attr-[State=open]:border-2 attr-[State=open]:border-teal-200 transition-colors"
+		/>
+	);
+};
 
 export const App = () => {
 	const [active, setActive] = React.useState(false);
@@ -269,6 +295,26 @@ export const App = () => {
 				>
 					<frame BackgroundTransparency={1} />
 				</scrollingframe>
+				{/* v0.13: state variants read off the instance's own attributes. */}
+				<StateProbe open={active} />
+				{/* The same states through a class value the runtime parses, so the
+				    attribute subscription has to follow what it named. */}
+				<frame className={["size-8 bg-slate-800", stateClass(active)]} />
+				{/* Responsive ranges: a maximum on its own and one chained onto a
+				    minimum, plus a breakpoint the preset configured. */}
+				<frame className="size-8 bg-slate-700 max-md:bg-rose-500 md:max-lg:bg-teal-500 tablet:bg-blue-600" />
+				<frame className="preset-badge size-8" />
+				{/* Helper transitions: a corner, a stroke and a shadow all move on
+				    the helper instances rather than snapping. */}
+				<textbutton
+					Text="corner"
+					className="size-8 bg-slate-800 rounded-md hover:rounded-xl transition duration-200"
+				/>
+				<textbutton
+					Text="stroke"
+					className="size-8 bg-slate-800 border-2 border-slate-500 hover:border-blue-500 transition-colors"
+				/>
+				<frame className="size-8 bg-slate-800 shadow-sm hover:shadow-lg transition-shadow" />
 			</frame>
 		</screengui>
 	);

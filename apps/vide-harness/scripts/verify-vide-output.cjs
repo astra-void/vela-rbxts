@@ -128,6 +128,122 @@ expect(
 	/__velaTag = ChildSlot,\s*\}, Vide\.jsx\(/.test(source),
 );
 
+// v0.13. A state variant is a runtime condition like any other, so the utility
+// behind one still resolves here and only the condition travels.
+expect(
+	"a registered state variant lowers to an attribute condition",
+	/kind = "attribute",\s*name = "State",\s*value = "open"/.test(source),
+);
+expect(
+	"an inline attribute variant lowers the same way",
+	/name = "Selected"/.test(source) && /name = "Tier"/.test(source),
+);
+expect(
+	"a project registration outranks the preset's own",
+	source.includes('name = "Selected"') &&
+		!source.includes('name = "PresetSelected"'),
+);
+expect(
+	"the utility behind a state variant is resolved at compile time",
+	/kind = "attribute",\s*name = "State",\s*value = "open",[\s\S]{0,300}?Color3\.fromRGB\(21, 93, 252\)/.test(
+		source,
+	),
+);
+
+// Responsive ranges, including a breakpoint the preset configured.
+expect(
+	"a max-width variant carries an upper bound",
+	/maxWidth = 768/.test(source),
+);
+expect(
+	"a chained range carries both bounds",
+	/minWidth = 768,\s*maxWidth = 1024/.test(source) ||
+		/maxWidth = 1024/.test(source),
+);
+expect(
+	"a configured breakpoint resolves by name",
+	/alias = "tablet",\s*minWidth = 900/.test(source),
+);
+expect(
+	"a preset's theme and utilities reach the emit",
+	source.includes("Color3.fromRGB(255, 136, 0)"),
+);
+
+// Helper transitions: the shadow group only means anything because the runtime
+// tweens the helper instances it renders.
+expect(
+	"a shadow transition narrows onto the UIShadow helper",
+	/property = "shadow"/.test(source) && /tag = "uishadow"/.test(source),
+);
+expect(
+	"a corner a variant changes travels as a rule the host can tween",
+	/tag = "uicorner"/.test(source),
+);
+
+// The runtime the emit reaches for has to do the subscribing, and only where a
+// rule actually names an attribute.
+const videRuntime = fs.readFileSync(
+	path.join(
+		projectRoot,
+		"node_modules",
+		"@rbxts",
+		"vela-runtime-vide",
+		"out",
+		"init.luau",
+	),
+	"utf8",
+);
+const runtimeCoreOut = path.join(
+	projectRoot,
+	"node_modules",
+	"@rbxts",
+	"vela-runtime-core",
+	"out",
+);
+const runtimeModules = [
+	videRuntime,
+	...fs
+		.readdirSync(runtimeCoreOut)
+		.filter((entry) => entry.endsWith(".luau"))
+		.map((entry) => fs.readFileSync(path.join(runtimeCoreOut, entry), "utf8")),
+].join("\n");
+
+for (const fragment of [
+	"GetAttributeChangedSignal",
+	"function watchAttributes(",
+	"function attributeNames(",
+	"function parseVariantPrefix(",
+	'if property == "shadow" then',
+	'return helper == "uishadow"',
+]) {
+	expect(
+		`the vide runtime carries ${fragment}`,
+		runtimeModules.includes(fragment),
+	);
+}
+
+// One signal per attribute the styling names, let go when the element does. A
+// blanket `AttributeChanged` would wake the element for attributes nothing
+// about its styling reads.
+expect(
+	"the host subscribes per attribute name",
+	/element:GetAttributeChangedSignal\(name\):Connect\(refresh\)/.test(
+		runtimeModules,
+	),
+);
+expect(
+	"the subscriptions are let go on cleanup",
+	/Vide\.cleanup\(function\(\)[\s\S]{0,200}?connection:Disconnect\(\)/.test(
+		runtimeModules,
+	),
+);
+expect(
+	"the host never listens to every attribute on the instance",
+	!/:GetPropertyChangedSignal\("AttributeChanged"\)|\.AttributeChanged:Connect/.test(
+		runtimeModules,
+	),
+);
+
 if (failures.length > 0) {
 	for (const failure of failures) {
 		console.error(`vide-harness: ${failure}`);

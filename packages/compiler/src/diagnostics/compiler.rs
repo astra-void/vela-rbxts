@@ -27,8 +27,12 @@ pub(crate) fn no_roblox_equivalent_diagnostic(family: &str, token: &str) -> Diag
     }
 }
 
-pub(crate) fn unknown_variant_diagnostic(variant: &str, token: &str) -> Diagnostic {
-    let supported = crate::semantic::variant::supported_variant_list();
+pub(crate) fn unknown_variant_diagnostic(
+    variant: &str,
+    token: &str,
+    variants: &crate::semantic::variant::VariantRegistry<'_>,
+) -> Diagnostic {
+    let supported = variants.supported_variant_list();
 
     Diagnostic {
         level: "warning".to_owned(),
@@ -37,6 +41,76 @@ pub(crate) fn unknown_variant_diagnostic(variant: &str, token: &str) -> Diagnost
             "Unknown variant \"{variant}\" in \"{token}\"; supported variants are {supported}."
         ),
         token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+/// `max-foo:` where `foo` is not a breakpoint. Reported apart from an unknown
+/// variant so the message can point at `theme.screens` instead of listing every
+/// prefix vela knows.
+pub(crate) fn unknown_breakpoint_diagnostic(
+    name: &str,
+    token: &str,
+    variants: &crate::semantic::variant::VariantRegistry<'_>,
+) -> Diagnostic {
+    let screens = variants.screen_names().join(", ");
+
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unknown-breakpoint".to_owned(),
+        message: format!(
+            "Unknown breakpoint \"{name}\" in \"{token}\"; configured breakpoints are {screens}. Add one under `theme.screens` in `vela.config.ts`."
+        ),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+pub(crate) fn malformed_attribute_variant_diagnostic(
+    variant: &str,
+    detail: &crate::semantic::variant::AttributeVariantError,
+    token: &str,
+) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "malformed-attribute-variant".to_owned(),
+        message: format!(
+            "Attribute variant \"{variant}\" in \"{token}\" is malformed; {}.",
+            detail.message()
+        ),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+/// Width bounds that leave no viewport. The rule would be emitted and never
+/// match, which reads as a utility that silently does nothing.
+pub(crate) fn invalid_breakpoint_range_diagnostic(
+    min_width: u32,
+    max_width: u32,
+    token: &str,
+) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "invalid-breakpoint-range".to_owned(),
+        message: format!(
+            "\"{token}\" needs a viewport at least {min_width}px wide and narrower than {max_width}px, which no viewport is; the utility never applies."
+        ),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+/// A variant a config registered that vela reads as something else. Only a
+/// hand-written JSON config reaches this: `addVariant` rejects the same names.
+pub(crate) fn invalid_custom_variant_diagnostic(name: &str, reason: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "invalid-custom-variant".to_owned(),
+        message: format!(
+            "`plugins.variants` registered \"{name}\", which {reason}. The registration is ignored."
+        ),
+        token: None,
         range: None,
     }
 }

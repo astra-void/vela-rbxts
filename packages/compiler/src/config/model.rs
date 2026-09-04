@@ -51,8 +51,39 @@ impl Default for TailwindConfig {
 pub(crate) struct PluginConfig {
     #[serde(default)]
     pub(crate) utilities: BTreeMap<String, PluginUtility>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) variants: BTreeMap<String, VariantDefinition>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) motion: Option<MotionDriverConfig>,
+}
+
+/// A variant a project registered. It matches while the styled instance carries
+/// the named Roblox attribute with this value, so what it reads lives on the
+/// element rather than in the environment every element shares.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub(crate) struct VariantDefinition {
+    pub(crate) attribute: String,
+    pub(crate) equals: AttributeValue,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(untagged)]
+pub(crate) enum AttributeValue {
+    Bool(bool),
+    Number(f64),
+    Text(String),
+}
+
+impl AttributeValue {
+    /// How the value reads in a diagnostic or a hover, and how `attr-[…]`
+    /// writes it.
+    pub(crate) fn display(&self) -> String {
+        match self {
+            Self::Bool(value) => value.to_string(),
+            Self::Number(value) => crate::semantic::utility::format_number(*value),
+            Self::Text(value) => value.clone(),
+        }
+    }
 }
 
 /// The module a transformed file imports its motion driver from, in place of
@@ -86,6 +117,11 @@ pub(crate) struct ThemeConfig {
     pub(crate) spacing: ThemeScale,
     #[serde(default, rename = "fontFamily")]
     pub(crate) font_family: ThemeScale,
+    /// Viewport widths a responsive variant is named after. `md:` applies from
+    /// the width up and `max-md:` strictly below it, so the pair is an exact
+    /// complement at every viewport.
+    #[serde(default)]
+    pub(crate) screens: ThemeScreens,
     #[serde(default)]
     pub(crate) rem: RemConfig,
     /// Emit-only: the theme tables that travel whole rather than as a
@@ -160,6 +196,7 @@ impl Default for RemResolution {
 }
 
 pub(crate) type ThemeScale = BTreeMap<String, String>;
+pub(crate) type ThemeScreens = BTreeMap<String, u32>;
 pub(crate) type ThemeColors = BTreeMap<String, ColorValue>;
 
 #[derive(Clone, Deserialize, Serialize, PartialEq)]
@@ -173,6 +210,10 @@ pub(crate) type ColorScale = BTreeMap<String, String>;
 
 #[derive(Clone, Deserialize, Default)]
 pub(crate) struct TailwindConfigInput {
+    /// Shared configuration folded in before this one, in the order written. A
+    /// JSON config can only inline them; a package preset needs `vela.config.ts`.
+    #[serde(default)]
+    pub(crate) presets: Option<Vec<TailwindConfigInput>>,
     pub(crate) preflight: Option<bool>,
     pub(crate) framework: Option<Framework>,
     pub(crate) theme: Option<ThemeConfigInput>,
@@ -186,6 +227,7 @@ pub(crate) struct ThemeConfigInput {
     pub(crate) spacing: Option<ThemeScale>,
     #[serde(rename = "fontFamily")]
     pub(crate) font_family: Option<ThemeScale>,
+    pub(crate) screens: Option<ThemeScreens>,
     pub(crate) rem: Option<RemConfigInput>,
     pub(crate) extend: Option<ThemeConfigExtendInput>,
 }
@@ -197,6 +239,7 @@ pub(crate) struct ThemeConfigExtendInput {
     pub(crate) spacing: Option<ThemeScale>,
     #[serde(rename = "fontFamily")]
     pub(crate) font_family: Option<ThemeScale>,
+    pub(crate) screens: Option<ThemeScreens>,
     pub(crate) rem: Option<RemConfigInput>,
 }
 

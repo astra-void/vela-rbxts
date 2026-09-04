@@ -53,6 +53,40 @@ export namespace __VelaResolution {
 		return resolution;
 	}
 
+	/// Every Roblox attribute this element's styling reads, from the rules it was
+	/// built with and from whatever class value it was handed. This is the whole
+	/// subscription set: an element that names no attribute variant gets an
+	/// empty list, and so connects nothing.
+	export function attributeNames(
+		theme: RuntimeTheme,
+		runtimeRules: readonly RuntimeRule[],
+		className: ClassValue | undefined,
+	): string[] {
+		const names = new Set<string>();
+
+		for (const rule of runtimeRules) {
+			__VelaVariant.collectConditionAttributes(rule.condition, names);
+		}
+
+		if (className !== undefined) {
+			__VelaVariant.collectClassValueAttributes(
+				__VelaApply.normalizeClassValue(className),
+				theme,
+				names,
+			);
+		}
+
+		// Sorted so a host can compare two readings for equality without caring
+		// which order the classes happened to name them in.
+		const sorted: string[] = [];
+		for (const name of names) {
+			sorted.push(name);
+		}
+		table.sort(sorted);
+
+		return sorted;
+	}
+
 	/// A plugin utility that reaches itself would expand forever; the class is
 	/// dropped instead, matching what the static path does.
 	export const MAX_PLUGIN_EXPANSION_DEPTH = 8;
@@ -70,7 +104,9 @@ export namespace __VelaResolution {
 			return;
 		}
 
-		const segments = __VelaLua.splitBy(token, ":");
+		// Split the way the compiler's tokenizer splits, so a `:` inside an
+		// arbitrary value stays part of it.
+		const segments = __VelaVariant.splitVariantSegments(token);
 		const utility = segments.pop();
 		if (!utility) {
 			return;
@@ -88,7 +124,7 @@ export namespace __VelaResolution {
 
 		if (
 			!segments.every((segment) =>
-				__VelaVariant.matchesVariant(segment, environment),
+				__VelaVariant.matchesVariant(segment, environment, theme),
 			)
 		) {
 			return;
@@ -101,9 +137,11 @@ export namespace __VelaResolution {
 			}
 
 			if (typeIs(pluginUtility, "string")) {
-				const separator = __VelaLua.lastIndexOf(token, ":");
-				const prefix =
-					separator >= 0 ? __VelaLua.substring(token, 0, separator + 1) : "";
+				const prefix = __VelaLua.substring(
+					token,
+					0,
+					__VelaLua.stringLength(token) - __VelaLua.stringLength(utility),
+				);
 				for (const part of __VelaLua.splitWhitespace(pluginUtility)) {
 					applyToken(
 						theme,

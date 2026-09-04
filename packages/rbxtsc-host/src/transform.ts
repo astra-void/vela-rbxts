@@ -20,6 +20,23 @@ const defaultCompiler: HostCompiler = {
 	transform,
 };
 
+/// The resolved config is one object shared by every file under a directory,
+/// and serializing it means serializing the whole default palette. Keyed by the
+/// object itself, so a config that was re-resolved is serialized again.
+const configJsonCache = new WeakMap<TailwindConfig, string>();
+
+function configJsonFor(config: TailwindConfig): string {
+	const cached = configJsonCache.get(config);
+	if (cached !== undefined) {
+		return cached;
+	}
+
+	const json = JSON.stringify(config);
+	configJsonCache.set(config, json);
+
+	return json;
+}
+
 export type TransformSourceForHostOptions = {
 	config?: TailwindConfig;
 	compiler?: HostCompiler;
@@ -51,7 +68,7 @@ export function transformSourceForHost(
 		const projectConfig = resolveProjectConfigInfo(request.fileName);
 		const config = request.config ?? options.config ?? projectConfig.config;
 		const compilerOptions = {
-			configJson: JSON.stringify(config),
+			configJson: configJsonFor(config),
 		} as const;
 		const compilerResult = normalizeCompilerResult(
 			compiler.transform(request.sourceText, compilerOptions),

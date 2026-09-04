@@ -231,6 +231,10 @@ async function main() {
 	check(Boolean(init.capabilities.completionProvider), "missing completion capability");
 	check(Boolean(init.capabilities.colorProvider), "missing document color capability");
 	check(Boolean(init.capabilities.hoverProvider), "missing hover capability");
+	check(
+		Boolean(init.capabilities.inlayHintProvider),
+		"missing inlay hint capability",
+	);
 	notify("initialized", {});
 
 	const diagnosticsFixture = openFixture("Diagnostics.tsx");
@@ -607,6 +611,176 @@ async function main() {
 			(entry) => sliceRange(configFixture.text, entry.range) === "bg-brand",
 		),
 		"a config pushed by notification should feed document colors too",
+	);
+
+	// v0.13. The variants a project defines have to reach the editor the same
+	// way the built-in ones do: completed, hovered, diagnosed and sorted.
+	const stateFixture = openFixture("StateVariants.tsx");
+	await waitForDiagnostics(stateFixture.uri);
+	const stateMark = notifications.length;
+	notify("vela-rbxts/setConfigs", {
+		configs: [
+			{
+				dir: path.join(root, "fixtures"),
+				json: JSON.stringify({
+					theme: {
+						extend: {
+							colors: { brand: "Color3.fromRGB(255, 136, 0)" },
+							screens: { tablet: 900 },
+						},
+					},
+					plugins: {
+						variants: {
+							open: { attribute: "State", equals: "open" },
+							selected: { attribute: "Selected", equals: true },
+						},
+					},
+				}),
+			},
+		],
+	});
+	const stateDiagnostics = await waitForNextDiagnostics(
+		stateFixture.uri,
+		stateMark,
+	);
+
+	for (const token of [
+		"open:bg-blue-600",
+		"attr-[Selected=true]:ring-2",
+		"md:px-6",
+		"max-md:px-3",
+		"md:max-lg:px-4",
+		"tablet:px-8",
+	]) {
+		check(
+			!diagnosticFor(stateDiagnostics, token),
+			`"${token}" should resolve against the pushed config without diagnostics`,
+		);
+	}
+
+	for (const [token, code] of [
+		["max-mdd:px-2", "unknown-breakpoint"],
+		["attr-[State]:px-2", "malformed-attribute-variant"],
+		["md:max-sm:px-2", "invalid-breakpoint-range"],
+	]) {
+		const diagnostic = diagnosticFor(stateDiagnostics, token);
+		check(diagnostic, `missing ${code} diagnostic for ${token}`);
+		if (!diagnostic) {
+			continue;
+		}
+		check(
+			diagnostic.code === code,
+			`token ${token} reported ${diagnostic.code}, expected ${code}`,
+		);
+		const anchored = sliceRange(stateFixture.text, diagnostic.range);
+		check(
+			anchored === token,
+			`token ${token} range anchors to ${JSON.stringify(anchored)}`,
+		);
+	}
+
+	// An unknown breakpoint is repairable: the quickfix offers the breakpoints
+	// the config actually defines.
+	const breakpointDiagnostic = diagnosticFor(stateDiagnostics, "max-mdd:px-2");
+	if (breakpointDiagnostic) {
+		const actions = await request("textDocument/codeAction", {
+			textDocument: { uri: stateFixture.uri },
+			range: breakpointDiagnostic.range,
+			context: {
+				diagnostics: [breakpointDiagnostic],
+				only: ["quickfix"],
+			},
+		});
+		const texts = (actions ?? []).map(
+			(action) => action.edit?.changes?.[stateFixture.uri]?.[0]?.newText,
+		);
+		check(
+			texts.includes("max-md:px-2"),
+			`unknown-breakpoint quickfix should repair the breakpoint, got ${JSON.stringify(texts)}`,
+		);
+		check(
+			texts.includes("px-2"),
+			"unknown-breakpoint quickfix should offer dropping the variant",
+		);
+	}
+
+	const openIndex = stateFixture.text.indexOf("open:bg-blue-600");
+	const stateHover = await request("textDocument/hover", {
+		textDocument: { uri: stateFixture.uri },
+		position: positionAt(stateFixture.text, openIndex + 2),
+	});
+	check(
+		(stateHover?.contents?.value ?? "").includes("`State` attribute is `open`"),
+		"hover over a custom variant should name the attribute it reads",
+	);
+
+	const rangeHover = await request("textDocument/hover", {
+		textDocument: { uri: stateFixture.uri },
+		position: positionAt(stateFixture.text, stateFixture.text.indexOf("max-md:px-3") + 2),
+	});
+	check(
+		(rangeHover?.contents?.value ?? "").includes("narrower than 768px"),
+		"hover over a max-width variant should describe its bound",
+	);
+
+	const stateCompletion = await request("textDocument/completion", {
+		textDocument: { uri: stateFixture.uri },
+		// At the very start of the variant, so nothing is typed to filter by and
+		// the whole vocabulary is offered.
+		position: positionAt(
+			stateFixture.text,
+			stateFixture.text.indexOf("open:bg-blue-600"),
+		),
+		context: { triggerKind: 1 },
+	});
+	const variantLabels = (stateCompletion?.items ?? []).map(
+		(item) => item.label,
+	);
+	check(
+		variantLabels.includes("selected:"),
+		`a custom variant should be offered, got ${JSON.stringify(variantLabels.slice(0, 8))}`,
+	);
+	check(
+		variantLabels.includes("tablet:") && variantLabels.includes("max-tablet:"),
+		"a configured breakpoint should be offered with its max-width twin",
+	);
+	check(
+		variantLabels.some((label) => label.startsWith("attr-[")),
+		"the inline attribute variant should be offered",
+	);
+
+    // Off unless the client asked for them.
+	const hintsOff = await request("textDocument/inlayHint", {
+		textDocument: { uri: stateFixture.uri },
+		range: {
+			start: { line: 0, character: 0 },
+			end: { line: 20, character: 0 },
+		},
+	});
+	check(
+		hintsOff === null || (hintsOff ?? []).length === 0,
+		"inlay hints should be off until the client turns them on",
+	);
+
+	notify("workspace/didChangeConfiguration", {
+		settings: { velaRbxts: { inlayHints: { enabled: true } } },
+	});
+	const hintsOn = await request("textDocument/inlayHint", {
+		textDocument: { uri: stateFixture.uri },
+		range: {
+			start: { line: 0, character: 0 },
+			end: { line: 20, character: 0 },
+		},
+	});
+	check(
+		(hintsOn ?? []).length > 0,
+		"inlay hints should be served once the client turns them on",
+	);
+	check(
+		(hintsOn ?? []).some((hint) =>
+			String(hint.label ?? "").includes("UIPadding"),
+		),
+		`an inlay hint should name what the utility lowers to, got ${JSON.stringify((hintsOn ?? []).map((hint) => hint.label))}`,
 	);
 
 	await request("shutdown");

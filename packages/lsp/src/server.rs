@@ -657,10 +657,43 @@ fn split_variant_prefix(token: &str) -> (&str, &str) {
     token.split_at(split)
 }
 
+/// Diagnostics about a prefix rather than about the utility behind it. Their
+/// quickfix repairs or drops the offending segment; everything else is fixed by
+/// replacing the utility.
+const VARIANT_DIAGNOSTIC_CODES: [&str; 3] = [
+    "unknown-variant",
+    "unknown-breakpoint",
+    "malformed-attribute-variant",
+];
+
+/// Splits a variant prefix into its segments. Colons inside brackets belong to
+/// an arbitrary value, so `attr-[State=a:b]:` is one segment.
+fn variant_segments(prefix: &str) -> Vec<&str> {
+    let mut segments = Vec::new();
+    let mut depth = 0usize;
+    let mut start = 0usize;
+
+    for (index, ch) in prefix.char_indices() {
+        match ch {
+            '[' | '(' => depth += 1,
+            ']' | ')' => depth = depth.saturating_sub(1),
+            ':' if depth == 0 => {
+                if index > start {
+                    segments.push(&prefix[start..index]);
+                }
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+
+    segments
+}
+
 /// Builds replacement texts for a diagnosed token, keeping the variants the
 /// user already typed: utility suggestions are ranked against the utility part
-/// alone, and `unknown-variant` diagnostics get their variant repaired or
-/// dropped instead of fuzzy-matching the whole token.
+/// alone, and a diagnostic about a prefix gets that prefix repaired or dropped
+/// instead of fuzzy-matching the whole token.
 fn replacement_suggestions(
     code: Option<&str>,
     token: &str,
@@ -673,7 +706,7 @@ fn replacement_suggestions(
         .cloned()
         .partition(|label| label.ends_with(':'));
 
-    if code != Some("unknown-variant") {
+    if !code.is_some_and(|code| VARIANT_DIAGNOSTIC_CODES.contains(&code)) {
         return rank_suggestions(utility, &utility_labels, max)
             .into_iter()
             .map(|suggestion| format!("{variant_prefix}{suggestion}"))
@@ -684,10 +717,7 @@ fn replacement_suggestions(
         .iter()
         .map(|label| label.trim_end_matches(':').to_owned())
         .collect();
-    let segments: Vec<&str> = variant_prefix
-        .split(':')
-        .filter(|segment| !segment.is_empty())
-        .collect();
+    let segments = variant_segments(variant_prefix);
 
     let mut suggestions = Vec::new();
 

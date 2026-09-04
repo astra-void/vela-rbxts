@@ -478,6 +478,27 @@ namespace __VelaMargin {
 	}
 }
 
+/// Two readings of the same attribute set. A fresh table every change would
+/// re-render the element even where nothing about it moved.
+function sameAttributes(
+	previous: Record<string, unknown>,
+	latest: Record<string, unknown>,
+): boolean {
+	for (const [name, value] of pairs(latest)) {
+		if (previous[name as string] !== value) {
+			return false;
+		}
+	}
+
+	for (const [name] of pairs(previous)) {
+		if (latest[name as string] === undefined) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 namespace __VelaEnv {
 	export function useRuntimeEnvironment(): RuntimeEnvironment {
 		const [camera, setCamera] = __VelaReact.useState(
@@ -655,6 +676,29 @@ export function createVelaRuntimeHost(
 			const [hovered, setHovered] = __VelaReact.useState(false);
 			const [pressed, setPressed] = __VelaReact.useState(false);
 			const [focused, setFocused] = __VelaReact.useState(false);
+			// Exactly the attributes this element's styling reads. An element
+			// that names no attribute variant gets an empty list here and
+			// connects nothing, which is the whole cost of the feature for the
+			// elements that do not use it.
+			const attributeNames = __VelaReact.useMemo(
+				() =>
+					__VelaResolution.attributeNames(
+						theme,
+						(props.__velaRules ?? []) as RuntimeRule[],
+						props.className,
+					),
+				[props.className],
+			);
+			const attributeKey = __VelaLua.join(attributeNames, " ");
+			const [attributes, setAttributes] = __VelaReact.useState<
+				Record<string, unknown>
+			>({});
+			// Held as state rather than read off the ref, so the subscription
+			// follows an instance React replaced instead of staying on the one
+			// that was current when the effect first ran.
+			const [attributeHost, setAttributeHost] = __VelaReact.useState<
+				Instance | undefined
+			>(undefined);
 			const environment: RuntimeEnvironment = {
 				width: globalEnvironment.width,
 				// A pinned subtree resolves at the base, which is the rem a ratio
@@ -666,6 +710,7 @@ export function createVelaRuntimeHost(
 				hovered,
 				pressed,
 				focused,
+				attributes,
 				tests: props.__velaTests,
 			};
 			const __velaTag = props.__velaTag;
@@ -727,6 +772,15 @@ export function createVelaRuntimeHost(
 			const lastGoal = __VelaReact.useRef<RuntimePropMap | undefined>(
 				undefined,
 			);
+			// A helper is an instance of its own, so tweening one needs its ref
+			// and its own held values, the same two the element itself needs.
+			const helperRefs = __VelaReact.useRef(new Map<string, Instance>());
+			const heldHelperProps = __VelaReact.useRef(
+				new Map<string, RuntimePropMap>(),
+			);
+			const lastHelperGoal = __VelaReact.useRef<
+				Map<string, RuntimePropMap> | undefined
+			>(undefined);
 
 			const hostProps: Record<string, unknown> = {};
 			for (const [name, value] of pairs(props as Record<string, unknown>)) {
@@ -792,6 +846,44 @@ export function createVelaRuntimeHost(
 				__VelaVariant.attachFocusTracking(hostProps, __velaTag, setFocused);
 			}
 
+			// Attributes live on the instance, so the first render has none to
+			// read; the effect below fills them in and every later change comes
+			// through the attribute's own signal.
+			__VelaReact.useEffect(() => {
+				const instance = attributeHost;
+				if (instance === undefined || attributeNames.size() === 0) {
+					return undefined;
+				}
+
+				const read = () => {
+					const latest: Record<string, unknown> = {};
+					for (const name of attributeNames) {
+						latest[name] = instance.GetAttribute(name);
+					}
+					return latest;
+				};
+				const refresh = () =>
+					setAttributes((previous) => {
+						const latest = read();
+						return sameAttributes(previous, latest) ? previous : latest;
+					});
+
+				refresh();
+
+				const connections: RBXScriptConnection[] = [];
+				for (const name of attributeNames) {
+					connections.push(
+						instance.GetAttributeChangedSignal(name).Connect(refresh),
+					);
+				}
+
+				return () => {
+					for (const connection of connections) {
+						connection.Disconnect();
+					}
+				};
+			}, [attributeHost, attributeKey]);
+
 			__VelaText.applyTextConfig(hostProps, props.__velaText, resolution);
 
 			// With a transition, React keeps rendering the first-seen value for
@@ -836,9 +928,21 @@ export function createVelaRuntimeHost(
 					hostProps[name as string] = held[name as string];
 				}
 			}
-			if (transition !== undefined || animationActive) {
+			if (
+				transition !== undefined ||
+				animationActive ||
+				attributeNames.size() > 0
+			) {
 				hostProps.ref = (instance: Instance | undefined) => {
 					instanceRef.current = instance;
+					// React re-attaches a fresh callback on every render, which
+					// detaches the old one first; reporting that detach would
+					// take the subscription down and put it straight back. Only
+					// an instance is reported, and the effect's own cleanup is
+					// what covers the unmount.
+					if (attributeNames.size() > 0 && instance !== undefined) {
+						setAttributeHost(instance);
+					}
 					__VelaText.assignForwardedRef(forwardedRef, instance);
 				};
 			} else if (forwardedRef !== undefined) {
@@ -878,15 +982,109 @@ export function createVelaRuntimeHost(
 					return;
 				}
 
-				__VelaMotion.playTransition(instance, changed, transition);
+				__VelaMotion.playTransition(instance, changed, transition, {
+					owner: instance,
+				});
 			});
 			__VelaApply.applyHelperDefaults(resolution.helpers);
-			const runtimeChildren = resolution.helpers.map((helper) =>
-				__VelaReact.createElement(
+
+			// A helper carries the properties `rounded-*`, `border-*` and
+			// `shadow-*` lower to, so a variant that repaints one is a style
+			// change like any other, except that it lands on a child instance. The
+			// held value is what renders while the tween moves the real one, the
+			// same trick the element's own props use above.
+			const helperGoals = new Map<string, RuntimePropMap>();
+			const helperProps = resolution.helpers.map((helper) => {
+				const rendered = __VelaApply.helperToProps(helper.props);
+				if (transition === undefined) {
+					return rendered;
+				}
+
+				const held = heldHelperProps.current.get(helper.tag) ?? {};
+				heldHelperProps.current.set(helper.tag, held);
+				const goal: RuntimePropMap = {};
+
+				for (const [name, value] of pairs(rendered)) {
+					const property = name as string;
+					if (
+						!__VelaMotion.isTweenableValue(value) ||
+						!__VelaMotion.transitionCoversProp(
+							transition.property,
+							property,
+							helper.tag,
+						)
+					) {
+						continue;
+					}
+
+					goal[property] = value as RuntimePropValue;
+					if (held[property] === undefined) {
+						held[property] = value as RuntimePropValue;
+					}
+					rendered[property] = held[property];
+				}
+
+				helperGoals.set(helper.tag, goal);
+				return rendered;
+			});
+
+			__VelaReact.useEffect(() => {
+				if (transition === undefined) {
+					lastHelperGoal.current = undefined;
+					return;
+				}
+
+				const previous = lastHelperGoal.current;
+				lastHelperGoal.current = helperGoals;
+				if (previous === undefined) {
+					return;
+				}
+
+				const owner = instanceRef.current;
+				for (const [tag, goal] of helperGoals) {
+					const instance = helperRefs.current.get(tag);
+					const before = previous.get(tag);
+					if (instance === undefined || before === undefined) {
+						continue;
+					}
+
+					const changed: Record<string, RuntimePropValue> = {};
+					let hasChanged = false;
+					for (const [name, value] of pairs(goal)) {
+						if (before[name as string] !== value) {
+							changed[name as string] = value;
+							hasChanged = true;
+						}
+					}
+					if (!hasChanged) {
+						continue;
+					}
+
+					__VelaMotion.playTransition(instance, changed, transition, {
+						owner: owner ?? instance,
+						helper: tag,
+					});
+				}
+			});
+
+			const runtimeChildren = resolution.helpers.map((helper, index) => {
+				const rendered = helperProps[index] ?? {};
+				if (transition !== undefined) {
+					rendered.key = helper.tag;
+					rendered.ref = (instance: Instance | undefined) => {
+						if (instance === undefined) {
+							helperRefs.current.delete(helper.tag);
+						} else {
+							helperRefs.current.set(helper.tag, instance);
+						}
+					};
+				}
+
+				return __VelaReact.createElement(
 					__VelaApply.hostClassName(helper.tag),
-					__VelaApply.helperToProps(helper.props),
-				),
-			);
+					rendered,
+				);
+			});
 			const allChildren: defined[] = [];
 			for (const child of runtimeChildren) {
 				if (child !== undefined) {

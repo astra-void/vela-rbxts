@@ -10,13 +10,14 @@ use crate::semantic::utility::{
 
 pub(crate) fn get_document_colors_impl(request: DocumentColorsRequest) -> DocumentColorsResponse {
     let config = crate::editor::parse_editor_config(request.options.as_ref());
+    let variants = crate::semantic::variant::VariantRegistry::new(&config);
     let mut colors = Vec::new();
 
     for context in collect_class_name_contexts(&request.source) {
         let tokens = tokenize_class_name_with_ranges(&context.value, context.value_range.start);
 
         for token in tokens {
-            let analysis = analyze_class_token(&token.text);
+            let analysis = analyze_class_token(&token.text, &variants);
             let Some(color_family) = color_family_spec(&analysis.utility) else {
                 continue;
             };

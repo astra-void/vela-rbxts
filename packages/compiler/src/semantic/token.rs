@@ -1,15 +1,15 @@
 use super::utility::{ParsedUtility, parse_utility};
-use super::variant::{ParsedVariant, split_variant_prefixes};
+use super::variant::{ParsedVariant, VariantRegistry};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ParsedClassToken {
     pub(crate) raw: String,
     pub(crate) variants: Vec<ParsedVariant>,
     pub(crate) utility: ParsedUtility,
 }
 
-pub(crate) fn parse_class_token(token: &str) -> ParsedClassToken {
-    let (variants, base_token) = split_variant_prefixes(token);
+pub(crate) fn parse_class_token(token: &str, variants: &VariantRegistry<'_>) -> ParsedClassToken {
+    let (variants, base_token) = variants.split(token);
 
     ParsedClassToken {
         raw: token.to_owned(),
@@ -21,12 +21,14 @@ pub(crate) fn parse_class_token(token: &str) -> ParsedClassToken {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::defaults::default_config;
     use crate::semantic::utility::{PaddingKind, UtilityKind};
     use crate::semantic::variant::VariantKind;
 
     #[test]
     fn parses_variants_and_utility_payload() {
-        let parsed = parse_class_token("md:px-4");
+        let config = default_config();
+        let parsed = parse_class_token("md:px-4", &VariantRegistry::new(&config));
 
         assert_eq!(parsed.raw, "md:px-4");
         assert_eq!(parsed.variants.len(), 1);
@@ -43,7 +45,8 @@ mod tests {
 
     #[test]
     fn parses_variant_chain() {
-        let parsed = parse_class_token("sm:portrait:bg-slate-700");
+        let config = default_config();
+        let parsed = parse_class_token("sm:portrait:bg-slate-700", &VariantRegistry::new(&config));
 
         assert_eq!(parsed.variants.len(), 2);
         assert_eq!(parsed.utility.payload.as_deref(), Some("slate-700"));

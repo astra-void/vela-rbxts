@@ -3,10 +3,11 @@ use crate::class_token::class_token_ranges;
 use crate::editor::{collect_class_name_contexts, tokenize_class_name_with_ranges};
 use crate::semantic::analyze::analyze_class_token;
 use crate::semantic::utility::{PaddingKind, UtilityKind};
-use crate::semantic::variant::RUNTIME_VARIANTS;
+use crate::semantic::variant::{VariantKind, VariantRegistry};
 
 pub(crate) fn sort_class_names_impl(request: SortClassNamesRequest) -> SortClassNamesResponse {
     let config = crate::editor::parse_editor_config(request.options.as_ref());
+    let variants = VariantRegistry::new(&config);
     let mut edits = Vec::new();
 
     for context in collect_class_name_contexts(&request.source) {
@@ -23,7 +24,7 @@ pub(crate) fn sort_class_names_impl(request: SortClassNamesRequest) -> SortClass
         }
 
         let mut order: Vec<usize> = (0..tokens.len()).collect();
-        order.sort_by_key(|index| sort_key(&tokens[*index].text, *index, &config));
+        order.sort_by_key(|index| sort_key(&tokens[*index].text, *index, &config, &variants));
         if order.iter().enumerate().all(|(to, from)| to == *from) {
             continue;
         }
@@ -84,20 +85,21 @@ fn sort_key(
     token: &str,
     index: usize,
     config: &crate::config::model::TailwindConfig,
-) -> (Vec<usize>, i64, usize) {
-    let analysis = analyze_class_token(token);
-    let variants = analysis
+    variants: &VariantRegistry<'_>,
+) -> (Vec<VariantRank>, i64, usize) {
+    let analysis = analyze_class_token(token, variants);
+    let ranks = analysis
         .parsed
         .variants
         .iter()
-        .map(|variant| variant_rank(&variant.raw))
+        .map(|variant| variant_rank(variant.kind.as_ref(), &variant.raw))
         .collect();
 
     // A plugin utility bundles whole property groups, so it leads: a utility
     // written beside it is the one meant to win.
     let group = if crate::semantic::plugin::lookup_plugin_utility(
         config,
-        crate::semantic::variant::split_variant_prefixes(token).1,
+        crate::semantic::variant::utility_of(token),
     )
     .is_some()
     {
@@ -106,17 +108,71 @@ fn sort_key(
         group_rank(&analysis.utility).into()
     };
 
-    (variants, group, index)
+    (ranks, group, index)
 }
 
 /// Ahead of every `group_rank`, so a plugin utility sorts to the front.
 const PLUGIN_UTILITY_RANK: i64 = -1;
 
-fn variant_rank(prefix: &str) -> usize {
-    RUNTIME_VARIANTS
-        .iter()
-        .position(|(name, _)| *name == prefix)
-        .map_or(usize::MAX, |position| position + 1)
+/// Where a variant sorts: the band it belongs to, then how it orders inside
+/// that band, then its own spelling so two of the same width stay stable.
+type VariantRank = (u8, i64, String);
+
+/// Bands, narrow to broad. The relative order of the variants v0.12 already
+/// ranked is unchanged, because new kinds slot into bands of their own and
+/// moving one past another changes which rule wins where both apply.
+const BAND_MIN_WIDTH: u8 = 0;
+const BAND_MAX_WIDTH: u8 = 1;
+const BAND_ORIENTATION: u8 = 2;
+const BAND_INPUT: u8 = 3;
+const BAND_STATE: u8 = 4;
+const BAND_INTERACTION: u8 = 5;
+const BAND_COLOR_SCHEME: u8 = 6;
+const BAND_UNKNOWN: u8 = 7;
+
+fn variant_rank(kind: Option<&VariantKind>, raw: &str) -> VariantRank {
+    let Some(kind) = kind else {
+        return (BAND_UNKNOWN, 0, raw.to_owned());
+    };
+
+    match kind {
+        // A wider minimum is the more specific rule, so it comes later; a wider
+        // maximum is the less specific one, so it comes first.
+        VariantKind::Width {
+            min_width,
+            max_width: None,
+            ..
+        } => (BAND_MIN_WIDTH, i64::from(*min_width), raw.to_owned()),
+        VariantKind::Width {
+            max_width: Some(max),
+            ..
+        } => (BAND_MAX_WIDTH, -i64::from(*max), raw.to_owned()),
+        VariantKind::Orientation { value } => (
+            BAND_ORIENTATION,
+            i64::from(value != "portrait"),
+            raw.to_owned(),
+        ),
+        VariantKind::Input { value } => (
+            BAND_INPUT,
+            match value.as_str() {
+                "touch" => 0,
+                "mouse" => 1,
+                _ => 2,
+            },
+            raw.to_owned(),
+        ),
+        // A registered variant leads the inline form: it is the project's own
+        // vocabulary, and `attr-[…]` is the escape hatch beside it.
+        VariantKind::Attribute { variant, name, .. } => (
+            BAND_STATE,
+            i64::from(variant.is_none()),
+            format!("{name}:{raw}"),
+        ),
+        VariantKind::Hover => (BAND_INTERACTION, 0, raw.to_owned()),
+        VariantKind::Active => (BAND_INTERACTION, 1, raw.to_owned()),
+        VariantKind::Focus => (BAND_INTERACTION, 2, raw.to_owned()),
+        VariantKind::ColorScheme { .. } => (BAND_COLOR_SCHEME, 0, raw.to_owned()),
+    }
 }
 
 fn group_rank(utility: &UtilityKind) -> u32 {

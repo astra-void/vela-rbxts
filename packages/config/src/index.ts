@@ -16,9 +16,24 @@ export {
 	type PluginUtilityValue,
 	plugin,
 	type ResolvedPlugins,
+	type ResolvedPluginsInput,
 	type ThemeAccessor,
 	type VelaPlugin,
 } from "./plugin.js";
+export {
+	ATTRIBUTE_VARIANT_PREFIX,
+	type AttributeVariant,
+	BUILT_IN_VARIANTS,
+	type BuiltInVariant,
+	isBuiltInVariant,
+	isReservedVariantPrefix,
+	isValidAttributeName,
+	isValidVariantName,
+	MAX_WIDTH_VARIANT_PREFIX,
+	type PluginVariants,
+	type VariantAttributeValue,
+	type VariantDefinition,
+} from "./variants.js";
 
 export const SHADES = [
 	50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950,
@@ -66,11 +81,19 @@ export type RemConfig = {
 	pinnedUnder: string[];
 };
 
+/**
+ * Viewport widths, in pixels, a responsive variant is named after. `md:` applies
+ * from the width up (`width >= 768`) and `max-md:` below it (`width < 768`), so
+ * the two are exact complements at every viewport.
+ */
+export type ThemeScreens = Record<string, number>;
+
 export type ThemeConfig = {
 	colors: ThemeColors;
 	radius: ThemeScale;
 	spacing: ThemeScale;
 	fontFamily: ThemeScale;
+	screens: ThemeScreens;
 	rem: RemConfig;
 };
 
@@ -93,22 +116,40 @@ export type ThemeConfigInput = {
 	radius?: ThemeScale;
 	spacing?: ThemeScale;
 	fontFamily?: ThemeScale;
+	screens?: ThemeScreens;
 	rem?: RemConfigInput;
 	extend?: {
 		colors?: ColorInputMap;
 		radius?: ThemeScale;
 		spacing?: ThemeScale;
 		fontFamily?: ThemeScale;
+		screens?: ThemeScreens;
 		rem?: RemConfigInput;
 	};
 };
 
+/**
+ * A shareable slice of configuration. Presets resolve in array order against
+ * the built-in defaults, and the config that names them resolves last, so a
+ * project always outranks what it pulled in.
+ */
+export type VelaPreset = TailwindConfigInput;
+
 export type TailwindConfigInput = {
+	presets?: readonly (TailwindConfigInput | TailwindConfig)[];
 	preflight?: boolean;
 	framework?: Framework;
 	theme?: ThemeConfigInput;
 	plugins?: PluginsInput;
 };
+
+/** Types a preset without resolving it, so it still merges as an input would. */
+export function definePreset(preset: VelaPreset): VelaPreset {
+	return preset;
+}
+
+/** How deep presets may nest before the structure is treated as a mistake. */
+const MAX_PRESET_DEPTH = 10;
 
 const defaultConfigInput = defaultConfigSource satisfies TailwindConfigInput;
 
@@ -129,6 +170,7 @@ const emptyConfig: TailwindConfig = {
 		radius: {},
 		spacing: {},
 		fontFamily: {},
+		screens: {},
 		rem: staticRem,
 	},
 	plugins: emptyResolvedPlugins(),
@@ -146,41 +188,141 @@ export function defineConfig(input: TailwindConfigInput = {}): TailwindConfig {
 function resolveConfig(
 	input: TailwindConfigInput,
 	base: TailwindConfig,
+	depth = 0,
+	seen: Set<unknown> = new Set(),
 ): TailwindConfig {
+	const resolvedBase = applyPresets(input, base, depth, seen);
 	const extend = input.theme?.extend;
 
 	const theme: ThemeConfig = {
 		colors: resolveThemeColors(
-			base.theme.colors,
+			resolvedBase.theme.colors,
 			extend?.colors,
 			input.theme?.colors,
 		),
 		radius: resolveThemeScale(
-			base.theme.radius,
+			resolvedBase.theme.radius,
 			extend?.radius,
 			input.theme?.radius,
 		),
 		spacing: resolveThemeScale(
-			base.theme.spacing,
+			resolvedBase.theme.spacing,
 			extend?.spacing,
 			input.theme?.spacing,
 		),
 		fontFamily: resolveThemeScale(
-			base.theme.fontFamily,
+			resolvedBase.theme.fontFamily,
 			extend?.fontFamily,
 			input.theme?.fontFamily,
 		),
-		rem: resolveRemConfig(base.theme.rem, extend?.rem, input.theme?.rem),
+		screens: resolveScreens(
+			resolvedBase.theme.screens,
+			extend?.screens,
+			input.theme?.screens,
+		),
+		rem: resolveRemConfig(
+			resolvedBase.theme.rem,
+			extend?.rem,
+			input.theme?.rem,
+		),
 	};
 
 	return {
-		preflight: input.preflight ?? base.preflight,
-		framework: input.framework ?? base.framework,
+		preflight: input.preflight ?? resolvedBase.preflight,
+		framework: input.framework ?? resolvedBase.framework,
 		theme,
 		// Plugins run against the resolved theme so `theme()` reads the same
 		// scale the utilities do.
-		plugins: runPlugins(input.plugins, theme, base.plugins),
+		plugins: runPlugins(input.plugins, theme, resolvedBase.plugins),
 	};
+}
+
+/**
+ * Folds every preset into the base, in the order they were written, before the
+ * config that names them resolves against the result. Presets are merged as
+ * input rather than as finished configs, so `theme.extend` in a project still
+ * extends what a preset replaced instead of racing it.
+ */
+function applyPresets(
+	input: TailwindConfigInput,
+	base: TailwindConfig,
+	depth: number,
+	seen: Set<unknown>,
+): TailwindConfig {
+	const presets = input.presets;
+
+	if (presets === undefined) {
+		return base;
+	}
+
+	if (!Array.isArray(presets)) {
+		throw new Error("`presets` must be an array of vela configuration inputs.");
+	}
+
+	if (depth >= MAX_PRESET_DEPTH) {
+		throw new Error(
+			`Vela presets nest more than ${MAX_PRESET_DEPTH} levels deep; check for a preset that includes itself.`,
+		);
+	}
+
+	let resolved = base;
+
+	for (const [index, preset] of presets.entries()) {
+		if (
+			typeof preset !== "object" ||
+			preset === null ||
+			Array.isArray(preset)
+		) {
+			throw new Error(
+				`presets[${index}] is not a vela configuration object. A preset is a plain config input, such as the one definePreset() returns.`,
+			);
+		}
+
+		if (seen.has(preset)) {
+			throw new Error(
+				`presets[${index}] includes itself; vela presets cannot be recursive.`,
+			);
+		}
+
+		seen.add(preset);
+		try {
+			resolved = resolveConfig(
+				preset as TailwindConfigInput,
+				resolved,
+				depth + 1,
+				seen,
+			);
+		} finally {
+			seen.delete(preset);
+		}
+	}
+
+	return resolved;
+}
+
+/**
+ * Screens follow the same rule as the other theme axes: `theme.screens`
+ * replaces the scale, `theme.extend.screens` adds to what was inherited.
+ */
+export function resolveScreens(
+	base: ThemeScreens,
+	extend: ThemeScreens | undefined,
+	override: ThemeScreens | undefined,
+): ThemeScreens {
+	const merged = override ?? { ...base, ...extend };
+	const normalized: ThemeScreens = {};
+
+	for (const [name, width] of Object.entries(merged)) {
+		if (typeof width !== "number" || !Number.isInteger(width) || width < 0) {
+			throw new Error(
+				`theme.screens.${name} must be a whole viewport width in pixels; got ${JSON.stringify(width)}.`,
+			);
+		}
+
+		normalized[name] = width;
+	}
+
+	return normalized;
 }
 
 export function resolveThemeColors(

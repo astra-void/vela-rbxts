@@ -307,9 +307,10 @@ pub(crate) const SCROLLBAR_COLOR_FAMILY: ColorFamilySpec = ColorFamilySpec {
     transparency_prop: Some("ScrollBarImageTransparency"),
 };
 pub(crate) const RING_THICKNESS_VALUES: [&str; 5] = ["0", "1", "2", "4", "8"];
-/// `shadow` is missing on purpose: a shadow lives on a helper instance, which
-/// applies instantly, so there would be nothing for the filter to hold back.
-pub(crate) const TRANSITION_PROPERTY_VALUES: [&str; 4] = ["all", "colors", "opacity", "transform"];
+/// `shadow` narrows the tween to the UIShadow helper; the runtime tweens the
+/// helper instances it renders alongside the element, not just the element.
+pub(crate) const TRANSITION_PROPERTY_VALUES: [&str; 5] =
+    ["all", "colors", "opacity", "transform", "shadow"];
 pub(crate) const DURATION_PRESET_VALUES: [&str; 8] =
     ["75", "100", "150", "200", "300", "500", "700", "1000"];
 pub(crate) const EASE_VALUES: [(&str, &str, &str); 4] = [
@@ -1576,6 +1577,21 @@ pub(crate) fn resolve_layout_order_value(key: &str, negative: bool) -> Option<St
 /// `Some(true)` enables, `Some(false)` disables, `None` is an unknown payload.
 /// `None` payload and `all` mean the same thing; a named group narrows which
 /// props the tween is allowed to touch.
+/// What a `transition-*` group covers, phrased for a hover or a completion. The
+/// helper instances are named because that is where a shadow, a stroke colour
+/// and a scale actually live.
+pub(crate) fn transition_property_scope(property: &str) -> &'static str {
+    match property {
+        "colors" => "colour props, including `UIStroke.Color` and `UIShadow.Color`",
+        "opacity" => {
+            "transparency props, including `UIStroke.Transparency` and `UIShadow.Transparency`"
+        }
+        "transform" => "`Position`, `Size`, `Rotation`, `AnchorPoint`, and `UIScale.Scale`",
+        "shadow" => "the `UIShadow` helper",
+        _ => "every tweenable prop, on the element and on the UI* helpers under it",
+    }
+}
+
 pub(crate) fn resolve_transition_toggle(payload: Option<&str>) -> Option<(bool, &'static str)> {
     match payload {
         None => Some((true, "all")),

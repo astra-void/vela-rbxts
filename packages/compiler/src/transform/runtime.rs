@@ -1,27 +1,28 @@
 use crate::api::Diagnostic;
 use crate::config::model::TailwindConfig;
 use crate::diagnostics::compiler::{
-    negative_z_index_diagnostic, no_roblox_equivalent_diagnostic, unknown_theme_key_diagnostic,
-    unknown_variant_diagnostic, unsupported_alignment_value_diagnostic,
-    unsupported_anchor_value_diagnostic, unsupported_animation_value_diagnostic,
-    unsupported_arbitrary_value_diagnostic, unsupported_arbitrary_z_index_diagnostic,
-    unsupported_aspect_value_diagnostic, unsupported_border_value_diagnostic,
-    unsupported_canvas_size_diagnostic, unsupported_color_keyword_diagnostic,
-    unsupported_divide_value_diagnostic, unsupported_flex_direction_diagnostic,
-    unsupported_font_weight_diagnostic, unsupported_gradient_direction_diagnostic,
-    unsupported_grid_value_diagnostic, unsupported_layout_order_value_diagnostic,
-    unsupported_line_height_value_diagnostic, unsupported_margin_value_diagnostic,
-    unsupported_negative_margin_diagnostic, unsupported_object_fit_value_diagnostic,
-    unsupported_opacity_modifier_diagnostic, unsupported_opacity_value_diagnostic,
-    unsupported_overflow_diagnostic, unsupported_overscroll_value_diagnostic,
-    unsupported_pointer_events_value_diagnostic, unsupported_rotation_value_diagnostic,
-    unsupported_scale_diagnostic, unsupported_scroll_value_diagnostic,
-    unsupported_scrollbar_thickness_diagnostic, unsupported_shadow_inset_diagnostic,
-    unsupported_space_value_diagnostic, unsupported_stroke_value_diagnostic,
-    unsupported_text_alignment_diagnostic, unsupported_text_size_diagnostic,
-    unsupported_transition_value_diagnostic, unsupported_utility_family_diagnostic,
-    unsupported_whitespace_value_diagnostic, unsupported_z_index_auto_diagnostic,
-    unsupported_z_index_value_diagnostic,
+    invalid_breakpoint_range_diagnostic, malformed_attribute_variant_diagnostic,
+    negative_z_index_diagnostic, no_roblox_equivalent_diagnostic, unknown_breakpoint_diagnostic,
+    unknown_theme_key_diagnostic, unknown_variant_diagnostic,
+    unsupported_alignment_value_diagnostic, unsupported_anchor_value_diagnostic,
+    unsupported_animation_value_diagnostic, unsupported_arbitrary_value_diagnostic,
+    unsupported_arbitrary_z_index_diagnostic, unsupported_aspect_value_diagnostic,
+    unsupported_border_value_diagnostic, unsupported_canvas_size_diagnostic,
+    unsupported_color_keyword_diagnostic, unsupported_divide_value_diagnostic,
+    unsupported_flex_direction_diagnostic, unsupported_font_weight_diagnostic,
+    unsupported_gradient_direction_diagnostic, unsupported_grid_value_diagnostic,
+    unsupported_layout_order_value_diagnostic, unsupported_line_height_value_diagnostic,
+    unsupported_margin_value_diagnostic, unsupported_negative_margin_diagnostic,
+    unsupported_object_fit_value_diagnostic, unsupported_opacity_modifier_diagnostic,
+    unsupported_opacity_value_diagnostic, unsupported_overflow_diagnostic,
+    unsupported_overscroll_value_diagnostic, unsupported_pointer_events_value_diagnostic,
+    unsupported_rotation_value_diagnostic, unsupported_scale_diagnostic,
+    unsupported_scroll_value_diagnostic, unsupported_scrollbar_thickness_diagnostic,
+    unsupported_shadow_inset_diagnostic, unsupported_space_value_diagnostic,
+    unsupported_stroke_value_diagnostic, unsupported_text_alignment_diagnostic,
+    unsupported_text_size_diagnostic, unsupported_transition_value_diagnostic,
+    unsupported_utility_family_diagnostic, unsupported_whitespace_value_diagnostic,
+    unsupported_z_index_auto_diagnostic, unsupported_z_index_value_diagnostic,
 };
 use crate::ir::model::{
     DivideSpec, MarginSpec, PropEntry, RuntimeRule, SizeAxisValue, StyleEffectBundle, StyleIr,
@@ -57,7 +58,7 @@ use crate::semantic::{
         resolve_visibility_value, resolve_whitespace_value, resolve_z_index_value,
         spacing_value_to_offset, split_color_opacity,
     },
-    variant::{ParsedVariant, split_variant_prefixes},
+    variant::{ParsedVariant, VariantRegistry, utility_of},
 };
 use crate::transform::opacity::compose_inherited_opacity;
 
@@ -75,23 +76,38 @@ where
 {
     let mut style = StyleIr::default();
     let mut pending = PendingAxes::default();
+    let variants = VariantRegistry::new(config);
 
     for token in tokens {
         for expanded in expand_class_token(token.as_ref(), config) {
             let (token, origin) = match expanded {
                 ExpandedToken::Props {
                     origin,
-                    variants,
+                    variants: parsed,
                     props,
                 } => {
-                    apply_plugin_props(&origin, &variants, props, diagnostics, &mut style);
+                    apply_plugin_props(&origin, &parsed, props, &variants, diagnostics, &mut style);
                     continue;
                 }
                 ExpandedToken::Class { token, origin } => (token, origin),
             };
 
-            let analysis = analyze_class_token(&token);
+            let analysis = analyze_class_token(&token, &variants);
             let diagnostics_before = diagnostics.len();
+
+            // A prefix that could not be read means the class never applies, so
+            // the utility behind it is left alone rather than lowered as if the
+            // prefix were not there.
+            if push_variant_diagnostics(&analysis, &variants, diagnostics) {
+                if let Some(origin) = origin {
+                    repoint_plugin_diagnostics(
+                        &mut diagnostics[diagnostics_before..],
+                        &origin,
+                        &token,
+                    );
+                }
+                continue;
+            }
 
             if analysis.runtime_aware {
                 let condition = analysis
@@ -137,13 +153,14 @@ where
 /// so it lands on the base bundle or, under a variant, on a runtime rule.
 fn apply_plugin_props(
     origin: &str,
-    variants: &[ParsedVariant],
+    parsed: &[ParsedVariant],
     props: Vec<(String, String)>,
+    variants: &VariantRegistry<'_>,
     diagnostics: &mut Vec<Diagnostic>,
     style: &mut StyleIr,
 ) {
-    match variants_runtime_condition(variants) {
-        Err(unknown) => diagnostics.push(unknown_variant_diagnostic(&unknown, origin)),
+    match variants_runtime_condition(parsed) {
+        Err(unknown) => diagnostics.push(unknown_variant_diagnostic(&unknown, origin, variants)),
         Ok(None) => {
             for (name, value) in props {
                 style.set_prop(name, value);
@@ -168,7 +185,7 @@ fn apply_plugin_props(
 /// An expanded token is not in the source, so its diagnostics are re-pointed at
 /// the plugin utility the reader actually wrote.
 fn repoint_plugin_diagnostics(diagnostics: &mut [Diagnostic], origin: &str, expanded: &str) {
-    let (_, name) = split_variant_prefixes(origin);
+    let name = utility_of(origin);
 
     for diagnostic in diagnostics {
         diagnostic.message = format!(
@@ -649,6 +666,56 @@ fn resolve_single_analyzed_token(
     style
 }
 
+/// Reports everything the token's prefixes got wrong, and says whether any of
+/// them left the class unable to apply at all.
+fn push_variant_diagnostics(
+    analysis: &AnalyzedClassToken,
+    variants: &VariantRegistry<'_>,
+    diagnostics: &mut Vec<Diagnostic>,
+) -> bool {
+    let token = &analysis.parsed.raw;
+    let mut unreadable = false;
+
+    for issue in &analysis.issues {
+        match issue {
+            SemanticIssue::UnknownVariant { variant } => {
+                unreadable = true;
+                diagnostics.push(unknown_variant_diagnostic(variant, token, variants));
+            }
+            SemanticIssue::UnknownBreakpoint { name, .. } => {
+                unreadable = true;
+                diagnostics.push(unknown_breakpoint_diagnostic(name, token, variants));
+            }
+            SemanticIssue::MalformedAttributeVariant { variant, detail } => {
+                unreadable = true;
+                diagnostics.push(malformed_attribute_variant_diagnostic(
+                    variant, detail, token,
+                ));
+            }
+            SemanticIssue::InvalidBreakpointRange {
+                min_width,
+                max_width,
+            } => diagnostics.push(invalid_breakpoint_range_diagnostic(
+                *min_width, *max_width, token,
+            )),
+            _ => {}
+        }
+    }
+
+    unreadable
+}
+
+/// Whether the issue is one `push_variant_diagnostics` already reported.
+fn is_variant_issue(issue: &SemanticIssue) -> bool {
+    matches!(
+        issue,
+        SemanticIssue::UnknownVariant { .. }
+            | SemanticIssue::UnknownBreakpoint { .. }
+            | SemanticIssue::MalformedAttributeVariant { .. }
+            | SemanticIssue::InvalidBreakpointRange { .. }
+    )
+}
+
 fn apply_analyzed_token(
     analysis: &AnalyzedClassToken,
     config: &TailwindConfig,
@@ -657,7 +724,10 @@ fn apply_analyzed_token(
     pending: &mut PendingAxes,
 ) {
     if !analysis.supported
-        && let Some(issue) = analysis.issues.first()
+        && let Some(issue) = analysis
+            .issues
+            .iter()
+            .find(|issue| !is_variant_issue(issue))
     {
         diagnostics.push(match issue {
             SemanticIssue::UnsupportedUtilityFamily { .. } => {
@@ -679,15 +749,20 @@ fn apply_analyzed_token(
             SemanticIssue::NoRobloxEquivalent { family } => {
                 no_roblox_equivalent_diagnostic(family, &analysis.parsed.raw)
             }
-            SemanticIssue::UnknownVariant { variant } => {
-                unknown_variant_diagnostic(variant, &analysis.parsed.raw)
-            }
             SemanticIssue::UnsupportedArbitraryValue { value } => {
                 unsupported_arbitrary_value_diagnostic(value, &analysis.parsed.raw)
             }
             SemanticIssue::UnsupportedOpacityModifier { modifier } => {
                 unsupported_opacity_modifier_diagnostic(modifier, &analysis.parsed.raw)
             }
+            // Reported where the prefixes are read, before the utility behind
+            // them is lowered at all.
+            SemanticIssue::UnknownVariant { .. }
+            | SemanticIssue::UnknownBreakpoint { .. }
+            | SemanticIssue::MalformedAttributeVariant { .. }
+            | SemanticIssue::InvalidBreakpointRange { .. } => unreachable!(
+                "variant issues are filtered out before the first unsupported issue is read"
+            ),
         });
         return;
     }

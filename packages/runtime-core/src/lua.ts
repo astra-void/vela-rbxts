@@ -39,6 +39,18 @@ export namespace __VelaLua {
 		return substring(value, stringLength(value) - suffixLength) === suffix;
 	}
 
+	export function indexOf(value: string, needle: string): number {
+		const limit = stringLength(value) - stringLength(needle);
+
+		for (let index = 0; index <= limit; index++) {
+			if (substring(value, index, index + stringLength(needle)) === needle) {
+				return index;
+			}
+		}
+
+		return -1;
+	}
+
 	export function lastIndexOf(value: string, needle: string): number {
 		for (
 			let index = stringLength(value) - stringLength(needle);
@@ -305,5 +317,16 @@ export namespace __VelaLua {
 
 	export function arraySize<T>(value: T[]): number {
 		return value.size();
+	}
+
+	export function join(values: readonly string[], separator: string): string {
+		let result = "";
+
+		for (let index = 0; index < arraySize(values as string[]); index++) {
+			const value = values[index] ?? "";
+			result = index === 0 ? value : `${result}${separator}${value}`;
+		}
+
+		return result;
 	}
 }

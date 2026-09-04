@@ -131,7 +131,7 @@ fn host_config_json(config: &TailwindConfig, resolves_class_values: bool) -> Str
     serde_json::to_string(&config).expect("runtime config must serialize to JSON")
 }
 
-const THEME_TABLES: [&str; 4] = ["colors", "radius", "spacing", "fontFamily"];
+const THEME_TABLES: [&str; 5] = ["colors", "radius", "spacing", "fontFamily", "screens"];
 
 /// The runtime carries the defaults, so a table only has to say how it differs
 /// from them — which for most projects is not at all. A table that dropped a
@@ -144,6 +144,7 @@ fn keep_theme_changes(theme: &mut crate::config::model::ThemeConfig) {
         keep_changes(&mut theme.radius, &defaults.radius),
         keep_changes(&mut theme.spacing, &defaults.spacing),
         keep_changes(&mut theme.font_family, &defaults.font_family),
+        keep_changes(&mut theme.screens, &defaults.screens),
     ];
 
     theme.replaced = THEME_TABLES
@@ -169,16 +170,18 @@ fn keep_changes<V: PartialEq>(
     true
 }
 
-/// The theme scales and the plugin utilities are only ever read while parsing a
-/// class value, and a file that hands the host none needs neither. They travel
-/// emptied *and* replaced, so the runtime takes the empty tables as given
-/// rather than falling back on its defaults.
+/// The theme scales, the breakpoints and the plugin registrations are only ever
+/// read while parsing a class value, and a file that hands the host none needs
+/// any of them. They travel emptied *and* replaced, so the runtime takes the
+/// empty tables as given rather than falling back on its defaults.
 fn prune_resolver_tables(config: &mut TailwindConfig) {
     config.theme.colors.clear();
     config.theme.radius.clear();
     config.theme.spacing.clear();
     config.theme.font_family.clear();
+    config.theme.screens.clear();
     config.plugins.utilities.clear();
+    config.plugins.variants.clear();
     config.theme.replaced = THEME_TABLES.iter().map(|name| (*name).to_owned()).collect();
 }
 

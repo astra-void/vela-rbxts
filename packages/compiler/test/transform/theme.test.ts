@@ -58,6 +58,13 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 				serif: "rbxasset://fonts/families/Merriweather.json",
 				mono: "rbxasset://fonts/families/RobotoMono.json",
 			},
+			screens: {
+				sm: 640,
+				md: 768,
+				lg: 1024,
+				xl: 1280,
+				"2xl": 1536,
+			},
 			rem: {
 				base: 16,
 				min: 8,
@@ -66,7 +73,7 @@ test("applies theme.extend while top-level theme scales replace the family", () 
 				pinnedUnder: ["surfacegui", "billboardgui"],
 			},
 		},
-		plugins: { utilities: {} },
+		plugins: { utilities: {}, variants: {} },
 	});
 
 	const source =
@@ -165,8 +172,9 @@ test("prunes the resolver's tables from a host that resolves no class value", ()
 			radius: {},
 			spacing: {},
 			fontFamily: {},
+			screens: {},
 			rem: expect.objectContaining({ base: 16 }),
-			replaced: ["colors", "radius", "spacing", "fontFamily"],
+			replaced: ["colors", "radius", "spacing", "fontFamily", "screens"],
 		},
 		plugins: { utilities: {} },
 	});

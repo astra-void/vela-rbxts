@@ -37,6 +37,24 @@ export const hostConfig = (code: string) =>
 		/createVelaRuntimeHost\((\{[\s\S]*?\n\})[,)]/.exec(code)?.[1] ?? "null",
 	);
 
+/// A project that registers state variants and its own breakpoints, which is
+/// what the compiler resolves every `open:`/`tablet:` token against.
+export const stateVariantConfig = defineConfig({
+	preflight: false,
+	theme: { extend: { screens: { tablet: 900 } } },
+	plugins: [
+		plugin(({ addVariant }) => {
+			addVariant("open", { attribute: "State", equals: "open" });
+			addVariant("disabled", { attribute: "Disabled", equals: true });
+			addVariant("tier", { attribute: "Tier", equals: 2 });
+		}),
+	],
+});
+
+export const withStateVariants = {
+	configJson: JSON.stringify(stateVariantConfig),
+};
+
 export const withPluginUtilities = {
 	configJson: JSON.stringify(
 		defineConfig({

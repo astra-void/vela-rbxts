@@ -1,19 +1,27 @@
 import type { ClassValue } from "@vela-rbxts/types";
 
 export {
+	type AttributeVariant,
 	defaultConfig,
 	defineConfig,
+	definePreset,
 	type MotionDriver,
 	type PluginApi,
 	type PluginHandler,
 	type PluginPropMap,
 	type PluginUtilities,
 	type PluginUtilityValue,
+	type PluginVariants,
 	plugin,
 	type ResolvedPlugins,
+	type ResolvedPluginsInput,
 	type TailwindConfig,
 	type TailwindConfigInput,
+	type ThemeScreens,
+	type VariantAttributeValue,
+	type VariantDefinition,
 	type VelaPlugin,
+	type VelaPreset,
 } from "@vela-rbxts/config";
 
 export { createRbxtscTransformerBridge as createTransformer } from "@vela-rbxts/rbxtsc-host";

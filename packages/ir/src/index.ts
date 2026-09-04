@@ -20,6 +20,8 @@ export type StyleEffectBundle = {
 	helpers: HelperEntry[];
 };
 
+export type RuntimeAttributeValue = string | number | boolean;
+
 export type RuntimeCondition =
 	| {
 			kind: "all";
@@ -27,8 +29,10 @@ export type RuntimeCondition =
 	  }
 	| {
 			kind: "width";
-			alias: "sm" | "md" | "lg";
+			/** The breakpoint name, which a project configures under `theme.screens`. */
+			alias: string;
 			minWidth: number;
+			/** Exclusive, so `md:` and `max-md:` partition every viewport. */
 			maxWidth?: number;
 	  }
 	| {
@@ -38,6 +42,31 @@ export type RuntimeCondition =
 	| {
 			kind: "input";
 			value: "touch" | "mouse" | "gamepad";
+	  }
+	| {
+			kind: "color-scheme";
+			value: "light" | "dark";
+	  }
+	| {
+			kind: "hover";
+	  }
+	| {
+			kind: "active";
+	  }
+	| {
+			kind: "focus";
+	  }
+	/** A Roblox attribute on the styled instance. */
+	| {
+			kind: "attribute";
+			name: string;
+			value: RuntimeAttributeValue;
+	  }
+	/** A branch of a class value the transformer read but could not decide. */
+	| {
+			kind: "test";
+			index: number;
+			expected: boolean;
 	  };
 
 export type RuntimeRule = {

@@ -1,6 +1,6 @@
 use crate::config::model::{PluginUtility, TailwindConfig};
 use crate::ir::model::RuntimeCondition;
-use crate::semantic::variant::{ParsedVariant, split_variant_prefixes};
+use crate::semantic::variant::{ParsedVariant, utility_of};
 
 /// How deep one plugin utility may reach through others before the expansion is
 /// treated as a cycle the config has to fix.
@@ -54,7 +54,7 @@ fn expand_into(
     out: &mut Vec<ExpandedToken>,
     depth: usize,
 ) {
-    let (variants, base) = split_variant_prefixes(token);
+    let base = utility_of(token);
 
     let Some(utility) = lookup_plugin_utility(config, base) else {
         out.push(ExpandedToken::Class {
@@ -75,7 +75,9 @@ fn expand_into(
     match utility {
         PluginUtility::Props(props) => out.push(ExpandedToken::Props {
             origin: origin.to_owned(),
-            variants,
+            variants: crate::semantic::variant::VariantRegistry::new(config)
+                .split(token)
+                .0,
             props: props
                 .iter()
                 .map(|(name, value)| (name.clone(), value.clone()))
@@ -102,7 +104,7 @@ fn expand_into(
 }
 
 /// The runtime condition a token's variants describe, or the first prefix that
-/// is not a variant at all.
+/// could not be read as one.
 pub(crate) fn variants_runtime_condition(
     variants: &[ParsedVariant],
 ) -> Result<Option<RuntimeCondition>, String> {

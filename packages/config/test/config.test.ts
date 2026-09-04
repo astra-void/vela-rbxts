@@ -4,8 +4,10 @@ import defaultsInput from "../src/defaults.json" with { type: "json" };
 import {
 	defaultConfig,
 	defineConfig,
+	definePreset,
 	plugin,
 	resolveThemeColors,
+	type VelaPreset,
 } from "../src/index";
 
 function expectPalette(value: unknown, entries: Record<string, string>) {
@@ -307,4 +309,177 @@ test("an inverted rem clamp collapses onto min", () => {
 
 	expect(config.theme.rem.min).toBe(32);
 	expect(config.theme.rem.max).toBe(32);
+});
+
+test("resolves presets before the config that names them", () => {
+	const base = definePreset({
+		theme: {
+			extend: {
+				colors: { brand: "Color3.fromRGB(1, 1, 1)" },
+				screens: { phone: 480 },
+			},
+		},
+	});
+	const overlay = definePreset({
+		theme: { extend: { colors: { brand: "Color3.fromRGB(2, 2, 2)" } } },
+	});
+
+	const config = defineConfig({
+		presets: [base, overlay],
+		theme: { extend: { colors: { accent: "Color3.fromRGB(3, 3, 3)" } } },
+	});
+
+	// Later presets win over earlier ones...
+	expect(config.theme.colors.brand).toBe("Color3.fromRGB(2, 2, 2)");
+	// ...and everything a preset added is still there.
+	expect(config.theme.colors.accent).toBe("Color3.fromRGB(3, 3, 3)");
+	expect(config.theme.screens.phone).toBe(480);
+	expect(config.theme.screens.md).toBe(768);
+});
+
+test("a local theme always outranks a preset", () => {
+	const preset = definePreset({
+		theme: { extend: { colors: { brand: "Color3.fromRGB(1, 1, 1)" } } },
+	});
+
+	const config = defineConfig({
+		presets: [preset],
+		theme: { extend: { colors: { brand: "Color3.fromRGB(9, 9, 9)" } } },
+	});
+
+	expect(config.theme.colors.brand).toBe("Color3.fromRGB(9, 9, 9)");
+});
+
+// A preset replacing a scale is the preset saying "this is the whole set", so
+// the project's `extend` adds to what the preset left rather than to the
+// built-in defaults.
+test("theme.extend extends what a preset replaced", () => {
+	const preset = definePreset({
+		theme: { radius: { sm: "new UDim(0, 1)" } },
+	});
+
+	const config = defineConfig({
+		presets: [preset],
+		theme: { extend: { radius: { lg: "new UDim(0, 2)" } } },
+	});
+
+	expect(config.theme.radius).toEqual({
+		sm: "new UDim(0, 1)",
+		lg: "new UDim(0, 2)",
+	});
+});
+
+test("runs preset plugins before the project's own", () => {
+	const order: string[] = [];
+	const preset = definePreset({
+		plugins: [
+			plugin(({ addUtilities }) => {
+				order.push("preset");
+				addUtilities({ box: "p-4" });
+			}),
+		],
+	});
+
+	const config = defineConfig({
+		presets: [preset],
+		plugins: [
+			plugin(({ addUtilities }) => {
+				order.push("project");
+				addUtilities({ box: "p-8" });
+			}),
+		],
+	});
+
+	expect(order).toEqual(["preset", "project"]);
+	expect(config.plugins.utilities.box).toBe("p-8");
+});
+
+test("rejects a preset that includes itself", () => {
+	const preset: Record<string, unknown> = { theme: {} };
+	preset.presets = [preset];
+
+	expect(() => defineConfig({ presets: [preset] })).toThrow(/recursive/);
+});
+
+test("rejects a preset that is not a configuration object", () => {
+	expect(() =>
+		defineConfig({ presets: ["nope" as unknown as VelaPreset] }),
+	).toThrow(/not a vela configuration object/);
+});
+
+test("registers custom variants through addVariant", () => {
+	const config = defineConfig({
+		plugins: [
+			plugin(({ addVariant }) => {
+				addVariant("open", { attribute: "State", equals: "open" });
+				addVariant("disabled", { attribute: "Disabled", equals: true });
+				addVariant("tier", { attribute: "Tier", equals: 2 });
+			}),
+		],
+	});
+
+	expect(config.plugins.variants).toEqual({
+		open: { attribute: "State", equals: "open" },
+		disabled: { attribute: "Disabled", equals: true },
+		tier: { attribute: "Tier", equals: 2 },
+	});
+});
+
+test("rejects variant names vela already reads as something else", () => {
+	const register = (name: string) =>
+		defineConfig({
+			plugins: [
+				plugin(({ addVariant }) => {
+					addVariant(name, { attribute: "State", equals: "open" });
+				}),
+			],
+		});
+
+	expect(() => register("hover")).toThrow(/built-in/);
+	expect(() => register("md")).toThrow(/theme.screens/);
+	expect(() => register("max-md")).toThrow(/breakpoint range/);
+	expect(() => register("attr-x")).toThrow(/attribute variant/);
+	expect(() => register("open:closed")).toThrow(/usable class prefix/);
+});
+
+test("rejects a variant with no attribute to read", () => {
+	expect(() =>
+		defineConfig({
+			plugins: [
+				plugin(({ addVariant }) => {
+					addVariant("open", {
+						attribute: "not a name",
+						equals: "open",
+					});
+				}),
+			],
+		}),
+	).toThrow(/Roblox attribute name/);
+});
+
+test("resolves screens as a theme axis", () => {
+	expect(defaultConfig.theme.screens).toEqual({
+		sm: 640,
+		md: 768,
+		lg: 1024,
+		xl: 1280,
+		"2xl": 1536,
+	});
+
+	const extended = defineConfig({
+		theme: { extend: { screens: { tablet: 900 } } },
+	});
+	expect(extended.theme.screens.tablet).toBe(900);
+	expect(extended.theme.screens.sm).toBe(640);
+
+	const replaced = defineConfig({
+		theme: { screens: { phone: 480, desktop: 1280 } },
+	});
+	expect(replaced.theme.screens).toEqual({ phone: 480, desktop: 1280 });
+});
+
+test("rejects a screen that is not a whole pixel width", () => {
+	expect(() => defineConfig({ theme: { screens: { phone: 480.5 } } })).toThrow(
+		/whole viewport width/,
+	);
 });

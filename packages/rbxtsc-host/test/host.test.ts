@@ -494,3 +494,175 @@ function writeTsconfig(root: string, contents: object) {
 		"utf8",
 	);
 }
+
+// Every eligible source file asks for its config, so a project of any size
+// would otherwise transpile and execute the same file once per file.
+test("executes an unchanged vela.config.ts once for the whole project", () => {
+	const project = createProject(countingConfig("Color3.fromRGB(1, 2, 3)"));
+	const other = path.join(project.root, "src", "client", "Other.tsx");
+	fs.mkdirSync(path.dirname(other), { recursive: true });
+	clearProjectConfigCache();
+	resetConfigLoadCount();
+
+	const first = resolveProjectConfig(project.sourceFile);
+	const second = resolveProjectConfig(other);
+
+	expect(configLoadCount()).toBe(1);
+	// The same object, which is what lets everything derived from it be reused.
+	expect(second).toBe(first);
+	expect(first.theme.colors.brand).toBe("Color3.fromRGB(1, 2, 3)");
+});
+
+test("re-runs a vela.config.ts that changed on disk", () => {
+	const project = createProject(countingConfig("Color3.fromRGB(1, 2, 3)"));
+	clearProjectConfigCache();
+	resetConfigLoadCount();
+
+	expect(resolveProjectConfig(project.sourceFile).theme.colors.brand).toBe(
+		"Color3.fromRGB(1, 2, 3)",
+	);
+
+	fs.writeFileSync(
+		path.join(project.root, "vela.config.ts"),
+		countingConfig("Color3.fromRGB(4, 5, 6)"),
+		"utf8",
+	);
+
+	expect(resolveProjectConfig(project.sourceFile).theme.colors.brand).toBe(
+		"Color3.fromRGB(4, 5, 6)",
+	);
+	expect(configLoadCount()).toBe(2);
+});
+
+// A watch process that kept serving a config that threw would never recover
+// from the typo that made it throw.
+test("does not cache a config failure past the edit that fixes it", () => {
+	const project = createProject(
+		`export default defineConfig({ theme: { colors: { brand: (() => { throw new Error("boom"); })() } } });`,
+	);
+	clearProjectConfigCache();
+
+	expect(() => resolveProjectConfig(project.sourceFile)).toThrow("boom");
+	// A second call replays the cached failure rather than re-running it.
+	expect(() => resolveProjectConfig(project.sourceFile)).toThrow("boom");
+
+	fs.writeFileSync(
+		path.join(project.root, "vela.config.ts"),
+		countingConfig("Color3.fromRGB(7, 8, 9)"),
+		"utf8",
+	);
+
+	expect(resolveProjectConfig(project.sourceFile).theme.colors.brand).toBe(
+		"Color3.fromRGB(7, 8, 9)",
+	);
+});
+
+test("keeps resolving the nearest config while both are cached", () => {
+	const project = createProject(countingConfig("Color3.fromRGB(1, 2, 3)"));
+	const nested = path.join(project.root, "src", "ui");
+	fs.mkdirSync(nested, { recursive: true });
+	fs.writeFileSync(
+		path.join(nested, "vela.config.ts"),
+		countingConfig("Color3.fromRGB(9, 9, 9)"),
+		"utf8",
+	);
+	clearProjectConfigCache();
+
+	const outer = resolveProjectConfig(project.sourceFile);
+	const inner = resolveProjectConfig(path.join(nested, "Panel.tsx"));
+
+	expect(outer.theme.colors.brand).toBe("Color3.fromRGB(1, 2, 3)");
+	expect(inner.theme.colors.brand).toBe("Color3.fromRGB(9, 9, 9)");
+	// And again, off the cache, in the other order.
+	expect(
+		resolveProjectConfig(path.join(nested, "Card.tsx")).theme.colors.brand,
+	).toBe("Color3.fromRGB(9, 9, 9)");
+	expect(resolveProjectConfig(project.sourceFile).theme.colors.brand).toBe(
+		"Color3.fromRGB(1, 2, 3)",
+	);
+});
+
+// The config runs through `new Function`, so a counter on the global object is
+// visible to both sides and says exactly how often it executed.
+const CONFIG_LOAD_COUNTER = "__velaTestConfigLoads";
+
+function countingConfig(brand: string): string {
+	return `(globalThis as Record<string, number>).${CONFIG_LOAD_COUNTER} =
+		((globalThis as Record<string, number>).${CONFIG_LOAD_COUNTER} ?? 0) + 1;
+	export default defineConfig({ theme: { extend: { colors: { brand: "${brand}" } } } });`;
+}
+
+function configLoadCount(): number {
+	return (globalThis as Record<string, unknown>)[CONFIG_LOAD_COUNTER] as number;
+}
+
+function resetConfigLoadCount() {
+	(globalThis as Record<string, unknown>)[CONFIG_LOAD_COUNTER] = 0;
+}
+
+test("resolves presets a vela.config.ts imports from vela-rbxts", () => {
+	const project = createProject(
+		`import { defineConfig, definePreset, plugin } from "vela-rbxts";
+
+		const gameUi = definePreset({
+			theme: { extend: { colors: { brand: "Color3.fromRGB(255, 136, 0)" }, screens: { tablet: 900 } } },
+			plugins: [
+				plugin(({ addVariant }) => {
+					addVariant("open", { attribute: "State", equals: "open" });
+				}),
+			],
+		});
+
+		export default defineConfig({ presets: [gameUi] });`,
+	);
+	clearProjectConfigCache();
+
+	const config = resolveProjectConfig(project.sourceFile);
+
+	expect(config.theme.colors.brand).toBe("Color3.fromRGB(255, 136, 0)");
+	expect(config.theme.screens.tablet).toBe(900);
+	expect(config.plugins.variants.open).toEqual({
+		attribute: "State",
+		equals: "open",
+	});
+});
+
+// `framework` is program-wide, so a preset that states one has to be read as a
+// declaration rather than left to the tsconfig inference.
+test("reads a framework a preset declares as a declaration", () => {
+	const project = createProject(
+		`export default defineConfig({ presets: [{ framework: "react" }] });`,
+	);
+	writeTsconfig(project.root, { compilerOptions: { jsxFactory: "Vide.jsx" } });
+	clearProjectConfigCache();
+
+	expect(resolveProjectConfig(project.sourceFile).framework).toBe("react");
+});
+
+test("loads screens and variants from a vela.config.json", () => {
+	const project = createProject(
+		JSON.stringify({
+			$schema: "./schema.json",
+			theme: { extend: { screens: { tablet: 900 } } },
+			plugins: {
+				variants: { open: { attribute: "State", equals: "open" } },
+			},
+		}),
+		"vela.config.json",
+	);
+	clearProjectConfigCache();
+
+	const config = resolveProjectConfig(project.sourceFile);
+
+	expect(config.theme.screens).toEqual({
+		sm: 640,
+		md: 768,
+		lg: 1024,
+		xl: 1280,
+		"2xl": 1536,
+		tablet: 900,
+	});
+	expect(config.plugins.variants).toEqual({
+		open: { attribute: "State", equals: "open" },
+	});
+});

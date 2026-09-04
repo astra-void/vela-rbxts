@@ -30,6 +30,7 @@ import type {
 import {
 	defaultConfig,
 	defineConfig,
+	definePreset,
 	PALETTE_DEFAULT_KEY,
 	plugin,
 	SHADES,
@@ -43,35 +44,60 @@ const CONFIG_FILE_NAME = "vela.config.ts";
 // program, which typed ESLint setups reject for files outside `include`.
 const CONFIG_FILE_NAMES = [CONFIG_FILE_NAME, "vela.config.json"];
 
+export type ProjectConfigInfo = {
+	config: TailwindConfig;
+	configFilePath?: string;
+	projectRoot: string;
+};
+
 export function resolveProjectConfig(sourceFileName: string): TailwindConfig {
 	return resolveProjectConfigInfo(sourceFileName).config;
 }
 
-export function resolveProjectConfigInfo(sourceFileName: string): {
-	config: TailwindConfig;
-	configFilePath?: string;
-	projectRoot: string;
-} {
-	const configFilePath = findProjectConfigFile(sourceFileName);
+/**
+ * Every eligible source file asks for its config, and a project has one config
+ * for whole directories at a time, so the answer is cached per directory, and
+ * the config file behind it is only re-read when the file on disk has moved.
+ * A `vela.config.ts` is transpiled and executed to resolve, which is far too
+ * much work to repeat per file.
+ */
+export function resolveProjectConfigInfo(
+	sourceFileName: string,
+): ProjectConfigInfo {
+	const directory = path.dirname(path.resolve(sourceFileName));
+	const configFilePath = findProjectConfigFile(directory);
 
 	if (!configFilePath) {
-		return {
-			config: inferFramework(sourceFileName, defaultConfig, false),
-			projectRoot: path.dirname(path.resolve(sourceFileName)),
+		const cached = infoCache.get(directory);
+		if (cached !== undefined && cached.loaded === undefined) {
+			return cached.info;
+		}
+
+		const info: ProjectConfigInfo = {
+			config: inferFramework(directory, defaultConfig, false),
+			projectRoot: directory,
 		};
+		infoCache.set(directory, { info });
+
+		return info;
 	}
 
 	const loaded = loadProjectConfig(configFilePath);
+	// Identity, not equality: `loadProjectConfig` hands back the very object it
+	// cached, and a fresh one is exactly what a changed config file produces.
+	const cached = infoCache.get(directory);
+	if (cached !== undefined && cached.loaded === loaded) {
+		return cached.info;
+	}
 
-	return {
-		config: inferFramework(
-			sourceFileName,
-			loaded.config,
-			loaded.declaresFramework,
-		),
+	const info: ProjectConfigInfo = {
+		config: inferFramework(directory, loaded.config, loaded.declaresFramework),
 		configFilePath,
 		projectRoot: path.dirname(configFilePath),
 	};
+	infoCache.set(directory, { info, loaded });
+
+	return info;
 }
 
 type LoadedProjectConfig = {
@@ -81,15 +107,36 @@ type LoadedProjectConfig = {
 	declaresFramework: boolean;
 };
 
+type ConfigCacheEntry = {
+	sourceText: string;
+	/// Exactly one of these is set. A failure is cached the same way a success
+	/// is, since every source file in the project would otherwise re-run a
+	/// config that is known to throw, and the next edit is what lets a fix
+	/// take effect.
+	loaded?: LoadedProjectConfig;
+	error?: unknown;
+};
+
 // Every source file resolves its own config, so a host that walks a whole
 // project would otherwise transpile and evaluate the same file once per file.
-const configCache = new Map<
+const configCache = new Map<string, ConfigCacheEntry>();
+
+/// The upward walk for a config file, memoized per directory. Sibling files
+/// share a directory, and a directory's answer only changes when a config file
+/// is added or removed, which is what `clearProjectConfigCache` is for.
+const configPathCache = new Map<string, string | undefined>();
+
+/// The finished answer per directory, so `inferFramework` and its own tsconfig
+/// walk are not repeated either.
+const infoCache = new Map<
 	string,
-	{ sourceText: string; loaded: LoadedProjectConfig }
+	{ info: ProjectConfigInfo; loaded?: LoadedProjectConfig }
 >();
 
 export function clearProjectConfigCache(): void {
 	configCache.clear();
+	configPathCache.clear();
+	infoCache.clear();
 	jsxFactoryCache.clear();
 }
 
@@ -101,7 +148,7 @@ const jsxFactoryCache = new Map<string, string | undefined>();
 /// compile React JSX at all — a config that never named a framework is taking
 /// the default rather than asking for React.
 function inferFramework(
-	sourceFileName: string,
+	directory: string,
 	config: TailwindConfig,
 	declared: boolean,
 ): TailwindConfig {
@@ -109,7 +156,7 @@ function inferFramework(
 		return config;
 	}
 
-	const factory = findJsxFactory(sourceFileName);
+	const factory = findJsxFactory(directory);
 	if (factory === undefined || !factory.startsWith("Vide.")) {
 		return config;
 	}
@@ -117,8 +164,8 @@ function inferFramework(
 	return { ...config, framework: "vide" };
 }
 
-function findJsxFactory(sourceFileName: string): string | undefined {
-	let currentDirectory = path.dirname(path.resolve(sourceFileName));
+function findJsxFactory(directory: string): string | undefined {
+	let currentDirectory = directory;
 
 	while (true) {
 		const candidate = path.join(currentDirectory, TSCONFIG_FILE_NAME);
@@ -206,21 +253,42 @@ function readTsconfig(
 	}
 }
 
+/// Reading the file is cheap; transpiling and executing it is not, and neither
+/// is everything hanging off the resolved config. The text is compared rather
+/// than an mtime because two edits inside one filesystem tick share a stamp,
+/// and a config the host kept serving after it changed is the one failure mode
+/// worth spending a read to rule out.
 function loadProjectConfig(configFilePath: string): LoadedProjectConfig {
 	const sourceText = fs.readFileSync(configFilePath, "utf8");
 	const cached = configCache.get(configFilePath);
 
 	if (cached !== undefined && cached.sourceText === sourceText) {
-		return cached.loaded;
+		return replayCacheEntry(cached);
 	}
 
-	const loaded = configFilePath.endsWith(".json")
-		? loadJsonProjectConfig(configFilePath, sourceText)
-		: loadTypeScriptProjectConfig(configFilePath, sourceText);
+	let entry: ConfigCacheEntry;
+	try {
+		entry = {
+			sourceText,
+			loaded: configFilePath.endsWith(".json")
+				? loadJsonProjectConfig(configFilePath, sourceText)
+				: loadTypeScriptProjectConfig(configFilePath, sourceText),
+		};
+	} catch (error) {
+		entry = { sourceText, error };
+	}
 
-	configCache.set(configFilePath, { sourceText, loaded });
+	configCache.set(configFilePath, entry);
 
-	return loaded;
+	return replayCacheEntry(entry);
+}
+
+function replayCacheEntry(entry: ConfigCacheEntry): LoadedProjectConfig {
+	if (entry.loaded !== undefined) {
+		return entry.loaded;
+	}
+
+	throw entry.error;
 }
 
 function loadTypeScriptProjectConfig(
@@ -256,7 +324,7 @@ function loadTypeScriptProjectConfig(
 	let declaresFramework = false;
 	const resolvedConfigs = new Set<unknown>();
 	const trackedDefineConfig: ConfigLoader = (input) => {
-		declaresFramework ||= isRecord(input) && "framework" in input;
+		declaresFramework ||= declaresFrameworkInput(input);
 
 		const resolved = defineConfig(input);
 		resolvedConfigs.add(resolved);
@@ -272,6 +340,7 @@ function loadTypeScriptProjectConfig(
 		"defineConfig",
 		"defaultConfig",
 		"plugin",
+		"definePreset",
 		transpiled.outputText,
 	) as (
 		exports: unknown,
@@ -282,6 +351,7 @@ function loadTypeScriptProjectConfig(
 		defineConfig: ConfigLoader,
 		defaultConfig: TailwindConfig,
 		plugin: typeof import("@vela-rbxts/config").plugin,
+		definePreset: typeof import("@vela-rbxts/config").definePreset,
 	) => void;
 
 	executeModule(
@@ -293,6 +363,7 @@ function loadTypeScriptProjectConfig(
 		trackedDefineConfig,
 		defaultConfig,
 		plugin,
+		definePreset,
 	);
 
 	const exported = normalizeConfigExport(module.exports);
@@ -307,6 +378,25 @@ function loadTypeScriptProjectConfig(
 				isRecord(exported) &&
 				"framework" in exported),
 	};
+}
+
+/// Whether the input, or anything it pulls in, names a framework. A preset is
+/// as good a place to state one as the config itself.
+function declaresFrameworkInput(input: unknown, depth = 0): boolean {
+	if (!isRecord(input) || depth > 10) {
+		return false;
+	}
+
+	if ("framework" in input) {
+		return true;
+	}
+
+	const presets = input.presets;
+
+	return (
+		Array.isArray(presets) &&
+		presets.some((preset) => declaresFrameworkInput(preset, depth + 1))
+	);
 }
 
 function loadJsonProjectConfig(
@@ -329,7 +419,7 @@ function loadJsonProjectConfig(
 
 	return {
 		config: coerceTailwindConfig(stripped, configFilePath),
-		declaresFramework: isRecord(stripped) && "framework" in stripped,
+		declaresFramework: declaresFrameworkInput(stripped),
 	};
 }
 
@@ -384,19 +474,42 @@ function stripVelaRbxtsImports(
 	return chunks.join("");
 }
 
-function findProjectConfigFile(sourceFileName: string): string | undefined {
-	let currentDirectory = path.dirname(path.resolve(sourceFileName));
+function findProjectConfigFile(directory: string): string | undefined {
+	const cached = configPathCache.get(directory);
+	// A cached path is still checked for existence: deleting the config file is
+	// the one change that has to take effect without an explicit cache clear.
+	if (cached === undefined) {
+		if (configPathCache.has(directory)) {
+			return undefined;
+		}
+	} else if (isExistingFile(cached)) {
+		return cached;
+	}
+
+	// The walk visits every directory on the way up, and each of them resolves
+	// to the same file, so they are all recorded, and a sibling directory
+	// deeper in the tree costs one lookup rather than a walk of its own.
+	const visited: string[] = [];
+	let currentDirectory = directory;
 
 	while (true) {
+		visited.push(currentDirectory);
+
 		for (const fileName of CONFIG_FILE_NAMES) {
 			const candidate = path.join(currentDirectory, fileName);
 			if (isExistingFile(candidate)) {
+				for (const entry of visited) {
+					configPathCache.set(entry, candidate);
+				}
 				return candidate;
 			}
 		}
 
 		const parentDirectory = path.dirname(currentDirectory);
 		if (parentDirectory === currentDirectory) {
+			for (const entry of visited) {
+				configPathCache.set(entry, undefined);
+			}
 			return undefined;
 		}
 

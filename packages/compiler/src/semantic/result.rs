@@ -2,15 +2,44 @@ use super::token::ParsedClassToken;
 use super::utility::UtilityKind;
 use crate::ir::model::RuntimeCondition;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) enum SemanticIssue {
-    UnsupportedUtilityFamily { family: String },
-    NoRobloxEquivalent { family: String },
-    UnknownVariant { variant: String },
-    UnsupportedArbitraryValue { value: String },
-    UnsupportedOpacityModifier { modifier: String },
-    UnsupportedBorderValue { value: String },
-    UnsupportedZIndexValue { value: String },
+    UnsupportedUtilityFamily {
+        family: String,
+    },
+    NoRobloxEquivalent {
+        family: String,
+    },
+    UnknownVariant {
+        variant: String,
+    },
+    /// `max-foo:` where `foo` is not a configured breakpoint.
+    UnknownBreakpoint {
+        variant: String,
+        name: String,
+    },
+    /// `attr-[…]` vela recognised and could not read.
+    MalformedAttributeVariant {
+        variant: String,
+        detail: crate::semantic::variant::AttributeVariantError,
+    },
+    /// A chain whose width bounds leave no viewport, such as `md:max-sm:`.
+    InvalidBreakpointRange {
+        min_width: u32,
+        max_width: u32,
+    },
+    UnsupportedArbitraryValue {
+        value: String,
+    },
+    UnsupportedOpacityModifier {
+        modifier: String,
+    },
+    UnsupportedBorderValue {
+        value: String,
+    },
+    UnsupportedZIndexValue {
+        value: String,
+    },
     UnsupportedZIndexAuto,
     UnsupportedArbitraryZIndex,
     NegativeZIndex,

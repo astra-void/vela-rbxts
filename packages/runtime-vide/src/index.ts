@@ -10,6 +10,7 @@ import type {
 	RuntimeResolution,
 	RuntimeRule,
 	RuntimeTextSpec,
+	RuntimeTheme,
 	RuntimeTransition,
 	VariantEventBinding,
 	VelaMotionDriver,
@@ -360,6 +361,10 @@ export function createVelaRuntimeHost(
 		const hovered = Vide.source(false);
 		const pressed = Vide.source(false);
 		const focused = Vide.source(false);
+		// What the styled instance last reported for the attributes this
+		// element's styling reads. Empty, and never written to, on an element
+		// that names no attribute variant.
+		const attributes = Vide.source<Record<string, unknown>>({});
 
 		function environment(): RuntimeEnvironment {
 			const base = __VelaEnvSource.current();
@@ -379,6 +384,7 @@ export function createVelaRuntimeHost(
 				hovered: hovered(),
 				pressed: pressed(),
 				focused: focused(),
+				attributes: attributes(),
 				tests: readTests,
 			};
 		}
@@ -590,7 +596,14 @@ export function createVelaRuntimeHost(
 			countContentChildren(userChildren) - 1,
 			currentDivide,
 		);
-		const helpers = helperChildren(shape, rules, resolution);
+		let ownerInstance: Instance | undefined;
+		const helpers = helperChildren(
+			shape,
+			rules,
+			resolution,
+			transition,
+			() => ownerInstance,
+		);
 		const childList = () => {
 			const list: defined[] = [];
 			for (const helper of helpers()) {
@@ -682,7 +695,9 @@ export function createVelaRuntimeHost(
 		}
 
 		if (typeIs(element, "Instance")) {
+			ownerInstance = element;
 			__VelaOpacity.markProvided(element);
+			watchAttributes(element, theme, rules, className, attributes);
 			writeResolvedProps({
 				element,
 				wrapper,
@@ -759,7 +774,9 @@ function writeResolvedProps(writer: ResolvedPropWriter) {
 			__VelaMotion.transitionCoversProp(transition.property, name) &&
 			__VelaMotion.isTweenableValue(final)
 		) {
-			__VelaMotion.playTransition(element, { [name]: final }, transition);
+			__VelaMotion.playTransition(element, { [name]: final }, transition, {
+				owner: element,
+			});
 			return;
 		}
 
@@ -1095,10 +1112,93 @@ function helperProps(
 /// a helper built inside the children effect is exactly that. What the returned
 /// thunk leaves out, Vide unparents; `hover:rounded-lg` costs one UICorner that
 /// spends most of its life detached.
+/// Connects to exactly the attributes this element's styling reads, and to
+/// nothing when it reads none. The set follows a deferred class value, so a
+/// class list that starts naming an attribute is subscribed to as soon as it
+/// does and unsubscribed when it stops.
+function watchAttributes(
+	element: Instance,
+	theme: RuntimeTheme,
+	rules: readonly RuntimeRule[],
+	className: () => ClassValue,
+	attributes: Vide.Source<Record<string, unknown>>,
+) {
+	const connections = new Map<string, RBXScriptConnection>();
+
+	function refresh() {
+		const latest: Record<string, unknown> = {};
+		let changed = false;
+		const previous = Vide.untrack(() => attributes());
+
+		for (const [name] of connections) {
+			const value = element.GetAttribute(name);
+			latest[name] = value;
+			if (previous[name] !== value) {
+				changed = true;
+			}
+		}
+
+		for (const [name] of pairs(previous)) {
+			if (!connections.has(name as string)) {
+				changed = true;
+			}
+		}
+
+		if (changed) {
+			attributes(latest);
+		}
+	}
+
+	Vide.effect(() => {
+		// Reading the class value here is what makes the set follow it.
+		const wanted = __VelaResolution.attributeNames(theme, rules, className());
+		const keep = new Set<string>();
+		for (const name of wanted) {
+			keep.add(name);
+		}
+
+		let changed = false;
+
+		for (const [name, connection] of connections) {
+			if (!keep.has(name)) {
+				connection.Disconnect();
+				connections.delete(name);
+				changed = true;
+			}
+		}
+
+		for (const name of wanted) {
+			if (!connections.has(name)) {
+				connections.set(
+					name,
+					element.GetAttributeChangedSignal(name).Connect(refresh),
+				);
+				changed = true;
+			}
+		}
+
+		// A connection is only told about later changes, so what the element
+		// already carries is read here, and only where the set moved, so this
+		// effect writes the source once rather than on every rerun.
+		if (changed) {
+			refresh();
+		}
+	});
+
+	Vide.cleanup(() => {
+		for (const [, connection] of connections) {
+			connection.Disconnect();
+		}
+		connections.clear();
+	});
+}
+
 function helperChildren(
 	shape: RuntimeResolution,
 	rules: readonly RuntimeRule[],
 	resolution: () => RuntimeResolution,
+	transition: RuntimeTransition | undefined,
+	owner: () => Instance | undefined,
 ): () => defined[] {
 	__VelaApply.applyHelperDefaults(shape.helpers);
 
@@ -1118,13 +1218,43 @@ function helperChildren(
 		// One effect for the whole helper rather than a thunk per prop: which
 		// props it carries is a rule's to change, and a name the resolution has
 		// dropped must keep its last value rather than be written back as nil.
+		//
+		// A property that moves under a transition is tweened on the helper
+		// itself rather than assigned, so `hover:rounded-xl` travels the same
+		// way `hover:bg-*` does. The first writing is always an assignment:
+		// there is nothing to tween from yet.
+		const written = new Map<string, unknown>();
 		Vide.effect(() => {
 			const props = helperProps(resolution(), tag);
 			if (props === undefined) {
 				return;
 			}
-			for (const [name, value] of pairs(props)) {
-				(child as unknown as Record<string, unknown>)[name as string] = value;
+			for (const [key, value] of pairs(props)) {
+				const name = key as string;
+				if (written.get(name) === value) {
+					continue;
+				}
+
+				const seen = written.has(name);
+				written.set(name, value);
+
+				if (
+					seen &&
+					transition !== undefined &&
+					__VelaMotion.transitionCoversProp(transition.property, name, tag) &&
+					__VelaMotion.isTweenableValue(value)
+				) {
+					const instance = child as unknown as Instance;
+					__VelaMotion.playTransition(
+						instance,
+						{ [name]: value as RuntimePropValue },
+						transition,
+						{ owner: owner() ?? instance, helper: tag },
+					);
+					continue;
+				}
+
+				(child as unknown as Record<string, unknown>)[name] = value;
 			}
 		});
 

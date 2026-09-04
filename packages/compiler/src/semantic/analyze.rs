@@ -5,10 +5,13 @@ use super::utility::{
     parse_arbitrary_value, resolve_border_thickness_value,
 };
 
-pub(crate) fn analyze_class_token(token: &str) -> AnalyzedClassToken {
-    let parsed = parse_class_token(token);
+pub(crate) fn analyze_class_token(
+    token: &str,
+    variants: &super::variant::VariantRegistry<'_>,
+) -> AnalyzedClassToken {
+    let parsed = parse_class_token(token, variants);
     let utility = parsed.utility.kind.clone();
-    let unknown_variant = parsed
+    let unreadable_variant = parsed
         .variants
         .iter()
         .find(|variant| variant.kind.is_none())
@@ -19,9 +22,7 @@ pub(crate) fn analyze_class_token(token: &str) -> AnalyzedClassToken {
         .flatten();
 
     let mut issues = Vec::new();
-    if let Some(variant) = unknown_variant.clone() {
-        issues.push(SemanticIssue::UnknownVariant { variant });
-    }
+    issues.extend(variant_issues(&parsed.variants));
 
     if let Some(issue) = payload_shape_issue(&utility, parsed.utility.payload.as_deref()) {
         issues.push(issue);
@@ -30,11 +31,23 @@ pub(crate) fn analyze_class_token(token: &str) -> AnalyzedClassToken {
     let supported = match &utility {
         UtilityKind::Unknown => {
             let family = parsed.utility.family.clone();
-            issues.push(if is_known_tailwind_family(&family) {
-                SemanticIssue::NoRobloxEquivalent { family }
-            } else {
-                SemanticIssue::UnsupportedUtilityFamily { family }
-            });
+            // A token that opens with `attr-` in the utility position is a
+            // variant that lost its `:` or its brackets, not a utility family
+            // nobody implements. Say so rather than blaming the family.
+            issues.push(
+                if let Some(detail) =
+                    super::variant::utility_position_attribute_error(&parsed.utility.raw)
+                {
+                    SemanticIssue::MalformedAttributeVariant {
+                        variant: parsed.utility.raw.clone(),
+                        detail,
+                    }
+                } else if is_known_tailwind_family(&family) {
+                    SemanticIssue::NoRobloxEquivalent { family }
+                } else {
+                    SemanticIssue::UnsupportedUtilityFamily { family }
+                },
+            );
             false
         }
         UtilityKind::ZIndex => {
@@ -90,7 +103,7 @@ pub(crate) fn analyze_class_token(token: &str) -> AnalyzedClassToken {
             }
         }
         _ => true,
-    } && unknown_variant.is_none()
+    } && unreadable_variant.is_none()
         && !issues.iter().any(|issue| {
             matches!(
                 issue,
@@ -109,6 +122,64 @@ pub(crate) fn analyze_class_token(token: &str) -> AnalyzedClassToken {
         runtime_condition,
         issues,
     }
+}
+
+/// What each prefix in the chain got wrong, plus the one thing only the whole
+/// chain can be wrong about: bounds that leave no viewport for the rule.
+fn variant_issues(variants: &[super::variant::ParsedVariant]) -> Vec<SemanticIssue> {
+    use super::variant::{VariantError, VariantKind};
+
+    let mut issues = Vec::new();
+
+    for variant in variants {
+        match &variant.error {
+            Some(VariantError::Unknown) => issues.push(SemanticIssue::UnknownVariant {
+                variant: variant.raw.clone(),
+            }),
+            Some(VariantError::UnknownBreakpoint { name }) => {
+                issues.push(SemanticIssue::UnknownBreakpoint {
+                    variant: variant.raw.clone(),
+                    name: name.clone(),
+                })
+            }
+            Some(VariantError::MalformedAttribute { detail }) => {
+                issues.push(SemanticIssue::MalformedAttributeVariant {
+                    variant: variant.raw.clone(),
+                    detail: detail.clone(),
+                })
+            }
+            None => {}
+        }
+    }
+
+    let mut min_width = 0u32;
+    let mut max_width: Option<u32> = None;
+    for variant in variants {
+        if let Some(VariantKind::Width {
+            min_width: min,
+            max_width: max,
+            ..
+        }) = &variant.kind
+        {
+            min_width = min_width.max(*min);
+            if let Some(max) = max {
+                max_width = Some(max_width.map_or(*max, |current: u32| current.min(*max)));
+            }
+        }
+    }
+
+    // The bounds meet rather than overlap: `min` is inclusive and `max` is not,
+    // so a rule needs a viewport strictly below `max` and at least `min`.
+    if let Some(max) = max_width
+        && min_width >= max
+    {
+        issues.push(SemanticIssue::InvalidBreakpointRange {
+            min_width,
+            max_width: max,
+        });
+    }
+
+    issues
 }
 
 /// Tailwind payload shapes vela-rbxts does not implement. Reporting them by
@@ -285,13 +356,21 @@ fn is_known_tailwind_family(family: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::defaults::default_config;
     use crate::ir::model::RuntimeCondition;
     use crate::semantic::result::SemanticIssue;
     use crate::semantic::utility::UtilityKind;
+    use crate::semantic::variant::VariantRegistry;
+
+    fn analyze(token: &str) -> crate::semantic::result::AnalyzedClassToken {
+        static CONFIG: std::sync::LazyLock<crate::config::model::TailwindConfig> =
+            std::sync::LazyLock::new(default_config);
+        analyze_class_token(token, &VariantRegistry::new(&CONFIG))
+    }
 
     #[test]
     fn classifies_supported_runtime_tokens() {
-        let analysis = analyze_class_token("md:portrait:bg-slate-700");
+        let analysis = analyze("md:portrait:bg-slate-700");
 
         assert!(analysis.supported);
         assert!(analysis.utility.needs_config_lookup());
@@ -304,15 +383,41 @@ mod tests {
     }
 
     #[test]
+    fn reports_a_range_that_can_never_match() {
+        let analysis = analyze("md:max-sm:px-4");
+
+        assert!(!analysis.supported || !analysis.issues.is_empty());
+        assert!(matches!(
+            analysis.issues.as_slice(),
+            [SemanticIssue::InvalidBreakpointRange {
+                min_width: 768,
+                max_width: 640
+            }]
+        ));
+    }
+
+    #[test]
+    fn a_range_that_leaves_a_viewport_is_accepted() {
+        let analysis = analyze("md:max-lg:px-4");
+
+        assert!(analysis.supported);
+        assert!(analysis.issues.is_empty());
+        assert!(matches!(
+            analysis.runtime_condition,
+            Some(RuntimeCondition::All { .. })
+        ));
+    }
+
+    #[test]
     fn flags_unsupported_semantic_shapes() {
-        let z_index = analyze_class_token("z-100");
+        let z_index = analyze("z-100");
         assert!(!z_index.supported);
         assert!(matches!(
             z_index.issues.as_slice(),
             [SemanticIssue::UnsupportedZIndexValue { value }] if value == "100"
         ));
 
-        let border = analyze_class_token("border-dashed");
+        let border = analyze("border-dashed");
         assert!(!border.supported);
         assert!(matches!(
             border.issues.as_slice(),

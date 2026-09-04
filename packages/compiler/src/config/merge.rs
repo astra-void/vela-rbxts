@@ -1,7 +1,10 @@
 use crate::config::model::{
     ColorInputMap, ColorValue, PluginConfig, RemConfig, RemConfigInput, TailwindConfig,
-    ThemeColors, ThemeScale,
+    TailwindConfigInput, ThemeColors, ThemeScale, ThemeScreens,
 };
+
+/// How deep presets may nest before the structure is treated as a mistake.
+const MAX_PRESET_DEPTH: usize = 10;
 
 fn merge_plugin_config(base: &PluginConfig, input: Option<PluginConfig>) -> PluginConfig {
     let Some(input) = input else {
@@ -10,6 +13,7 @@ fn merge_plugin_config(base: &PluginConfig, input: Option<PluginConfig>) -> Plug
 
     let mut merged = base.clone();
     merged.utilities.extend(input.utilities);
+    merged.variants.extend(input.variants);
 
     if input.motion.is_some() {
         merged.motion = input.motion;
@@ -79,6 +83,26 @@ pub(crate) fn merge_color_values(base: ColorValue, value: &ColorValue) -> Option
     }
 }
 
+/// Screens follow the same rule as the other theme axes: a top-level table
+/// replaces the scale, `extend` adds to what was inherited.
+pub(crate) fn resolve_screens(
+    base: &ThemeScreens,
+    extend: Option<&ThemeScreens>,
+    override_screens: Option<&ThemeScreens>,
+) -> ThemeScreens {
+    if let Some(override_screens) = override_screens {
+        return override_screens.clone();
+    }
+
+    let mut merged = base.clone();
+
+    if let Some(extend) = extend {
+        merged.extend(extend.clone());
+    }
+
+    merged
+}
+
 pub(crate) fn resolve_theme_scale(
     base: &ThemeScale,
     extend: Option<&ThemeScale>,
@@ -143,9 +167,37 @@ pub(crate) fn resolve_color_input(
 }
 
 pub(crate) fn resolve_config_input(
-    input: crate::config::model::TailwindConfigInput,
+    input: TailwindConfigInput,
     base: &TailwindConfig,
 ) -> TailwindConfig {
+    resolve_config_input_at(input, base, 0)
+}
+
+/// Folds every preset into the base, in the order they were written, before the
+/// config that names them resolves against the result. Merging at the input
+/// level rather than over finished configs is what keeps `theme.extend` in a
+/// project extending what a preset replaced.
+fn resolve_config_input_at(
+    mut input: TailwindConfigInput,
+    base: &TailwindConfig,
+    depth: usize,
+) -> TailwindConfig {
+    let mut resolved_base = base.clone();
+
+    // A structure this deep is recursive rather than deliberate, so the rest is
+    // dropped instead of expanded forever.
+    if let Some(presets) = input.presets.take()
+        && depth < MAX_PRESET_DEPTH
+    {
+        for preset in presets {
+            resolved_base = resolve_config_input_at(preset, &resolved_base, depth + 1);
+        }
+    }
+
+    resolve_own_input(input, &resolved_base)
+}
+
+fn resolve_own_input(input: TailwindConfigInput, base: &TailwindConfig) -> TailwindConfig {
     let preflight = input.preflight.unwrap_or(base.preflight);
     let framework = input.framework.unwrap_or(base.framework);
     let plugins = merge_plugin_config(&base.plugins, input.plugins);
@@ -185,6 +237,11 @@ pub(crate) fn resolve_config_input(
                 &base.theme.font_family,
                 extend.font_family.as_ref(),
                 theme.font_family.as_ref(),
+            ),
+            screens: resolve_screens(
+                &base.theme.screens,
+                extend.screens.as_ref(),
+                theme.screens.as_ref(),
             ),
             rem: resolve_rem_config(&base.theme.rem, extend.rem.as_ref(), theme.rem.as_ref()),
             // Decided at emit time, against the defaults the runtime carries.

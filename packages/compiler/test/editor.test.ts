@@ -1772,3 +1772,166 @@ test("completing the utility replaces it without the variants in front", () => {
 	);
 	expect(result.items.some((item) => item.label === "md:")).toBe(false);
 });
+
+const variantOptions = {
+	configJson: JSON.stringify(
+		defineConfig({
+			theme: { extend: { screens: { tablet: 900 } } },
+			plugins: [
+				plugin(({ addVariant }) => {
+					addVariant("open", { attribute: "State", equals: "open" });
+					addVariant("selected", { attribute: "Selected", equals: true });
+				}),
+			],
+		}),
+	),
+};
+
+const variantLabels = (source: string, position: number) =>
+	getCompletions({ source, position, options: variantOptions })
+		.items.filter((item) => item.category === "variant")
+		.map((item) => item.label);
+
+test("completes a custom variant a plugin registered", () => {
+	const source = '<frame className="op" />';
+	const labels = variantLabels(source, positionAfter(source, '"op'));
+
+	expect(labels).toContain("open:");
+	// The inline form of the same state is offered beside it.
+	expect(labels).toContain("attr-[State=open]:");
+});
+
+test("completes custom breakpoints and their max-width twins", () => {
+	const source = '<frame className="tab" />';
+	expect(variantLabels(source, positionAfter(source, '"tab'))).toContain(
+		"tablet:",
+	);
+
+	const maxSource = '<frame className="max-" />';
+	const labels = variantLabels(maxSource, positionAfter(maxSource, '"max-'));
+	expect(labels).toEqual(
+		expect.arrayContaining(["max-sm:", "max-md:", "max-tablet:", "max-2xl:"]),
+	);
+});
+
+test("completes the inline attribute variant", () => {
+	const source = '<frame className="attr-[" />';
+	const items = getCompletions({
+		source,
+		position: positionAfter(source, '"attr-['),
+		options: variantOptions,
+	}).items.filter((item) => item.category === "variant");
+
+	// The bare shape to type...
+	expect(items.find((item) => item.insertText === "attr-[")).toBeDefined();
+	// ...and every attribute the config already names, written out.
+	expect(items.map((item) => item.label)).toContain("attr-[Selected=true]:");
+});
+
+// The fix that keeps a chained variant from swallowing the rest of the token.
+test("completing a variant inside a chain replaces only that segment", () => {
+	const source = '<frame className="hover:max-md:bg-blue-600" />';
+	const item = getCompletions({
+		source,
+		position: source.indexOf("max-md") + 3,
+		options: variantOptions,
+	}).items[0];
+
+	expect(item?.replacement).toBeDefined();
+	expect(source.slice(item?.replacement?.start, item?.replacement?.end)).toBe(
+		"max-md:",
+	);
+});
+
+test("hovers a custom variant with the attribute it reads", () => {
+	const source = '<frame className="open:bg-red-500" />';
+	const hover = getHover({
+		source,
+		position: positionAfter(source, '"op'),
+		options: variantOptions,
+	});
+
+	expect(hover.contents?.documentation).toContain(
+		"applies when the element's `State` attribute is `open`",
+	);
+});
+
+test("hovers a responsive range and an inline attribute variant", () => {
+	const range = '<frame className="max-md:px-2" />';
+	expect(
+		getHover({
+			source: range,
+			position: positionAfter(range, '"max-'),
+			options: variantOptions,
+		}).contents?.documentation,
+	).toContain("the viewport is narrower than 768px");
+
+	const attribute = '<textbutton className="attr-[Selected=true]:ring-2" />';
+	expect(
+		getHover({
+			source: attribute,
+			position: positionAfter(attribute, '"attr-'),
+			options: variantOptions,
+		}).contents?.documentation,
+	).toContain("`Selected` attribute is `true`");
+});
+
+test("hovering an unreadable variant says what is wrong with it", () => {
+	const breakpoint = '<frame className="max-nope:px-2" />';
+	expect(
+		getHover({
+			source: breakpoint,
+			position: positionAfter(breakpoint, '"max-'),
+			options: variantOptions,
+		}).contents?.documentation,
+	).toContain("Unknown breakpoint `nope`");
+
+	const malformed = '<frame className="attr-[State]:px-2" />';
+	expect(
+		getHover({
+			source: malformed,
+			position: positionAfter(malformed, '"attr-'),
+			options: variantOptions,
+		}).contents?.documentation,
+	).toContain("Malformed attribute variant");
+});
+
+test("reports the new variant diagnostics in the editor", () => {
+	const source =
+		'<frame className="max-nope:p-4 attr-[State]:p-4 md:max-sm:p-4" />';
+	const diagnostics = getDiagnostics({
+		source,
+		options: variantOptions,
+	}).diagnostics;
+
+	expect(diagnostics.map((entry) => entry.code)).toEqual([
+		"unknown-breakpoint",
+		"malformed-attribute-variant",
+		"invalid-breakpoint-range",
+	]);
+	for (const diagnostic of diagnostics) {
+		expect(diagnostic.range).toBeDefined();
+	}
+});
+
+test("sorts the new variants into their bands", () => {
+	const source =
+		'<frame className="hover:bg-blue-600 dark:bg-black open:bg-red-500 attr-[Selected=true]:bg-green-500 max-md:bg-white md:bg-slate-700 p-4" />';
+	const result = sortClassNames({ source, options: variantOptions });
+
+	expect(result.edits[0].text).toBe(
+		"p-4 md:bg-slate-700 max-md:bg-white open:bg-red-500 attr-[Selected=true]:bg-green-500 hover:bg-blue-600 dark:bg-black",
+	);
+});
+
+// The order v0.12 already sorted these into decides which rule wins where two
+// of them apply at once, so it must not move.
+test("sorting leaves the v0.12 variant order where it was", () => {
+	const source =
+		'<frame className="dark:bg-black focus:bg-white active:bg-slate-900 hover:bg-blue-600 gamepad:bg-red-500 landscape:bg-green-500 lg:bg-slate-700 sm:bg-slate-500" />';
+	const result = sortClassNames({ source, options: variantOptions });
+
+	expect(result.edits[0].text).toBe(
+		"sm:bg-slate-500 lg:bg-slate-700 landscape:bg-green-500 gamepad:bg-red-500 hover:bg-blue-600 active:bg-slate-900 focus:bg-white dark:bg-black",
+	);
+});

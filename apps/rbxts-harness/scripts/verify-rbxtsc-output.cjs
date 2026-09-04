@@ -179,6 +179,25 @@ const requiredFragments = [
 	// under one stay literal and the pin travels to the component below.
 	"React.createElement(__VelaBoundary.Pin",
 	"Size = UDim2.fromOffset(32, 32)",
+	// v0.13: state variants lower to attribute conditions, and the utility
+	// behind one still resolves at compile time.
+	'kind = "attribute"',
+	'name = "State"',
+	'name = "Selected"',
+	'name = "Tier"',
+	// A registration the project made outranks the preset's own.
+	"value = true",
+	// Responsive ranges: a maximum bound and a breakpoint the preset configured.
+	"maxWidth = 768",
+	"maxWidth = 1024",
+	'alias = "tablet"',
+	"minWidth = 900",
+	// The preset's theme and utilities reach the emit.
+	"Color3.fromRGB(255, 136, 0)",
+	// Helper transitions.
+	'property = "shadow"',
+	'tag = "uishadow"',
+	'tag = "uicorner"',
 ];
 
 // The runtime is imported, not copied, so every consumer reaches the same one.
@@ -200,7 +219,7 @@ const requiredRuntimeFragments = [
 	"__VelaMotion.setDriver(motionDriver)",
 	// A driver's methods carry an implicit `self`, so the call has to stay a
 	// method call — detached, every argument lands one place to the left.
-	"driver:transition(instance, goal, spec)",
+	"driver:transition(instance, goal, spec,",
 	"driver:animate(instance, animation)",
 	"pluginUtilities",
 	"TweenService",
@@ -215,6 +234,29 @@ const requiredRuntimeFragments = [
 	// already built are handed back the offsets they were written with.
 	"local function usePinned()",
 	"local function unpin(node)",
+	// v0.13: a state variant reads a Roblox attribute off the styled instance,
+	// and subscribes to that attribute alone.
+	"GetAttributeChangedSignal",
+	"local function attributeNames(",
+	"local function collectConditionAttributes(",
+	"local function collectClassValueAttributes(",
+	"local function parseVariantPrefix(",
+	// A helper prop belongs to the same transition groups the element's own
+	// props do, which is what makes `hover:rounded-xl` tween.
+	"local function transitionCoversProp(",
+	'if property == "shadow" then',
+	'return helper == "uishadow"',
+];
+
+// One signal per attribute the styling names, and every one of them let go when
+// the element does. A blanket `AttributeChanged` would wake the element for
+// attributes nothing about its styling reads.
+const requiredRuntimePatterns_attributes = [
+	{
+		description: "the host subscribes per attribute name",
+		pattern:
+			/instance:GetAttributeChangedSignal\(name\):Connect\(refresh\)[\s\S]{0,200}?return function\(\)[\s\S]{0,160}?connection:Disconnect\(\)/,
+	},
 ];
 
 // Intentional regression checks for the deleted runtime package and artifact paths.
@@ -298,6 +340,14 @@ const requiredRuntimePatterns = [
 	{
 		description: "runtime lowers array size to the # operator",
 		pattern: /function arraySize\(value\)\s*return #value\s*end/,
+	},
+];
+
+const forbiddenRuntimePatterns = [
+	{
+		description: "must not listen to every attribute on the instance",
+		pattern:
+			/:GetPropertyChangedSignal\("AttributeChanged"\)|\.AttributeChanged:Connect/,
 	},
 ];
 
@@ -385,6 +435,22 @@ for (const check of forbiddenPatterns) {
 	if (check.pattern.test(source)) {
 		failures.push(
 			`emitted Luau still contains forbidden pattern: ${check.description}`,
+		);
+	}
+}
+
+for (const check of [...requiredRuntimePatterns_attributes]) {
+	if (!check.pattern.test(runtimeModules)) {
+		failures.push(
+			`the runtime modules are missing expected pattern: ${check.description}`,
+		);
+	}
+}
+
+for (const check of forbiddenRuntimePatterns) {
+	if (check.pattern.test(runtimeModules)) {
+		failures.push(
+			`the runtime modules contain a forbidden pattern: ${check.description}`,
 		);
 	}
 }

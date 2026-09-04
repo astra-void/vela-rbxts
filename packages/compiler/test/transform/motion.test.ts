@@ -204,3 +204,50 @@ test("falls back to the built-in driver when no plugin sets one", () => {
 	expect(result.code).toContain("createVelaRuntimeHost(");
 	expect(result.code).not.toContain("__VelaMotionDriverSource");
 });
+
+// A helper is an instance of its own, so a variant that repaints one is a style
+// change the motion system can carry like any other.
+test("tweens the helper instances a variant repaints", () => {
+	const result = transform(
+		`export const A = () => <textbutton className="rounded-md hover:rounded-xl transition duration-200" />;`,
+		null,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toMatch(/"property": "all"/);
+	expect(result.code).toMatch(/"time": 0\.2/);
+	// The base UICorner joins the rules so the host renders one instance the
+	// tween can move, rather than a child beside a resolved helper.
+	expect(result.code).toMatch(/"tag": "uicorner"/);
+	expect(runtimeSource).toContain("transitionCoversProp");
+});
+
+test("narrows a colour transition onto the stroke a border variant repaints", () => {
+	const result = transform(
+		`export const A = () => <textbutton className="border-2 border-slate-500 hover:border-blue-500 transition-colors" />;`,
+		null,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toMatch(/"property": "colors"/);
+	expect(result.code).toMatch(/"tag": "uistroke"/);
+});
+
+test("transition-shadow reaches the UIShadow helper", () => {
+	const result = transform(
+		`export const A = () => <frame className="shadow-sm hover:shadow-lg transition-shadow" />;`,
+		null,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toMatch(/"property": "shadow"/);
+	expect(result.code).toMatch(/"tag": "uishadow"/);
+});
+
+// The seam a custom driver replaces has to see the helper work too, or a
+// project with its own driver silently loses it.
+test("the motion driver is told which helper a tween belongs to", () => {
+	expect(runtimeSource).toContain("VelaMotionTarget");
+	expect(runtimeSource).toContain("helper?: string");
+	expect(runtimeSource).toContain("driver.transition(instance, goal, spec,");
+});

@@ -178,6 +178,81 @@ function EnvironmentVariants() {
 			<Row label="dark:">
 				<frame className="w-24 h-6 bg-white dark:bg-slate-900 rounded-sm" />
 			</Row>
+			<Row label="max-md:">
+				<frame className="w-24 h-6 bg-slate-700 max-md:bg-rose-500 rounded-sm" />
+			</Row>
+			<Row label="md:max-lg:">
+				<frame className="w-24 h-6 bg-slate-700 md:max-lg:bg-teal-500 rounded-sm" />
+			</Row>
+			{/* A breakpoint the preset configured, beside a utility the preset
+			    registered against a colour the preset added. */}
+			<Row label="tablet: + preset">
+				<frame className="preset-badge w-24 h-6 tablet:bg-blue-600" />
+			</Row>
+		</>
+	);
+}
+
+/// A state variant reads a Roblox attribute off the instance it styles, so the
+/// attribute is driven from outside the class list entirely, and the runtime
+/// has to subscribe to exactly the one the rules named.
+function StateVariants(props: { active: () => boolean }) {
+	function probe(): Instance {
+		const element = (
+			<frame className="w-24 h-6 bg-slate-800 open:bg-blue-600 selected:ring-2 selected:ring-rose-500 tier:rounded-lg attr-[State=open]:border-2 attr-[State=open]:border-teal-200 transition-colors" />
+		) as Instance;
+
+		Vide.effect(() => {
+			const open = props.active();
+			element.SetAttribute("State", open ? "open" : "closed");
+			element.SetAttribute("Selected", open);
+			element.SetAttribute("Tier", open ? 2 : 1);
+		});
+
+		return element;
+	}
+
+	return (
+		<>
+			<Row label="state variants">{probe()}</Row>
+			{/* The same states behind a thunk, so the subscription has to follow
+			    a class value the compiler never read. */}
+			<Row label="deferred state">
+				<frame
+					className={() =>
+						props.active()
+							? "w-24 h-6 bg-slate-800 open:bg-blue-600"
+							: "w-24 h-6 bg-slate-800 attr-[Tier=2]:rounded-lg"
+					}
+				/>
+			</Row>
+		</>
+	);
+}
+
+/// A helper is an instance of its own, so a variant that repaints one is a
+/// style change the motion system carries like any other.
+function HelperTransitions() {
+	return (
+		<>
+			<Row label="hover:rounded-xl">
+				<textbutton
+					className="w-24 h-6 bg-slate-800 rounded-md hover:rounded-xl transition duration-200 text-white text-xs"
+					Text="corner"
+				/>
+			</Row>
+			<Row label="hover:border-*">
+				<textbutton
+					className="w-24 h-6 bg-slate-800 border-2 border-slate-500 hover:border-blue-500 transition-colors text-white text-xs"
+					Text="stroke"
+				/>
+			</Row>
+			<Row label="hover:shadow-lg">
+				<textbutton
+					className="w-24 h-6 bg-slate-800 shadow-sm hover:shadow-lg transition-shadow text-white text-xs"
+					Text="shadow"
+				/>
+			</Row>
 		</>
 	);
 }
@@ -434,6 +509,8 @@ export function App() {
 				{InheritedOpacity()}
 				{RuntimeOpacity()}
 				{HostOwnProps()}
+				{StateVariants({ active })}
+				{HelperTransitions()}
 				{LateArrivals({ active })}
 			</frame>
 		</screengui>

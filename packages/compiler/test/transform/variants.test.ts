@@ -30,15 +30,14 @@ test("narrows the tween to the transition property group", () => {
 	);
 	expect(all.code).toMatch(/"property": "all"/);
 
-	// A shadow lives on a helper instance, which applies instantly, so there
-	// is nothing for the filter to hold back.
+	// A shadow lives on a helper instance, and the runtime tweens the helpers it
+	// renders, so the filter has a target to narrow to.
 	const shadow = transform(
-		`export const C = () => <frame className="md:bg-blue-600 transition-shadow" />;`,
+		`export const C = () => <frame className="shadow-sm md:shadow-lg transition-shadow" />;`,
 		null,
 	);
-	expect(shadow.diagnostics).toEqual([
-		expect.objectContaining({ code: "unsupported-transition-value" }),
-	]);
+	expect(shadow.diagnostics).toEqual([]);
+	expect(shadow.code).toMatch(/"property": "shadow"/);
 });
 
 test("lowers active and focus variants into runtime rules", () => {

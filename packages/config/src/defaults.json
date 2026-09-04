@@ -390,6 +390,13 @@
       "serif": "rbxasset://fonts/families/Merriweather.json",
       "mono": "rbxasset://fonts/families/RobotoMono.json"
     },
+    "screens": {
+      "sm": 640,
+      "md": 768,
+      "lg": 1024,
+      "xl": 1280,
+      "2xl": 1536
+    },
     "rem": {
       "base": 16,
       "min": 8,
@@ -398,7 +405,10 @@
         "x": 1920,
         "y": 1020
       },
-      "pinnedUnder": ["surfacegui", "billboardgui"]
+      "pinnedUnder": [
+        "surfacegui",
+        "billboardgui"
+      ]
     }
   }
 }

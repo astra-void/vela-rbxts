@@ -140,6 +140,7 @@ export namespace __VelaEnv {
 		radius: Record<string, string>;
 		spacing: Record<string, string>;
 		fontFamily: Record<string, string>;
+		screens: Record<string, number>;
 	};
 
 	function withDefaults<T>(
@@ -195,7 +196,13 @@ export namespace __VelaEnv {
 				config.theme.fontFamily,
 				isReplaced("fontFamily"),
 			),
+			screens: withDefaults(
+				DEFAULT_THEME.screens,
+				config.theme.screens ?? {},
+				isReplaced("screens"),
+			),
 			pluginUtilities: config.plugins?.utilities ?? {},
+			pluginVariants: config.plugins?.variants ?? {},
 		};
 	}
 

@@ -7,6 +7,7 @@ import type {
 	RuntimeTransitionState,
 	VelaMotionDriver,
 	VelaMotionSpec,
+	VelaMotionTarget,
 } from "./types";
 
 export namespace __VelaMotion {
@@ -46,7 +47,8 @@ export namespace __VelaMotion {
 				property === "all" ||
 				property === "colors" ||
 				property === "opacity" ||
-				property === "transform"
+				property === "transform" ||
+				property === "shadow"
 			) {
 				state.enabled = true;
 				state.property = token === "transition" ? "all" : property;
@@ -119,18 +121,28 @@ export namespace __VelaMotion {
 	}
 
 	/// `transition-colors` and friends narrow the tween to one group of props;
-	/// anything outside it keeps applying instantly. Only top-level instance props
-	/// tween at all, so a helper prop is never a candidate here.
+	/// anything outside it keeps applying instantly. `helper` names the UI* child
+	/// the prop lives on, and is absent for the styled GuiObject itself: a
+	/// stroke's `Color` and a shadow's `Transparency` are as much part of the
+	/// colour and opacity groups as the element's own props are.
 	export function transitionCoversProp(
 		property: string,
 		name: string,
+		helper?: string,
 	): boolean {
 		if (property === "all") {
 			return true;
 		}
 
+		if (property === "shadow") {
+			return helper === "uishadow";
+		}
+
 		if (property === "colors") {
-			return __VelaLua.endsWith(name, "Color3");
+			return (
+				__VelaLua.endsWith(name, "Color3") ||
+				(helper !== undefined && name === "Color")
+			);
 		}
 
 		if (property === "opacity") {
@@ -138,6 +150,12 @@ export namespace __VelaMotion {
 		}
 
 		if (property === "transform") {
+			// A scale is the element's own transform, expressed on the helper
+			// Roblox makes you use for it.
+			if (helper !== undefined) {
+				return helper === "uiscale" && name === "Scale";
+			}
+
 			return (
 				name === "Position" ||
 				name === "Size" ||
@@ -179,9 +197,12 @@ export namespace __VelaMotion {
 		instance: Instance,
 		goal: Record<string, RuntimePropValue>,
 		spec: VelaMotionSpec,
+		target?: VelaMotionTarget,
 	) {
 		if (driver.transition !== undefined) {
-			driver.transition(instance, goal, spec);
+			// The fourth argument is additive: a driver written against the
+			// three-argument shape simply ignores it.
+			driver.transition(instance, goal, spec, target ?? { owner: instance });
 			return;
 		}
 

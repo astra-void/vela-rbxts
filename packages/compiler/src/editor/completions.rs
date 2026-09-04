@@ -16,11 +16,15 @@ use crate::semantic::{
         OVERSCROLL_VALUES, PALETTE_DEFAULT_KEY, POINTER_EVENTS_VALUES, PaddingKind,
         RING_THICKNESS_VALUES, ROTATION_VALUES, SCALE_VALUES, SCROLL_DIRECTION_VALUES,
         SHADOW_SIZE_VALUES, TEXT_SIZE_VALUES, TEXT_WRAP_VALUES, TEXT_X_ALIGN_VALUES,
-        TEXT_Y_ALIGN_VALUES, UtilityKind, WHITESPACE_VALUES, Z_INDEX_VALUES, color_completion_keys,
-        font_family_completion_keys, is_utility_allowed_on_host, position_completion_keys,
-        radius_completion_keys, resolve_color_value, size_completion_keys, spacing_completion_keys,
+        TEXT_Y_ALIGN_VALUES, TRANSITION_PROPERTY_VALUES, UtilityKind, WHITESPACE_VALUES,
+        Z_INDEX_VALUES, color_completion_keys, font_family_completion_keys,
+        is_utility_allowed_on_host, position_completion_keys, radius_completion_keys,
+        resolve_color_value, size_completion_keys, spacing_completion_keys,
     },
-    variant::{RUNTIME_VARIANTS, split_variant_prefixes},
+    variant::{
+        ATTRIBUTE_PREFIX, VariantRegistry, describe_attribute_variant, split_variant_prefixes,
+        utility_of,
+    },
 };
 
 struct CompletionSpec {
@@ -121,16 +125,11 @@ fn completion_target(tokens: &[ClassToken], position: u32) -> CompletionTarget {
     };
 
     let cursor = utf16_offset_to_byte(&token.text, position.saturating_sub(token.range.start));
-    let (_, utility) = split_variant_prefixes(&token.text);
+    let utility = utility_of(&token.text);
     let variants_end = token.text.len() - utility.len();
 
     if cursor < variants_end {
-        let segment_start = token.text[..cursor]
-            .rfind(':')
-            .map_or(0, |index| index + ':'.len_utf8());
-        let segment_end = token.text[cursor..variants_end]
-            .find(':')
-            .map_or(variants_end, |index| cursor + index + ':'.len_utf8());
+        let (segment_start, segment_end) = variant_segment_at(&token.text, variants_end, cursor);
 
         return CompletionTarget {
             replacement: EditorRange {
@@ -152,6 +151,31 @@ fn completion_target(tokens: &[ClassToken], position: u32) -> CompletionTarget {
         prefix: token.text[variants_end..cursor].to_owned(),
         variants_only: false,
     }
+}
+
+/// The byte range of the variant segment the cursor sits in, colon included.
+/// The separators are found at bracket depth zero, so a cursor inside
+/// `attr-[State=a:b]` completes that whole segment rather than half of it.
+fn variant_segment_at(text: &str, variants_end: usize, cursor: usize) -> (usize, usize) {
+    let mut depth = 0usize;
+    let mut start = 0usize;
+
+    for (index, ch) in text[..variants_end].char_indices() {
+        match ch {
+            '[' | '(' => depth += 1,
+            ']' | ')' => depth = depth.saturating_sub(1),
+            ':' if depth == 0 => {
+                let end = index + ':'.len_utf8();
+                if cursor < end {
+                    return (start, end);
+                }
+                start = end;
+            }
+            _ => {}
+        }
+    }
+
+    (start, variants_end)
 }
 
 fn utf16_offset_to_byte(text: &str, offset: u32) -> usize {
@@ -177,12 +201,12 @@ fn completion_candidates(
     prefix: &str,
 ) -> Vec<CompletionItem> {
     let mut items = Vec::new();
-    let used: Vec<&str> = typed_variants
-        .split(':')
-        .filter(|v| !v.is_empty())
-        .collect();
+    let variants = VariantRegistry::new(config);
+    // Split the way a token is, so a `:` inside `attr-[State=a:b]` does not read
+    // as a separator here while it does everywhere else.
+    let (used, _) = split_variant_prefixes(typed_variants);
 
-    for (variant, condition) in RUNTIME_VARIANTS {
+    for (variant, condition) in variants.documented_variants() {
         if used.contains(&variant) {
             continue;
         }
@@ -193,17 +217,14 @@ fn completion_candidates(
             continue;
         };
 
-        items.push(CompletionItem {
-            label: label.clone(),
-            insert_text: label.clone(),
-            kind: "runtime variant".to_owned(),
-            category: "variant".to_owned(),
-            documentation: format!("Apply the following vela-rbxts utility when {condition}."),
-            replacement: None,
-            color: None,
-            sort_text: Some(sort_text(score, &label)),
-        });
+        items.push(variant_item(
+            label,
+            score,
+            format!("Apply the following vela-rbxts utility when {condition}."),
+        ));
     }
+
+    items.extend(attribute_variant_candidates(&variants, prefix));
 
     for item in plugin_utility_candidates(config) {
         let Some(score) = match_score(&item.label, prefix) else {
@@ -233,6 +254,72 @@ fn completion_candidates(
     let mut seen = std::collections::HashSet::new();
     items.retain(|item| seen.insert(item.label.clone()));
     items.sort_by(|left, right| left.sort_text.cmp(&right.sort_text));
+    items
+}
+
+fn variant_item(label: String, score: u32, documentation: String) -> CompletionItem {
+    CompletionItem {
+        insert_text: label.clone(),
+        sort_text: Some(sort_text(score, &label)),
+        label,
+        kind: "runtime variant".to_owned(),
+        category: "variant".to_owned(),
+        documentation,
+        replacement: None,
+        color: None,
+    }
+}
+
+/// The inline attribute variant. The bare `attr-[` is offered as the shape to
+/// type, and once the bracket is open every attribute the config already names
+/// is offered whole so the common cases need no typing at all.
+fn attribute_variant_candidates(
+    variants: &VariantRegistry<'_>,
+    prefix: &str,
+) -> Vec<CompletionItem> {
+    let mut items = Vec::new();
+    let opening = format!("{ATTRIBUTE_PREFIX}[");
+
+    if let Some(score) = match_score(&opening, prefix).map(|score| score + 1) {
+        items.push(CompletionItem {
+            label: format!("{opening}\u{2026}]:"),
+            insert_text: opening.clone(),
+            kind: "runtime variant".to_owned(),
+            category: "variant".to_owned(),
+            documentation:
+                "Apply the following vela-rbxts utility while a Roblox attribute on this element holds a value, as `attr-[State=open]:bg-blue-600`. The value is compared as a boolean, a number, or text, whichever it reads as."
+                    .to_owned(),
+            replacement: None,
+            color: None,
+            sort_text: Some(sort_text(score, &opening)),
+        });
+    }
+
+    let mut seen = std::collections::BTreeSet::new();
+    for (_, definition) in variants.custom_variants() {
+        let label = format!(
+            "{opening}{}={}]:",
+            definition.attribute,
+            definition.equals.display()
+        );
+        if !seen.insert(label.clone()) {
+            continue;
+        }
+
+        let Some(score) = match_score(&label, prefix).map(|score| score + 1) else {
+            continue;
+        };
+
+        items.push(variant_item(
+            label,
+            score,
+            format!(
+                "Apply the following vela-rbxts utility when {}.",
+                describe_attribute_variant(definition)
+            ),
+        ));
+    }
+
     items
 }
 
@@ -781,7 +868,7 @@ fn stroke_effect_candidates(config: &TailwindConfig) -> Vec<CompletionSpec> {
 fn motion_candidates(_config: &TailwindConfig) -> Vec<CompletionSpec> {
     let mut items = Vec::new();
 
-    for (label, documentation) in [
+    let mut transitions = vec![
         (
             "transition".to_owned(),
             "Tween runtime style changes with TweenService (0.15s by default).".to_owned(),
@@ -790,7 +877,23 @@ fn motion_candidates(_config: &TailwindConfig) -> Vec<CompletionSpec> {
             "transition-none".to_owned(),
             "Disable the transition; runtime style changes apply instantly.".to_owned(),
         ),
-    ] {
+    ];
+
+    for property in TRANSITION_PROPERTY_VALUES {
+        if property == "all" {
+            continue;
+        }
+
+        transitions.push((
+            format!("transition-{property}"),
+            format!(
+                "Tween runtime style changes, narrowed to {}.",
+                crate::semantic::utility::transition_property_scope(property)
+            ),
+        ));
+    }
+
+    for (label, documentation) in transitions {
         items.push(CompletionSpec::new(
             label.clone(),
             "effects",

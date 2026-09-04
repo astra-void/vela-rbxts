@@ -81,7 +81,7 @@ pub(crate) struct StyleEffectBundle {
     pub(crate) helpers: Vec<HelperEntry>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub(crate) enum RuntimeCondition {
     All {
@@ -91,6 +91,8 @@ pub(crate) enum RuntimeCondition {
         alias: String,
         #[serde(rename = "minWidth")]
         min_width: u32,
+        /// Exclusive, so `md:` and `max-md:` partition every viewport between
+        /// them instead of overlapping at the breakpoint itself.
         #[serde(rename = "maxWidth", skip_serializing_if = "Option::is_none")]
         max_width: Option<u32>,
     },
@@ -106,6 +108,13 @@ pub(crate) enum RuntimeCondition {
     Hover,
     Active,
     Focus,
+    /// A Roblox attribute on the styled instance, named either by a registered
+    /// variant or by an inline `attr-[…]`. The runtime subscribes to the
+    /// attribute only where a rule reads it.
+    Attribute {
+        name: String,
+        value: crate::config::model::AttributeValue,
+    },
     /// A branch of a class value this pass read but could not decide. The test
     /// travels as `__velaTests` and the condition names it by index, so the
     /// expression is evaluated once however many branches hang on it.
@@ -115,7 +124,7 @@ pub(crate) enum RuntimeCondition {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub(crate) struct RuntimeRule {
     pub(crate) condition: RuntimeCondition,
     pub(crate) effects: StyleEffectBundle,

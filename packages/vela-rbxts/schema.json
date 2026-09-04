@@ -8,6 +8,13 @@
 		"$schema": {
 			"type": "string"
 		},
+		"presets": {
+			"type": "array",
+			"description": "Shared configuration folded in before this file, in the order written: built-in defaults, then each preset, then this config. A JSON config can only inline a preset; a preset distributed as an npm package needs vela.config.ts, which can import it.",
+			"items": {
+				"$ref": "#"
+			}
+		},
 		"preflight": {
 			"type": "boolean",
 			"default": true,
@@ -39,6 +46,14 @@
 					"$ref": "#/definitions/themeScale",
 					"description": "Replaces the whole default font family scale. Values are Roblox font family assets such as \"rbxasset://fonts/families/GothamSSm.json\"."
 				},
+				"screens": {
+					"$ref": "#/definitions/screens",
+					"description": "Replaces the whole default breakpoint scale. `md:` applies from the width up and `max-md:` strictly below it."
+				},
+				"rem": {
+					"$ref": "#/definitions/rem",
+					"description": "How an offset in a utility turns into pixels across viewports."
+				},
 				"extend": {
 					"type": "object",
 					"additionalProperties": false,
@@ -54,6 +69,13 @@
 						},
 						"fontFamily": {
 							"$ref": "#/definitions/themeScale"
+						},
+						"screens": {
+							"$ref": "#/definitions/screens",
+							"description": "Adds breakpoints to the inherited scale."
+						},
+						"rem": {
+							"$ref": "#/definitions/rem"
 						}
 					}
 				}
@@ -85,6 +107,36 @@
 								}
 							}
 						]
+					}
+				},
+				"variants": {
+					"type": "object",
+					"description": "Extra runtime conditions, usable as a `name:` prefix on any class. Each names a Roblox attribute on the styled instance and the value it has to hold. A name that is a built-in variant, a configured breakpoint, or starts with \"max-\" or \"attr-\" is rejected.",
+					"propertyNames": {
+						"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+					},
+					"additionalProperties": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": [
+							"attribute",
+							"equals"
+						],
+						"properties": {
+							"attribute": {
+								"type": "string",
+								"pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+								"description": "The Roblox attribute read off the styled instance."
+							},
+							"equals": {
+								"type": [
+									"string",
+									"number",
+									"boolean"
+								],
+								"description": "The value the attribute has to hold for the variant to apply."
+							}
+						}
 					}
 				},
 				"motion": {
@@ -147,6 +199,17 @@
 						}
 					}
 				}
+			}
+		},
+		"screens": {
+			"type": "object",
+			"description": "Viewport widths, in pixels, a responsive variant is named after.",
+			"propertyNames": {
+				"pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+			},
+			"additionalProperties": {
+				"type": "integer",
+				"minimum": 0
 			}
 		},
 		"themeScale": {
