@@ -4,6 +4,8 @@ import { defineConfig } from "../../../config/src/index";
 import {
 	emitted,
 	hostConfig,
+	hostRules,
+	ruleCorners,
 	runtimeSource,
 	withPluginUtilities,
 } from "./helpers";
@@ -127,6 +129,84 @@ test("resolves built-in radius presets out of the box", () => {
 	);
 	expect(result.code).toContain(
 		"<textbutton BorderSizePixel={0} BackgroundTransparency={1}><uicorner CornerRadius={new UDim(0.5, 0)}/></textbutton>",
+	);
+});
+
+test("resolves directional radius presets onto one UICorner", () => {
+	const result = transform(
+		'<frame className="rounded-md rounded-l-lg rounded-tr-full" />',
+	);
+
+	expect(result.changed).toBe(true);
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toMatch(/\sCornerRadius=/);
+	expect(result.code).toMatch(
+		/TopLeftRadius=\{__VelaRem\.scale\(new UDim\(0, 8\), \d+\)\}/,
+	);
+	expect(result.code).toMatch(
+		/BottomLeftRadius=\{__VelaRem\.scale\(new UDim\(0, 8\), \d+\)\}/,
+	);
+	expect(result.code).toMatch(/TopRightRadius=\{new UDim\(0\.5, 0\)\}/);
+	expect(result.code).toMatch(
+		/BottomRightRadius=\{__VelaRem\.scale\(new UDim\(0, 6\), \d+\)\}/,
+	);
+});
+
+test("defaults untouched corners to zero for a directional-only radius", () => {
+	const result = transform('<frame className="rounded-r-[10px]" />');
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toMatch(/\sCornerRadius=/);
+	expect(result.code).toMatch(/TopRightRadius=/);
+	expect(result.code).toMatch(/BottomRightRadius=/);
+	expect(result.code).toMatch(/TopLeftRadius=\{new UDim\(0, 0\)\}/);
+	expect(result.code).toMatch(/BottomLeftRadius=\{new UDim\(0, 0\)\}/);
+});
+
+test("preserves an all-corner baseline under a directional variant", () => {
+	const result = transform(
+		'<frame className="rounded-md hover:rounded-r-[10px]" />',
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	// A rule writes the same `uicorner`, so the baseline is hoisted beside it
+	// rather than emitted as a child of its own.
+	const [baseline, hover] = hostRules(result.code);
+	expect(ruleCorners(baseline)).toEqual({ CornerRadius: "new UDim(0, 6)" });
+	expect(ruleCorners(hover)).toEqual({
+		TopRightRadius: "new UDim(0, 10)",
+		BottomRightRadius: "new UDim(0, 10)",
+	});
+});
+
+// The corners a directional utility leaves alone are squared off by whoever
+// applies last. Filling them here would pin them to zero and leave the variant
+// nothing to repaint, so a hoisted baseline travels with only what it named.
+test("lets a variant shorthand repaint the corners a directional base left open", () => {
+	const result = transform(
+		'<frame className="rounded-l-lg hover:rounded-md" />',
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	const [baseline, hover] = hostRules(result.code);
+	expect(ruleCorners(baseline)).toEqual({
+		TopLeftRadius: "new UDim(0, 8)",
+		BottomLeftRadius: "new UDim(0, 8)",
+	});
+	expect(ruleCorners(hover)).toEqual({ CornerRadius: "new UDim(0, 6)" });
+});
+
+test("squares the untouched corners when no rule writes the same helper", () => {
+	const result = transform(
+		'<frame className="rounded-l-lg hover:bg-red-500" />',
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toMatch(
+		/TopRightRadius=\{\(new UDim\(0, 0\) as never\)\}/,
+	);
+	expect(result.code).toMatch(
+		/BottomRightRadius=\{\(new UDim\(0, 0\) as never\)\}/,
 	);
 });
 

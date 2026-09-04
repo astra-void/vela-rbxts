@@ -93,6 +93,13 @@ const forbiddenDiagnostics = ['"DEFAULT"', "unknown-theme-key"];
 
 const requiredFragments = [
 	"CornerRadius = __VelaRem.scale(UDim.new(0, 4), ",
+	// A directional radius squares off the corners it does not name, and a
+	// variant that repaints them needs those corners left open, not zeroed.
+	"TopLeftRadius = __VelaRem.scale(UDim.new(0, 8), ",
+	"BottomLeftRadius = __VelaRem.scale(UDim.new(0, 8), ",
+	"TopRightRadius = UDim.new(0, 0)",
+	"BottomRightRadius = UDim.new(0, 0)",
+	"TopRightRadius = __VelaRem.scale(UDim.new(0, 10), ",
 	"Color3.fromRGB(255, 0, 0)",
 	"BackgroundTransparency = 0.5",
 	'kind = "hover"',

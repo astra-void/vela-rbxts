@@ -24,6 +24,61 @@ pub(crate) enum PaddingKind {
     Left,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RadiusKind {
+    All,
+    Top,
+    Right,
+    Bottom,
+    Left,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
+impl RadiusKind {
+    pub(crate) fn props(self) -> &'static [&'static str] {
+        match self {
+            Self::All => &["CornerRadius"],
+            Self::Top => &["TopLeftRadius", "TopRightRadius"],
+            Self::Right => &["TopRightRadius", "BottomRightRadius"],
+            Self::Bottom => &["BottomLeftRadius", "BottomRightRadius"],
+            Self::Left => &["TopLeftRadius", "BottomLeftRadius"],
+            Self::TopLeft => &["TopLeftRadius"],
+            Self::TopRight => &["TopRightRadius"],
+            Self::BottomLeft => &["BottomLeftRadius"],
+            Self::BottomRight => &["BottomRightRadius"],
+        }
+    }
+
+    pub(crate) fn suffix(self) -> &'static str {
+        match self {
+            Self::All => "",
+            Self::Top => "t",
+            Self::Right => "r",
+            Self::Bottom => "b",
+            Self::Left => "l",
+            Self::TopLeft => "tl",
+            Self::TopRight => "tr",
+            Self::BottomLeft => "bl",
+            Self::BottomRight => "br",
+        }
+    }
+}
+
+pub(crate) const RADIUS_KINDS: [RadiusKind; 9] = [
+    RadiusKind::All,
+    RadiusKind::Top,
+    RadiusKind::Right,
+    RadiusKind::Bottom,
+    RadiusKind::Left,
+    RadiusKind::TopLeft,
+    RadiusKind::TopRight,
+    RadiusKind::BottomLeft,
+    RadiusKind::BottomRight,
+];
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum UtilityKind {
     BackgroundColor,
@@ -31,7 +86,7 @@ pub(crate) enum UtilityKind {
     ImageColor,
     PlaceholderColor,
     Border,
-    Radius,
+    Radius(RadiusKind),
     ZIndex,
     Padding(PaddingKind),
     Gap,
@@ -444,7 +499,7 @@ impl UtilityKind {
                 | UtilityKind::ImageColor
                 | UtilityKind::PlaceholderColor
                 | UtilityKind::Border
-                | UtilityKind::Radius
+                | UtilityKind::Radius(_)
                 | UtilityKind::Padding(_)
                 | UtilityKind::Gap
                 | UtilityKind::GridAutoRows
@@ -617,13 +672,25 @@ pub(crate) fn parse_utility(token: &str) -> ParsedUtility {
         }
     }
 
-    if token == "rounded" {
-        return ParsedUtility {
-            raw: token.to_owned(),
-            family: "rounded".to_owned(),
-            payload: Some(PALETTE_DEFAULT_KEY.to_owned()),
-            kind: UtilityKind::Radius,
-        };
+    for (exact, kind) in [
+        ("rounded", RadiusKind::All),
+        ("rounded-t", RadiusKind::Top),
+        ("rounded-r", RadiusKind::Right),
+        ("rounded-b", RadiusKind::Bottom),
+        ("rounded-l", RadiusKind::Left),
+        ("rounded-tl", RadiusKind::TopLeft),
+        ("rounded-tr", RadiusKind::TopRight),
+        ("rounded-bl", RadiusKind::BottomLeft),
+        ("rounded-br", RadiusKind::BottomRight),
+    ] {
+        if token == exact {
+            return ParsedUtility {
+                raw: token.to_owned(),
+                family: exact.to_owned(),
+                payload: Some(PALETTE_DEFAULT_KEY.to_owned()),
+                kind: UtilityKind::Radius(kind),
+            };
+        }
     }
 
     if token == "truncate" {
@@ -783,13 +850,21 @@ pub(crate) fn parse_utility(token: &str) -> ParsedUtility {
 
 /// Every prefixed family, in match order — `top-` has to win over `to-`, and a
 /// shorter prefix must never shadow a longer one that starts the same way.
-pub(crate) const UTILITY_PREFIXES: [(&str, UtilityKind); 76] = [
+pub(crate) const UTILITY_PREFIXES: [(&str, UtilityKind); 84] = [
     ("bg-", UtilityKind::BackgroundColor),
     ("align-", UtilityKind::TextYAlignment),
     ("image-", UtilityKind::ImageColor),
     ("placeholder-", UtilityKind::PlaceholderColor),
     ("border-", UtilityKind::Border),
-    ("rounded-", UtilityKind::Radius),
+    ("rounded-tl-", UtilityKind::Radius(RadiusKind::TopLeft)),
+    ("rounded-tr-", UtilityKind::Radius(RadiusKind::TopRight)),
+    ("rounded-bl-", UtilityKind::Radius(RadiusKind::BottomLeft)),
+    ("rounded-br-", UtilityKind::Radius(RadiusKind::BottomRight)),
+    ("rounded-t-", UtilityKind::Radius(RadiusKind::Top)),
+    ("rounded-r-", UtilityKind::Radius(RadiusKind::Right)),
+    ("rounded-b-", UtilityKind::Radius(RadiusKind::Bottom)),
+    ("rounded-l-", UtilityKind::Radius(RadiusKind::Left)),
+    ("rounded-", UtilityKind::Radius(RadiusKind::All)),
     ("z-", UtilityKind::ZIndex),
     ("p-", UtilityKind::Padding(PaddingKind::All)),
     ("px-", UtilityKind::Padding(PaddingKind::X)),

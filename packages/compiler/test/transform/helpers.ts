@@ -37,6 +37,25 @@ export const hostConfig = (code: string) =>
 		/createVelaRuntimeHost\((\{[\s\S]*?\n\})[,)]/.exec(code)?.[1] ?? "null",
 	);
 
+/// The rules travel as one array in `__velaRules`, the only bracket the emitter
+/// closes at column zero.
+export const hostRules = (code: string) =>
+	JSON.parse(/__velaRules=\{(\[[\s\S]*?\n\])\}/.exec(code)?.[1] ?? "null");
+
+/// What one rule leaves on the shared `uicorner`, keyed by property, so a test
+/// reads the corners rather than the shape they were serialized in.
+export const ruleCorners = (rule: {
+	effects: {
+		helpers: { tag: string; props: { name: string; value: string }[] }[];
+	};
+}) =>
+	Object.fromEntries(
+		(
+			rule.effects.helpers.find((helper) => helper.tag === "uicorner")?.props ??
+			[]
+		).map((prop) => [prop.name, prop.value]),
+	);
+
 export const withPluginUtilities = {
 	configJson: JSON.stringify(
 		defineConfig({

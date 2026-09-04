@@ -95,6 +95,65 @@ test("resolves arbitrary rem values against the theme's rem base", () => {
 	);
 });
 
+test("resolves directional arbitrary radius values", () => {
+	const result = transform(
+		`export const A = () => <frame className="rounded-l-[10%] rounded-tr-[0.625rem]" />;`,
+		withoutPreflight,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).not.toMatch(/\sCornerRadius=/);
+	expect(result.code).toMatch(/TopLeftRadius=\{new UDim\(0\.1, 0\)\}/);
+	expect(result.code).toMatch(/BottomLeftRadius=\{new UDim\(0\.1, 0\)\}/);
+	expect(result.code).toMatch(
+		/TopRightRadius=\{__VelaRem\.scale\(new UDim\(0, 10\), \d+\)\}/,
+	);
+	expect(result.code).toMatch(/BottomRightRadius=\{new UDim\(0, 0\)\}/);
+});
+
+test("supports percent, pixel, and rem values on every directional radius", () => {
+	const directions = [
+		["t", ["TopLeftRadius", "TopRightRadius"]],
+		["r", ["TopRightRadius", "BottomRightRadius"]],
+		["b", ["BottomLeftRadius", "BottomRightRadius"]],
+		["l", ["TopLeftRadius", "BottomLeftRadius"]],
+		["tl", ["TopLeftRadius"]],
+		["tr", ["TopRightRadius"]],
+		["bl", ["BottomLeftRadius"]],
+		["br", ["BottomRightRadius"]],
+	] as const;
+	const values = [
+		["10%", /new UDim\(0\.1, 0\)/],
+		["7px", /__VelaRem\.scale\(new UDim\(0, 7\), \d+\)/],
+		["0.625rem", /__VelaRem\.scale\(new UDim\(0, 10\), \d+\)/],
+	] as const;
+
+	for (const [direction, props] of directions) {
+		for (const [value, emittedValue] of values) {
+			const result = transform(
+				`export const A = () => <frame className="rounded-${direction}-[${value}]" />;`,
+				withoutPreflight,
+			);
+
+			expect(result.diagnostics).toEqual([]);
+			expect(result.code).not.toMatch(/\sCornerRadius=/);
+			for (const prop of props) {
+				expect(result.code).toMatch(
+					new RegExp(`${prop}=\\{${emittedValue.source}\\}`),
+				);
+			}
+			for (const prop of [
+				"TopLeftRadius",
+				"TopRightRadius",
+				"BottomLeftRadius",
+				"BottomRightRadius",
+			]) {
+				expect(result.code).toMatch(new RegExp(`${prop}=`));
+			}
+		}
+	}
+});
+
 test("resolves arbitrary hex colors", () => {
 	const result = transform(
 		`export const A = () => <frame className="bg-[#ff0000] border-[#0f0]" />;`,

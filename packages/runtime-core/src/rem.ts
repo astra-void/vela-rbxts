@@ -99,6 +99,8 @@ export namespace __VelaRem {
 	/// alone — `UIGradient.Offset` is normalized, `UIScale.Scale` is a multiplier.
 	const SCALED_PROPS: Record<string, true> = {
 		BlurRadius: true,
+		BottomLeftRadius: true,
+		BottomRightRadius: true,
 		CellPadding: true,
 		CellSize: true,
 		CornerRadius: true,
@@ -125,6 +127,8 @@ export namespace __VelaRem {
 		Spread: true,
 		TextSize: true,
 		Thickness: true,
+		TopLeftRadius: true,
+		TopRightRadius: true,
 		TranslateX: true,
 		TranslateY: true,
 	};

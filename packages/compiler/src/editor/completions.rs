@@ -13,7 +13,7 @@ use crate::semantic::{
         EASE_VALUES, FLEX_DIRECTION_VALUES, FLEX_ITEM_VALUES, FONT_STYLE_VALUES,
         FONT_WEIGHT_VALUES, GRADIENT_DIRECTION_VALUES, GRID_CELL_COUNT_MAX, JUSTIFY_FLEX_VALUES,
         LAYOUT_ORDER_KEYWORDS, LINE_HEIGHT_VALUES, OBJECT_FIT_VALUES, OPACITY_VALUES,
-        OVERSCROLL_VALUES, PALETTE_DEFAULT_KEY, POINTER_EVENTS_VALUES, PaddingKind,
+        OVERSCROLL_VALUES, PALETTE_DEFAULT_KEY, POINTER_EVENTS_VALUES, PaddingKind, RADIUS_KINDS,
         RING_THICKNESS_VALUES, ROTATION_VALUES, SCALE_VALUES, SCROLL_DIRECTION_VALUES,
         SHADOW_SIZE_VALUES, TEXT_SIZE_VALUES, TEXT_WRAP_VALUES, TEXT_X_ALIGN_VALUES,
         TEXT_Y_ALIGN_VALUES, UtilityKind, WHITESPACE_VALUES, Z_INDEX_VALUES, color_completion_keys,
@@ -456,20 +456,35 @@ fn border_candidates(config: &TailwindConfig) -> Vec<CompletionSpec> {
 fn radius_and_stacking_candidates(config: &TailwindConfig) -> Vec<CompletionSpec> {
     let mut items = Vec::new();
 
-    for key in radius_completion_keys(config) {
-        // `rounded-DEFAULT` is not a class; the DEFAULT radius is what a bare
-        // `rounded` resolves to.
-        let label = if key == PALETTE_DEFAULT_KEY {
+    let radius_keys = radius_completion_keys(config);
+    for kind in RADIUS_KINDS {
+        let prefix = if kind.suffix().is_empty() {
             "rounded".to_owned()
         } else {
-            format!("rounded-{key}")
+            format!("rounded-{}", kind.suffix())
         };
-        items.push(CompletionSpec::new(
-            label.clone(),
-            "radius",
-            format!("Set UICorner.CornerRadius from theme radius `{key}`."),
-            UtilityKind::Radius,
-        ));
+        let targets = kind
+            .props()
+            .iter()
+            .map(|prop| format!("UICorner.{prop}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        for key in &radius_keys {
+            // `rounded-DEFAULT` is not a class; the DEFAULT radius is what a bare
+            // directional or all-corner utility resolves to.
+            let label = if key == PALETTE_DEFAULT_KEY {
+                prefix.clone()
+            } else {
+                format!("{prefix}-{key}")
+            };
+            items.push(CompletionSpec::new(
+                label,
+                "radius",
+                format!("Set {targets} from theme radius `{key}`."),
+                UtilityKind::Radius(kind),
+            ));
+        }
     }
 
     for key in Z_INDEX_VALUES {

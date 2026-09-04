@@ -63,6 +63,30 @@ test("resolves automatic sizing through the runtime helper", () => {
 	expect(runtimeSource).toContain("Enum.AutomaticSize.XY");
 });
 
+test("resolves directional radius utilities through the runtime helper", () => {
+	const result = transform("<frame className={recipe} />");
+
+	expect(result.needsRuntimeHost).toBe(true);
+	for (const prefix of [
+		"rounded-tl-",
+		"rounded-tr-",
+		"rounded-bl-",
+		"rounded-br-",
+		"rounded-t-",
+		"rounded-r-",
+		"rounded-b-",
+		"rounded-l-",
+	]) {
+		expect(runtimeSource).toContain(`"${prefix}"`);
+	}
+	// The corners a class value leaves open are squared off by the runtime, so
+	// what the static path fills in is never emitted twice.
+	expect(runtimeSource).toContain("TopLeftRadius");
+	expect(runtimeSource).toContain("TopRightRadius");
+	expect(runtimeSource).toContain("BottomLeftRadius");
+	expect(runtimeSource).toContain("BottomRightRadius");
+});
+
 test("rewrites dynamic object-map className through the runtime helper", () => {
 	const result = transform(
 		'<frame className={{ "px-4": roomy, "px-2": !roomy }} />',

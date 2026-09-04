@@ -705,10 +705,37 @@ export namespace __VelaApply {
 		props.push({ name, value });
 	}
 
-	/// UIListLayout.SortOrder defaults to Name, which sorts children by their
-	/// instance name and silently ignores every `order-*`.
+	/// Some Roblox helper defaults do not match their CSS-style utility semantics.
 	export function applyHelperDefaults(helpers: RuntimeHelper[]) {
 		for (const helper of helpers) {
+			if (helper.tag === "uicorner") {
+				const directionalProps = [
+					"TopLeftRadius",
+					"TopRightRadius",
+					"BottomLeftRadius",
+					"BottomRightRadius",
+				];
+				if (
+					helper.props.find((prop) => directionalProps.includes(prop.name)) !==
+					undefined
+				) {
+					const baseline =
+						helper.props.find((prop) => prop.name === "CornerRadius")?.value ??
+						new UDim(0, 0);
+					helper.props = helper.props.filter(
+						(prop) => prop.name !== "CornerRadius",
+					);
+					for (const name of directionalProps) {
+						if (helper.props.find((prop) => prop.name === name) === undefined) {
+							helper.props.push({ name, value: baseline });
+						}
+					}
+				}
+				continue;
+			}
+
+			// UIListLayout.SortOrder defaults to Name, which sorts children by their
+			// instance name and silently ignores every `order-*`.
 			if (helper.tag !== "uilistlayout") {
 				continue;
 			}

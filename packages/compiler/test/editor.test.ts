@@ -185,6 +185,26 @@ test("completes radius utilities inside className", () => {
 			}),
 		]),
 	);
+	expect(result.items).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				label: "rounded-l-md",
+			}),
+		]),
+	);
+});
+
+test("hovers directional radius utilities with their UICorner targets", () => {
+	const source = '<frame className="rounded-l-[10%]" />';
+	const hover = getHover({
+		source,
+		position: positionAfter(source, "rounded-l-[10%]") - 2,
+	});
+
+	expect(hover.contents?.display).toBe(
+		"`rounded-l-[10%]` -> UICorner.TopLeftRadius, UICorner.BottomLeftRadius",
+	);
+	expect(hover.contents?.documentation).toContain("new UDim(0.1, 0)");
 });
 
 test("completes z-index utilities inside className", () => {

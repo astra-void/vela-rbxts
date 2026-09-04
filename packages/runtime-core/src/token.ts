@@ -83,6 +83,46 @@ export namespace __VelaToken {
 		return { props: [], helpers: [{ tag, props }] };
 	}
 
+	const ALL_RADIUS_PROPS = ["CornerRadius"];
+
+	function radiusEffect(
+		value: UDim,
+		props: string[],
+	): RuntimeResolvedEffectBundle {
+		return helperEffect(
+			"uicorner",
+			props.map((name) => ({ name, value })),
+		);
+	}
+
+	/// Spelled out rather than built from the direction, so the guard that reads
+	/// this file for every static utility prefix can find each one.
+	const DIRECTIONAL_RADIUS_PREFIXES: Array<[string, string[]]> = [
+		["rounded-tl-", ["TopLeftRadius"]],
+		["rounded-tr-", ["TopRightRadius"]],
+		["rounded-bl-", ["BottomLeftRadius"]],
+		["rounded-br-", ["BottomRightRadius"]],
+		["rounded-t-", ["TopLeftRadius", "TopRightRadius"]],
+		["rounded-r-", ["TopRightRadius", "BottomRightRadius"]],
+		["rounded-b-", ["BottomLeftRadius", "BottomRightRadius"]],
+		["rounded-l-", ["TopLeftRadius", "BottomLeftRadius"]],
+	];
+
+	function resolveRadiusPayload(token: string): [string, string[]] {
+		for (const [prefix, props] of DIRECTIONAL_RADIUS_PREFIXES) {
+			if (__VelaLua.startsWith(token, prefix)) {
+				return [__VelaLua.after(token, prefix), props];
+			}
+
+			// `rounded-t` is the prefix without its key: the directional DEFAULT.
+			if (token === __VelaLua.substring(prefix, 0, -1)) {
+				return [__VelaDefaults.PALETTE_DEFAULT_KEY, props];
+			}
+		}
+
+		return [__VelaLua.after(token, "rounded-"), ALL_RADIUS_PROPS];
+	}
+
 	/// A gradient stop carries its `/N` alpha beside the color, because
 	/// UIGradient only learns the keypoint positions once every stop is known.
 	function gradientStopEffect(
@@ -194,7 +234,7 @@ export namespace __VelaToken {
 		);
 		return value === undefined
 			? undefined
-			: helperEffect("uicorner", [{ name: "CornerRadius", value }]);
+			: radiusEffect(value, ALL_RADIUS_PROPS);
 	}
 
 	function resolveTextToken(
@@ -314,13 +354,9 @@ export namespace __VelaToken {
 		theme: RuntimeTheme,
 		token: string,
 	): RuntimeResolvedEffectBundle | undefined {
-		const value = __VelaValue.resolveRadiusValue(
-			theme,
-			__VelaLua.after(token, "rounded-"),
-		);
-		return value === undefined
-			? undefined
-			: helperEffect("uicorner", [{ name: "CornerRadius", value }]);
+		const [key, props] = resolveRadiusPayload(token);
+		const value = __VelaValue.resolveRadiusValue(theme, key);
+		return value === undefined ? undefined : radiusEffect(value, props);
 	}
 
 	function resolveZIndexToken(

@@ -175,7 +175,7 @@ fn group_rank(utility: &UtilityKind) -> u32 {
         | UtilityKind::GradientTo => 9,
         // `border-*`, `ring-*` and `outline-*` share one `UIStroke`.
         UtilityKind::Border | UtilityKind::Ring | UtilityKind::Outline => 10,
-        UtilityKind::Radius => 11,
+        UtilityKind::Radius(_) => 11,
         UtilityKind::DivideX | UtilityKind::DivideY | UtilityKind::DivideColor => 12,
         UtilityKind::ShadowSize | UtilityKind::ShadowColor => 13,
         UtilityKind::Rotation | UtilityKind::Scale => 14,

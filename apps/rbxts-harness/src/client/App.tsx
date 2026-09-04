@@ -194,6 +194,11 @@ export const App = () => {
 				/>
 				<frame className="bg-white dark:bg-slate-900 size-6" />
 				<frame className="w-[120px] h-[50%] p-[7px] rounded-[10px] bg-slate-500" />
+				{/* Directional radii: the left corners round, the right ones stay
+				    square, and the variant repaints only what it names. */}
+				<frame className="size-8 bg-slate-500 rounded-l-lg" />
+				<frame className="size-8 bg-slate-500 rounded-l-lg hover:rounded-md" />
+				<frame className="size-8 bg-slate-500 rounded-tr-[0.625rem]" />
 				{/* The same box twice, once in rem and once in the pixels that rem
 				    is worth at the base: they have to render identically. */}
 				<frame className="w-[6rem] h-[1.5rem] p-[0.5rem] rounded-[0.25rem] border-[0.125rem] border-teal-200 bg-teal-500" />

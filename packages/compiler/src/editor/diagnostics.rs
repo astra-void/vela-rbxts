@@ -95,7 +95,7 @@ fn candidate_keys(config: &TailwindConfig, utility: &UtilityKind) -> Option<Vec<
         | UtilityKind::Outline
         | UtilityKind::ScrollbarColor => Some(color_completion_keys(config)),
         UtilityKind::FontFamily => Some(font_family_completion_keys(config)),
-        UtilityKind::Radius => Some(radius_completion_keys(config)),
+        UtilityKind::Radius(_) => Some(radius_completion_keys(config)),
         UtilityKind::Padding(PaddingKind::All | PaddingKind::X | PaddingKind::Y)
         | UtilityKind::Padding(PaddingKind::Top | PaddingKind::Right)
         | UtilityKind::Padding(PaddingKind::Bottom | PaddingKind::Left)

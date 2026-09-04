@@ -68,6 +68,19 @@ expect(
 	/CornerRadius = __VelaRem\.scale\(UDim\.new\(0, 8\), \d+\)/.test(source),
 );
 
+// A directional radius names the corners it rounds and squares off the rest,
+// so the same UICorner carries all four rather than the shorthand.
+const directionalCorners = [
+	/TopLeftRadius = __VelaRem\.scale\(UDim\.new\(0, 8\), \d+\)/,
+	/BottomLeftRadius = __VelaRem\.scale\(UDim\.new\(0, 8\), \d+\)/,
+	/TopRightRadius = UDim\.new\(0, 0\)/,
+	/BottomRightRadius = UDim\.new\(0, 0\)/,
+];
+expect(
+	"a directional radius squares the corners it does not name",
+	directionalCorners.every((corner) => corner.test(source)),
+);
+
 // The collapser opens the thunk a Vide class value is written as, so a
 // readable one lowers to branch rules and its tests go back deferred.
 expect(

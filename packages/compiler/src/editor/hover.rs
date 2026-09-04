@@ -112,7 +112,7 @@ fn describe_token(
         | UtilityKind::GradientTo => {
             describe_color_family(&analysis, token, config, element_tag, &variant_prefix)
         }
-        UtilityKind::Border | UtilityKind::Radius | UtilityKind::Ring | UtilityKind::Outline => {
+        UtilityKind::Border | UtilityKind::Radius(_) | UtilityKind::Ring | UtilityKind::Outline => {
             describe_border_family(&analysis, token, config, element_tag, &variant_prefix)
         }
         UtilityKind::Padding(_)
@@ -366,13 +366,23 @@ fn describe_border_family(
         UtilityKind::Border => {
             describe_border_token(token, analysis.payload(), config, variant_prefix)
         }
-        UtilityKind::Radius => {
+        UtilityKind::Radius(kind) => {
             let radius_key = analysis.payload()?;
             let value = resolve_radius_value(config, radius_key)?;
+            let props = if kind.suffix().is_empty() {
+                "UICorner.CornerRadius".to_owned()
+            } else {
+                kind.props()
+                    .iter()
+                    .map(|prop| format!("UICorner.{prop}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
             Some(HoverContent {
-                display: format!("`{token}` -> UICorner.CornerRadius"),
+                display: format!("`{token}` -> {props}"),
                 documentation: format!(
-                    "{variant_prefix}Sets `UICorner.CornerRadius` to {}.",
+                    "{variant_prefix}Sets `{}` to {}.",
+                    props.replace(", ", "`, `"),
                     udim_value_text(config, &value)
                 ),
             })
