@@ -1,6 +1,6 @@
 {
 	"name": "@rbxts/vela-runtime-vide",
-	"version": "0.12.8",
+	"version": "0.13.0",
 	"description": "The Vide host runtime behind vela-rbxts. Transformed modules import it when the project targets Vide; it builds on @rbxts/vela-runtime-core.",
 	"main": "out/init.luau",
 	"types": "out/index.d.ts",

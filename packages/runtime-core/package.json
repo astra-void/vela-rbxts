@@ -1,6 +1,6 @@
 {
 	"name": "@rbxts/vela-runtime-core",
-	"version": "0.12.8",
+	"version": "0.13.0",
 	"description": "The framework-neutral half of the vela-rbxts runtime: class resolution, theme normalization, rem math and value parsing. Installed as a dependency of the host runtime a project's UI library needs.",
 	"main": "out/init.luau",
 	"types": "out/index.d.ts",

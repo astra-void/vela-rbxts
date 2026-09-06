@@ -1,6 +1,6 @@
 [package]
 name = "vela-rbxts-lsp"
-version = "0.12.8"
+version = "0.13.0"
 edition = "2024"
 description = "Standalone stdio LSP adapter over the vela-rbxts compiler APIs."
 license = "MIT"

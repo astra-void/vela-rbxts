@@ -1,5 +1,7 @@
 # @vela-rbxts/compiler-wasm
 
+## 0.13.0
+
 ## 0.12.8
 
 ## 0.12.7

@@ -1,6 +1,6 @@
 {
 	"name": "vela-rbxts-lsp",
-	"version": "0.12.8",
+	"version": "0.13.0",
 	"private": true,
 	"type": "commonjs",
 	"displayName": "Vela LSP",
@@ -68,7 +68,7 @@
 				"velaRbxts.inlayHints.enabled": {
 					"type": "boolean",
 					"default": false,
-					"description": "Show what each vela class lowers to \u2014 the Roblox properties and helper instances \u2014 inline after the class. Off by default: the summaries are for reading a class list back rather than for every edit."
+					"description": "Show what each vela class lowers to — the Roblox properties and helper instances — inline after the class. Off by default: the summaries are for reading a class list back rather than for every edit."
 				}
 			}
 		}

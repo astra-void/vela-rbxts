@@ -1,6 +1,6 @@
 {
 	"name": "@rbxts/vela-runtime",
-	"version": "0.12.8",
+	"version": "0.13.0",
 	"description": "The runtime class resolver behind vela-rbxts. Installed as a dependency of vela-rbxts; transformed modules import it rather than carrying a copy.",
 	"main": "out/init.luau",
 	"types": "out/index.d.ts",

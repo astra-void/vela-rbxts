@@ -1,6 +1,6 @@
 {
   "name": "@vela-rbxts/lsp",
-  "version": "0.12.8",
+  "version": "0.13.0",
   "private": true,
   "type": "commonjs",
   "description": "Source package for the vela-rbxts Rust LSP wrapper and release staging scripts.",
