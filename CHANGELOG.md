@@ -24,6 +24,8 @@ Versions are released in lockstep across every workspace package.
 - Diagnostics about a prefix say what is wrong with the prefix. A `max-` in front of a name that is not a breakpoint is `unknown-breakpoint` and names the ones that are; an `attr-[…]` that does not parse is `malformed-attribute-variant` and names what is missing, rather than degrading into an unknown-utility error about a family called `attr`; a chain whose width bounds leave no viewport is `invalid-breakpoint-range` rather than a rule that is emitted and never fires.
 - Sorting ranks the new variants in bands of their own: min-width ascending, max-width widest-first, orientation, input, state variants, interaction, colour scheme. The order the previous variants already sorted into is unchanged, because moving one past another changes which rule wins where both apply.
 
+## [0.12.8] - 2026-08-21
+
 ### Fixed
 
 - The published editor extension carried no vela config loader at all, so a project's `vela.config.ts` was never read and every key it defined was checked against the default theme. The loader is bundled into the extension, and the VSIX workflow built that bundle without building the loader package first; esbuild leaves a `require` it cannot resolve inside a try/catch where it stands and says nothing about it, so packaging went green over a bundle that had none. The loader is imported outright now, so a bundle built without it fails the build, the workflow builds it before the bundle, and packaging refuses a staged bundle that still resolves the loader at runtime.
@@ -371,7 +373,8 @@ Initial npm publish of the `vela-rbxts` toolchain.
 - Runtime-aware variants: `sm:`, `md:`, `lg:`, `portrait:`, `landscape:`, `touch:`, `mouse:`, `gamepad:`.
 - Artifact-first release pipeline (`plan` → `build` → `pack` → `verify` → `publish`) with a cross-platform CI matrix.
 
-[Unreleased]: https://github.com/astra-void/vela-rbxts/compare/v0.12.7...HEAD
+[Unreleased]: https://github.com/astra-void/vela-rbxts/compare/v0.12.8...HEAD
+[0.12.8]: https://github.com/astra-void/vela-rbxts/compare/v0.12.7...v0.12.8
 [0.12.7]: https://github.com/astra-void/vela-rbxts/compare/v0.12.6...v0.12.7
 [0.12.6]: https://github.com/astra-void/vela-rbxts/compare/v0.12.5...v0.12.6
 [0.12.5]: https://github.com/astra-void/vela-rbxts/compare/v0.12.4...v0.12.5
