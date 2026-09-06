@@ -2,6 +2,7 @@ import { chmodSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { pathToFileURL } from "node:url";
 
 import { getFlagValue } from "./release-config";
@@ -17,6 +18,7 @@ import {
 } from "./utils/fs";
 import { runMain } from "./utils/main";
 import { resolveNpmCommand } from "./utils/npm";
+import { packWithRegistryLagRetries } from "./utils/pack-attempt";
 
 type LspPackageConfig = {
 	BINARY_PACKAGE_CONFIGS: Array<{
@@ -82,11 +84,26 @@ async function main() {
 		const packageDir = join(workDir, config.directory);
 		await cleanDir(packageDir);
 
-		runCommand(
-			npmCommand,
-			["pack", `${config.name}@${version}`, "--pack-destination", packageDir],
-			{ cwd: REPO_ROOT },
-		);
+		await packWithRegistryLagRetries({
+			pack: () => {
+				runCommand(
+					npmCommand,
+					[
+						"pack",
+						`${config.name}@${version}`,
+						"--pack-destination",
+						packageDir,
+					],
+					{ cwd: REPO_ROOT },
+				);
+			},
+			wait: delay,
+			onRetry: ({ delayMs, reason }) => {
+				console.log(
+					`- ${config.name}@${version} is not readable yet, retrying in ${delayMs / 1000}s: ${reason}`,
+				);
+			},
+		});
 
 		const tarballPath = await findTarball(packageDir);
 		await extractTarball(tarballPath, packageDir);
