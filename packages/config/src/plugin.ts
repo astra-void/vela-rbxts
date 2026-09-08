@@ -211,10 +211,18 @@ function readThemePath(theme: ThemeConfig, path: string): string | undefined {
 const UTILITY_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 const PROP_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+export function isValidUtilityName(name: string): boolean {
+	return UTILITY_NAME_PATTERN.test(name);
+}
+
+export function isValidPropName(name: string): boolean {
+	return PROP_NAME_PATTERN.test(name);
+}
+
 function normalizeUtilityName(name: string, label: string): string {
 	const key = name.startsWith(".") ? name.slice(1) : name;
 
-	if (!UTILITY_NAME_PATTERN.test(key)) {
+	if (!isValidUtilityName(key)) {
 		throw new Error(
 			`${label} registered "${name}", which is not a usable class name. Use letters, digits, "-", and "_"; variants such as "hover:" belong on the className.`,
 		);
@@ -362,7 +370,7 @@ function normalizeUtilityValue(
 	const props: PluginPropMap = {};
 
 	for (const [prop, expression] of Object.entries(value)) {
-		if (!PROP_NAME_PATTERN.test(prop)) {
+		if (!isValidPropName(prop)) {
 			throw new Error(
 				`${label} registered "${key}" with "${prop}", which is not a Roblox property name.`,
 			);
