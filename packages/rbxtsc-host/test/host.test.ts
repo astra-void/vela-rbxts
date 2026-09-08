@@ -666,3 +666,78 @@ test("loads screens and variants from a vela.config.json", () => {
 		open: { attribute: "State", equals: "open" },
 	});
 });
+
+test("resolves a project that configures itself with vela.css alone", () => {
+	const project = createProject();
+	fs.writeFileSync(
+		path.join(project.root, "vela.css"),
+		`@theme {\n--color-brand-500: #3b82f6;\n--spacing-golden: 26px;\n}\n.btn { @apply bg-brand-500 p-golden; }`,
+		"utf8",
+	);
+	clearProjectConfigCache();
+
+	const config = resolveProjectConfig(project.sourceFile);
+
+	expect(config.theme.colors.brand).toEqual({
+		500: "Color3.fromRGB(59, 130, 246)",
+	});
+	expect(config.theme.spacing.golden).toBe("new UDim(0, 26)");
+	expect(config.plugins.utilities.btn).toBe("bg-brand-500 p-golden");
+	// The stylesheet extends rather than replaces, so the defaults survive it.
+	expect(config.theme.colors.slate).toBeDefined();
+});
+
+test("folds vela.css in on top of a vela.config.ts", () => {
+	const project = createProject(
+		`import { defineConfig } from "vela-rbxts";\nexport default defineConfig({ theme: { colors: { brand: "Color3.fromRGB(1, 2, 3)" } } });`,
+	);
+	fs.writeFileSync(
+		path.join(project.root, "vela.css"),
+		`@theme { --color-accent: #ffffff; }`,
+		"utf8",
+	);
+	clearProjectConfigCache();
+
+	const config = resolveProjectConfig(project.sourceFile);
+
+	// The config file replaces `theme.colors`, so a stylesheet folded in ahead
+	// of it would have been wiped by exactly this.
+	expect(config.theme.colors.brand).toBe("Color3.fromRGB(1, 2, 3)");
+	expect(config.theme.colors.accent).toBe("Color3.fromRGB(255, 255, 255)");
+});
+
+test("re-reads a stylesheet the entry imported after it changes on disk", () => {
+	const project = createProject();
+	const tokens = path.join(project.root, "tokens.css");
+	fs.writeFileSync(
+		path.join(project.root, "vela.css"),
+		`@import "./tokens.css";`,
+		"utf8",
+	);
+	fs.writeFileSync(tokens, `@theme { --spacing-gap: 8px; }`, "utf8");
+	clearProjectConfigCache();
+
+	expect(resolveProjectConfig(project.sourceFile).theme.spacing.gap).toBe(
+		"new UDim(0, 8)",
+	);
+
+	fs.writeFileSync(tokens, `@theme { --spacing-gap: 12px; }`, "utf8");
+
+	expect(resolveProjectConfig(project.sourceFile).theme.spacing.gap).toBe(
+		"new UDim(0, 12)",
+	);
+});
+
+test("fails the build with a located message when a stylesheet is wrong", () => {
+	const project = createProject();
+	fs.writeFileSync(
+		path.join(project.root, "vela.css"),
+		`@theme {\n\t--shadow-md: 4px;\n}`,
+		"utf8",
+	);
+	clearProjectConfigCache();
+
+	expect(() => resolveProjectConfig(project.sourceFile)).toThrow(
+		/vela\.css:2:2 .*not a vela token/,
+	);
+});

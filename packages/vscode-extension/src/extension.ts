@@ -1,6 +1,9 @@
 import path from "node:path";
 
-import { resolveProjectConfig } from "@vela-rbxts/rbxtsc-host/project-config";
+import {
+	clearProjectConfigCache,
+	resolveProjectConfig,
+} from "@vela-rbxts/rbxtsc-host/project-config";
 import * as vscode from "vscode";
 import {
 	LanguageClient,
@@ -12,7 +15,10 @@ import {
 
 const EXTENSION_ID = "vela-rbxts-lsp";
 const OUTPUT_CHANNEL_NAME = "vela-rbxts-lsp";
-const CONFIG_WATCH_GLOB = "**/vela.config.{ts,json}";
+const CONFIG_FIND_GLOB = "**/vela.{config.ts,config.json,css}";
+// A stylesheet the config imports can sit anywhere, so every CSS edit re-pushes
+// rather than the extension tracking the import graph.
+const CONFIG_WATCH_GLOB = "**/{vela.config.ts,vela.config.json,*.css}";
 
 let client: LanguageClient | undefined;
 let lifecycleTask: Promise<void> = Promise.resolve();
@@ -50,10 +56,14 @@ export async function activate(
 		}),
 		watcher.onDidCreate((uri) => {
 			log(`Detected config create: ${uri.fsPath}`);
+			// The upward walk records the directories that found nothing, so a
+			// config file that did not exist stays invisible until it is dropped.
+			clearProjectConfigCache();
 			void pushProjectConfigs();
 		}),
 		watcher.onDidDelete((uri) => {
 			log(`Detected config delete: ${uri.fsPath}`);
+			clearProjectConfigCache();
 			void pushProjectConfigs();
 		}),
 	);
@@ -456,16 +466,18 @@ const reportedConfigFailures = new Map<string, string>();
 
 async function collectProjectConfigs(): Promise<CollectedConfigs> {
 	const files = await vscode.workspace.findFiles(
-		CONFIG_WATCH_GLOB,
+		CONFIG_FIND_GLOB,
 		"**/node_modules/**",
 	);
 
 	const entries: ConfigEntry[] = [];
 	const failures: ConfigFailure[] = [];
 	const seenDirectories = new Set<string>();
-	// Mirrors the host loader, which prefers `vela.config.ts` over the JSON form.
+	// Mirrors the host loader, which prefers `vela.config.ts` over the JSON form
+	// and folds a `vela.css` into whichever of them it finds.
+	const CONFIG_PRIORITY: Record<string, number> = { ".ts": 0, ".json": 1 };
 	const configPriority = (fsPath: string): number =>
-		path.extname(fsPath) === ".ts" ? 0 : 1;
+		CONFIG_PRIORITY[path.extname(fsPath)] ?? 2;
 	const ordered = [...files].sort(
 		(a, b) => configPriority(a.fsPath) - configPriority(b.fsPath),
 	);
