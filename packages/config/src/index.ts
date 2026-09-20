@@ -7,6 +7,20 @@ import {
 } from "./plugin.js";
 
 export {
+	type CssDiagnostic,
+	type CssImport,
+	type ParsedVelaCss,
+	parseVelaCss,
+} from "./css.js";
+export {
+	type CssSourceReader,
+	type LoadedVelaCss,
+	loadVelaCss,
+	type VelaCssDiagnostic,
+} from "./css-loader.js";
+export {
+	isValidPropName,
+	isValidUtilityName,
 	type MotionDriver,
 	type PluginApi,
 	type PluginHandler,
