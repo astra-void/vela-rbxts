@@ -12,6 +12,15 @@ Versions are released in lockstep across every workspace package.
 ### Added
 
 - **A `vela.css` config source.** A `@theme` block declares tokens in the units a designer already has them in, so `--color-brand-500: #3b82f6` and `--spacing-4: 16px` become `Color3.fromRGB(59, 130, 246)` and `new UDim(0, 16)` instead of being retyped as roblox-ts expressions; `.btn { @apply bg-brand-500 px-4 }` and `.panel { BackgroundTransparency: 0.5 }` register the same plugin utilities `addUtilities` does; `@custom-variant selected (Selected = true)` registers the same attribute-backed variant `addVariant` does; and `@import "./tokens.css"` folds a sibling in as a preset of the file that named it, cycles and all reported where they are written. A stylesheet only extends, never replaces, so it resolves on top of a `vela.config.ts` for a project that keeps structure in TypeScript and tokens in CSS, and a project that wants nothing else needs no config file at all. Because the parser produces the same config input `defineConfig` takes, the compiler and the language server read a class defined in CSS exactly as they read one from a plugin, with no second path to keep in step. What is deliberately absent is everything the cascade would be needed for: Roblox has no specificity, no inheritance and no selectors, so combinators, pseudo-classes, `@media`, and CSS properties such as `display` are diagnosed and pointed at the vela equivalent rather than accepted into an emit that could not honour them.
+
+### Fixed
+
+- `border-[#3fa8c2]` and `border-red-500/50` rendered as a black stroke when the class reached the runtime path, which is where a dynamic `className` goes. The in-game parser still refused every bracketed border payload and every slash, rules the compiler had already dropped in favour of "a trailing `/N` is opacity, a bracket is a length or a color", so the color was discarded while `border-2` beside it still created the `UIStroke`, left at Roblox's default. The runtime gate reads the payload the way the compiler does now; directional and style forms such as `border-x` and `border-dashed` are still refused on both paths.
+
+## [0.13.0] - 2026-09-06
+
+### Added
+
 - **State variants.** A `hover:` is a state Roblox already exposes. Everything a UI has states for of its own, a panel that is open, a row that is selected, a button that is disabled, a tier a player reached, was left with no way to say it, and vela was never going to guess at the list. `addVariant("open", { attribute: "State", equals: "open" })` registers a `open:` prefix that reads a Roblox attribute off the styled instance, and `attr-[State=open]:` reads one inline where a registration would be ceremony. The attribute is the state the rest of the game already reads: it replicates from the server, survives a rejoin, and shows up in Studio's property panel, so the styling layer holds no second copy of it. Both forms compose with every other variant, both are checked, completed, hovered and sorted like a built-in one, and neither sends the utility behind it to the in-game parser: `open:rounded-lg` lowers `rounded-lg` exactly as a bare `rounded-lg` would, and only the condition travels.
 - **Responsive ranges.** `max-md:` is the exact complement of `md:`: the minimum is inclusive and the maximum is not, so at 768px `md:` applies and `max-md:` does not, and between them the two cover every viewport exactly once. They chain, so `md:max-lg:` addresses one bucket and nothing else.
 - **Configurable breakpoints.** `theme.screens` is a theme axis like `colors` and `spacing`, with the same replace-vs-extend rules, so `tablet:` and `max-tablet:` are two lines of config. The default scale gains Tailwind's `xl` (1280) and `2xl` (1536): a Roblox viewport is measured in the same pixels a browser one is, and the buckets were already the right ones.
@@ -25,10 +34,6 @@ Versions are released in lockstep across every workspace package.
 - **A `vela.config.ts` is executed once per build rather than once per source file.** The host resolves a config per directory and reuses it, re-reading the file only when its contents changed. A config that throws is cached alongside one that resolves, so the error is reported once instead of once per file, and the next edit is what lifts it, which is what makes a watch process recoverable from a typo.
 - Diagnostics about a prefix say what is wrong with the prefix. A `max-` in front of a name that is not a breakpoint is `unknown-breakpoint` and names the ones that are; an `attr-[…]` that does not parse is `malformed-attribute-variant` and names what is missing, rather than degrading into an unknown-utility error about a family called `attr`; a chain whose width bounds leave no viewport is `invalid-breakpoint-range` rather than a rule that is emitted and never fires.
 - Sorting ranks the new variants in bands of their own: min-width ascending, max-width widest-first, orientation, input, state variants, interaction, colour scheme. The order the previous variants already sorted into is unchanged, because moving one past another changes which rule wins where both apply.
-
-### Fixed
-
-- `border-[#3fa8c2]` and `border-red-500/50` rendered as a black stroke when the class reached the runtime path, which is where a dynamic `className` goes. The in-game parser still refused every bracketed border payload and every slash, rules the compiler had already dropped in favour of "a trailing `/N` is opacity, a bracket is a length or a color", so the color was discarded while `border-2` beside it still created the `UIStroke`, left at Roblox's default. The runtime gate reads the payload the way the compiler does now; directional and style forms such as `border-x` and `border-dashed` are still refused on both paths.
 
 ## [0.12.8] - 2026-08-21
 
@@ -379,7 +384,8 @@ Initial npm publish of the `vela-rbxts` toolchain.
 - Runtime-aware variants: `sm:`, `md:`, `lg:`, `portrait:`, `landscape:`, `touch:`, `mouse:`, `gamepad:`.
 - Artifact-first release pipeline (`plan` → `build` → `pack` → `verify` → `publish`) with a cross-platform CI matrix.
 
-[Unreleased]: https://github.com/astra-void/vela-rbxts/compare/v0.12.8...HEAD
+[Unreleased]: https://github.com/astra-void/vela-rbxts/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/astra-void/vela-rbxts/compare/v0.12.8...v0.13.0
 [0.12.8]: https://github.com/astra-void/vela-rbxts/compare/v0.12.7...v0.12.8
 [0.12.7]: https://github.com/astra-void/vela-rbxts/compare/v0.12.6...v0.12.7
 [0.12.6]: https://github.com/astra-void/vela-rbxts/compare/v0.12.5...v0.12.6
