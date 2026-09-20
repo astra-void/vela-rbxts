@@ -1,5 +1,11 @@
 # @rbxts/vela-runtime-core
 
+## 0.13.1
+
+### Patch Changes
+
+- e14d8f1: Resolve `border-[#hex]` and `border-red-500/50` on the runtime path. The in-game parser still refused every bracketed border payload and every slash, rules the compiler had dropped, so a border color that reached it through a dynamic `className` was discarded and the `UIStroke` kept Roblox's default black.
+
 ## 0.13.0
 
 ### Minor Changes
