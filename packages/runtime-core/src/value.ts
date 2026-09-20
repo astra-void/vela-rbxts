@@ -495,11 +495,10 @@ export namespace __VelaValue {
 			return true;
 		}
 
-		if (__VelaLua.startsWith(key, "[") && __VelaLua.endsWith(key, "]")) {
-			return true;
-		}
-
-		if (__VelaLua.includesChar(key, "/")) {
+		// A trailing `/N` lowers to `UIStroke.Transparency`; any other slash is a
+		// Tailwind shape this family does not implement.
+		const [base, opacity] = splitColorOpacity(key);
+		if (opacity === undefined && __VelaLua.includesChar(base, "/")) {
 			return true;
 		}
 
@@ -509,6 +508,27 @@ export namespace __VelaValue {
 		}
 
 		return false;
+	}
+
+	/// Splits a trailing `/N` opacity modifier off a color payload. Only a 0-100
+	/// integer counts; anything else stays part of the key.
+	export function splitColorOpacity(key: string): [string, number | undefined] {
+		const separator = __VelaLua.lastIndexOf(key, "/");
+		if (separator === -1) {
+			return [key, undefined];
+		}
+
+		const percent = __VelaLua.toNumber(__VelaLua.substring(key, separator + 1));
+		if (
+			percent === undefined ||
+			percent < 0 ||
+			percent > 100 ||
+			!__VelaLua.isWholeNumber(percent)
+		) {
+			return [key, undefined];
+		}
+
+		return [__VelaLua.substring(key, 0, separator), percent];
 	}
 
 	export function splitColorKey(key: string): [string, string | undefined] {

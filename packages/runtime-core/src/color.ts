@@ -8,7 +8,7 @@ export namespace __VelaColor {
 		theme: RuntimeTheme,
 		key: string,
 	): [Color3, number | undefined] | undefined {
-		const [base, opacity] = splitColorOpacity(key);
+		const [base, opacity] = __VelaValue.splitColorOpacity(key);
 		const color = resolveThemeColor(theme, base)?.color;
 		if (color === undefined) {
 			return undefined;
@@ -64,27 +64,6 @@ export namespace __VelaColor {
 			shade ?? __VelaDefaults.PALETTE_DEFAULT_KEY
 		];
 		return entry === undefined ? undefined : { color: entry };
-	}
-
-	/// Splits a trailing `/N` opacity modifier off a color payload. Only a 0-100
-	/// integer counts; anything else stays part of the key.
-	export function splitColorOpacity(key: string): [string, number | undefined] {
-		const separator = __VelaLua.lastIndexOf(key, "/");
-		if (separator === -1) {
-			return [key, undefined];
-		}
-
-		const percent = __VelaLua.toNumber(__VelaLua.substring(key, separator + 1));
-		if (
-			percent === undefined ||
-			percent < 0 ||
-			percent > 100 ||
-			!__VelaLua.isWholeNumber(percent)
-		) {
-			return [key, undefined];
-		}
-
-		return [__VelaLua.substring(key, 0, separator), percent];
 	}
 
 	export function parseArbitraryColor(key: string): Color3 | undefined {

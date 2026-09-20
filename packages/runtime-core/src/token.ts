@@ -150,7 +150,7 @@ export namespace __VelaToken {
 		colorProp: string,
 		transparencyProp: string | undefined,
 	): RuntimeResolvedEffectBundle | undefined {
-		const [base, opacity] = __VelaColor.splitColorOpacity(key);
+		const [base, opacity] = __VelaValue.splitColorOpacity(key);
 		const resolved = __VelaColor.resolveThemeColor(theme, base);
 		if (resolved === undefined) {
 			return undefined;
@@ -1364,7 +1364,7 @@ export namespace __VelaToken {
 		theme: RuntimeTheme,
 		key: string,
 	): RuntimeResolvedEffectBundle | undefined {
-		const [base, opacity] = __VelaColor.splitColorOpacity(key);
+		const [base, opacity] = __VelaValue.splitColorOpacity(key);
 		const resolved = __VelaColor.resolveThemeColor(theme, base);
 		if (resolved === undefined) {
 			return undefined;
@@ -1420,7 +1420,7 @@ export namespace __VelaToken {
 		theme: RuntimeTheme,
 		key: string,
 	): RuntimeResolvedEffectBundle | undefined {
-		const [base, opacity] = __VelaColor.splitColorOpacity(key);
+		const [base, opacity] = __VelaValue.splitColorOpacity(key);
 		const resolved = __VelaColor.resolveThemeColor(theme, base);
 		if (resolved === undefined) {
 			return undefined;

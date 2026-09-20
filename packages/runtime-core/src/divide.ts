@@ -48,7 +48,7 @@ export namespace __VelaDivide {
 
 		if (__VelaLua.startsWith(token, "divide-")) {
 			const key = __VelaLua.after(token, "divide-");
-			const [base, opacity] = __VelaColor.splitColorOpacity(key);
+			const [base, opacity] = __VelaValue.splitColorOpacity(key);
 			const color = resolveDivideColor(theme, base);
 			if (color !== undefined) {
 				const state = divideState(resolution);
