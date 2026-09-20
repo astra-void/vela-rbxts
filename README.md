@@ -14,7 +14,6 @@ The implementation is intentionally narrow and focuses on Roblox UI styling rath
 - The `vela` CLI lowers the same files ahead of `rbxtsc` for projects that cannot register a transform plugin.
 - Dynamic `ClassValue` expressions and Roblox-oriented variants (responsive ranges, input and interaction states, and the attribute-backed states a project defines for itself) are rewritten against an imported runtime helper when needed.
 - Configuration is shareable: `presets` fold a design system's theme, plugins and variants into a project in one line.
-- Configuration can also be written as CSS: a `vela.css` declares theme tokens, custom variants and utility classes, with the subset of CSS a cascade-free target can honour.
 - The standalone Rust LSP server under `packages/lsp` provides completions, hover, document colors, quickfixes, and diagnostics in editors.
 - Unsupported utility families and unknown theme keys produce diagnostics instead of being silently ignored.
 
@@ -130,33 +129,6 @@ The config file may also be written as `vela.config.json`, holding the same obje
 Prefer this form in a project with typed ESLint (`parserOptions.project`). A roblox-ts `tsconfig.json` uses `"include": ["src"]`, so a root-level `vela.config.ts` sits outside the TypeScript program and the parser reports it as not included in the project. The JSON form is never parsed by ESLint at all, and `$schema` keeps editor completion for the theme keys. Moving the file into `src` is not an alternative — roblox-ts would then try to compile it.
 
 `vela.config.ts` wins when both exist in the same directory.
-
-#### `vela.css` beside either
-
-Tokens and utility classes can also be written as CSS, in a `vela.css` next to the config file:
-
-```css
-@import "./tokens.css";
-
-@theme {
-  --color-brand-500: #3b82f6;
-  --spacing-4: 16px;
-  --radius-card: 12px;
-  --breakpoint-tv: 1920px;
-  --font-display: rbxasset://fonts/families/Gotham.json;
-}
-
-@custom-variant selected (Selected = true);
-
-.btn   { @apply bg-brand-500 rounded-card px-4; }
-.panel { BackgroundTransparency: 0.5; ZIndex: 2; }
-```
-
-A hex literal, `rgb(r g b)`, `16px` and `50%` become the `Color3` and `UDim` expressions the theme holds, so a palette copied from a design system does not have to be retyped. A `.name` rule registers exactly what `addUtilities` registers, `@custom-variant` exactly what `addVariant` registers, and `@import` folds a sibling stylesheet in as a preset of the file that named it.
-
-A stylesheet only ever extends, so it does not compete with the config file: `vela.css` resolves on top of `vela.config.ts` when a project has both, and a project that wants nothing else needs no config file at all.
-
-There is no cascade behind any of this. Roblox has no specificity, no inheritance, and no selectors, so a rule names one class and nothing else: combinators (`.card > .title`), pseudo-classes (`.btn:hover`, written `hover:` on the class instead), `@media` (breakpoints are `theme.screens`), and CSS properties (`display: flex`) are diagnostics that name the vela equivalent. `theme.rem` stays in the config file, where its resolution and `pinnedUnder` list have somewhere to live.
 
 ### 4. Add the declaration file
 
@@ -705,7 +677,7 @@ Two branches that touch the same property are applied in the order they were wri
 
 ## Configuration
 
-The project config file is named `vela.config.ts` or `vela.config.json` — those exact filenames, with no `.js`, `.mjs`, or `.cjs` variant. The host resolves it by walking upward from each source file and loading the nearest one it finds, preferring `.ts` within a directory and falling back to the built-in defaults when there is none. A `vela.css` is resolved by the same upward walk, independently, and folded in on top of whichever config file was found. See [step 3](#3-add-velaconfigts) for the shape, [`vela.css`](#velacss-beside-either) for the CSS form, and [Theme Axes](#theme-axes) for the merge rules.
+The project config file is named `vela.config.ts` or `vela.config.json` — those exact filenames, with no `.js`, `.mjs`, or `.cjs` variant. The host resolves it by walking upward from each source file and loading the nearest one it finds, preferring `.ts` within a directory and falling back to the built-in defaults when there is none. See [step 3](#3-add-velaconfigts) for the shape and [Theme Axes](#theme-axes) for the merge rules.
 
 The schema is only `presets`, `framework`, `preflight`, `plugins`, `theme.colors`, `theme.radius`, `theme.spacing`, `theme.fontFamily`, `theme.screens`, `theme.rem`, and their `theme.extend` counterparts. There is no `content`, `darkMode`, `prefix`, `safelist`, or top-level `variants` option; a variant is registered by a plugin, not listed in the config.
 

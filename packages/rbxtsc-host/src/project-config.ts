@@ -26,13 +26,11 @@ import type {
 	TailwindConfig,
 	TailwindConfigInput,
 	ThemeColors,
-	VelaCssDiagnostic,
 } from "@vela-rbxts/config";
 import {
 	defaultConfig,
 	defineConfig,
 	definePreset,
-	loadVelaCss,
 	PALETTE_DEFAULT_KEY,
 	plugin,
 	SHADES,
@@ -45,9 +43,6 @@ const CONFIG_FILE_NAME = "vela.config.ts";
 // `vela.config.json` lets a project keep the config out of the TypeScript
 // program, which typed ESLint setups reject for files outside `include`.
 const CONFIG_FILE_NAMES = [CONFIG_FILE_NAME, "vela.config.json"];
-// A stylesheet is not an alternative to the config file but a second source
-// beside it, so the two are discovered independently.
-const CSS_FILE_NAMES = ["vela.css"];
 
 export type ProjectConfigInfo = {
 	config: TailwindConfig;
@@ -71,15 +66,10 @@ export function resolveProjectConfigInfo(
 ): ProjectConfigInfo {
 	const directory = path.dirname(path.resolve(sourceFileName));
 	const configFilePath = findProjectConfigFile(directory);
-	const cssFilePath = findProjectCssFile(directory);
 
-	if (!configFilePath && !cssFilePath) {
+	if (!configFilePath) {
 		const cached = infoCache.get(directory);
-		if (
-			cached !== undefined &&
-			cached.loaded === undefined &&
-			cached.css === undefined
-		) {
+		if (cached !== undefined && cached.loaded === undefined) {
 			return cached.info;
 		}
 
@@ -92,59 +82,23 @@ export function resolveProjectConfigInfo(
 		return info;
 	}
 
-	const loaded = configFilePath ? loadProjectConfig(configFilePath) : undefined;
-	const css = cssFilePath ? loadProjectCss(cssFilePath) : undefined;
-	// Identity, not equality: the loaders hand back the very object they cached,
-	// and a fresh one is exactly what a changed file produces.
+	const loaded = loadProjectConfig(configFilePath);
+	// Identity, not equality: `loadProjectConfig` hands back the very object it
+	// cached, and a fresh one is exactly what a changed config file produces.
 	const cached = infoCache.get(directory);
-	if (cached !== undefined && cached.loaded === loaded && cached.css === css) {
+	if (cached !== undefined && cached.loaded === loaded) {
 		return cached.info;
 	}
 
-	const rootFilePath = (configFilePath ?? cssFilePath) as string;
 	const info: ProjectConfigInfo = {
-		config: inferFramework(
-			directory,
-			combineProjectConfig(loaded, css),
-			loaded?.declaresFramework ?? false,
-		),
-		configFilePath: rootFilePath,
-		projectRoot: path.dirname(rootFilePath),
+		config: inferFramework(directory, loaded.config, loaded.declaresFramework),
+		configFilePath,
+		projectRoot: path.dirname(configFilePath),
 	};
-	infoCache.set(directory, { info, loaded, css });
+	infoCache.set(directory, { info, loaded });
 
 	return info;
 }
-
-/**
- * A stylesheet only ever extends, so it folds in on top of the resolved config
- * rather than ahead of it, where the config's own theme would replace what the
- * stylesheet contributed instead of merging with it.
- */
-function combineProjectConfig(
-	loaded: LoadedProjectConfig | undefined,
-	css: LoadedProjectCss | undefined,
-): TailwindConfig {
-	if (css === undefined) {
-		return loaded?.config ?? defaultConfig;
-	}
-
-	if (loaded === undefined) {
-		return defineConfig(css.input);
-	}
-
-	return defineConfig({
-		...css.input,
-		presets: [loaded.config, ...(css.input.presets ?? [])],
-	});
-}
-
-type LoadedProjectCss = {
-	input: TailwindConfigInput;
-	/// Entry first, then everything it imported, so a change to any of them is
-	/// what invalidates the cache.
-	files: string[];
-};
 
 type LoadedProjectConfig = {
 	config: TailwindConfig;
@@ -171,33 +125,17 @@ const configCache = new Map<string, ConfigCacheEntry>();
 /// share a directory, and a directory's answer only changes when a config file
 /// is added or removed, which is what `clearProjectConfigCache` is for.
 const configPathCache = new Map<string, string | undefined>();
-const cssPathCache = new Map<string, string | undefined>();
-
-const cssCache = new Map<string, CssCacheEntry>();
-
-type CssCacheEntry = {
-	files: string[];
-	signature: string;
-	loaded?: LoadedProjectCss;
-	error?: unknown;
-};
 
 /// The finished answer per directory, so `inferFramework` and its own tsconfig
 /// walk are not repeated either.
 const infoCache = new Map<
 	string,
-	{
-		info: ProjectConfigInfo;
-		loaded?: LoadedProjectConfig;
-		css?: LoadedProjectCss;
-	}
+	{ info: ProjectConfigInfo; loaded?: LoadedProjectConfig }
 >();
 
 export function clearProjectConfigCache(): void {
 	configCache.clear();
 	configPathCache.clear();
-	cssCache.clear();
-	cssPathCache.clear();
 	infoCache.clear();
 	jsxFactoryCache.clear();
 }
@@ -343,69 +281,6 @@ function loadProjectConfig(configFilePath: string): LoadedProjectConfig {
 	configCache.set(configFilePath, entry);
 
 	return replayCacheEntry(entry);
-}
-
-/// A stylesheet is read as a whole tree, so the cache is keyed on the text of
-/// every file that was folded in rather than on the entry alone.
-function loadProjectCss(cssFilePath: string): LoadedProjectCss {
-	const cached = cssCache.get(cssFilePath);
-
-	if (cached !== undefined && cached.signature === cssSignature(cached.files)) {
-		return replayCssCacheEntry(cached);
-	}
-
-	const result = loadVelaCss(cssFilePath, readCssFile);
-	const files = result.files.length > 0 ? result.files : [cssFilePath];
-	const signature = cssSignature(files);
-	const entry: CssCacheEntry =
-		result.diagnostics.length > 0
-			? {
-					files,
-					signature,
-					error: new Error(formatCssDiagnostics(result.diagnostics)),
-				}
-			: {
-					files,
-					signature,
-					loaded: { input: result.input, files },
-				};
-
-	cssCache.set(cssFilePath, entry);
-
-	return replayCssCacheEntry(entry);
-}
-
-function replayCssCacheEntry(entry: CssCacheEntry): LoadedProjectCss {
-	if (entry.loaded !== undefined) {
-		return entry.loaded;
-	}
-
-	throw entry.error;
-}
-
-function readCssFile(filePath: string): string | undefined {
-	try {
-		return fs.readFileSync(filePath, "utf8");
-	} catch {
-		return undefined;
-	}
-}
-
-function cssSignature(files: readonly string[]): string {
-	return files
-		.map((file) => `${file}\u0000${readCssFile(file) ?? ""}`)
-		.join("\u0000\u0000");
-}
-
-function formatCssDiagnostics(
-	diagnostics: readonly VelaCssDiagnostic[],
-): string {
-	const lines = diagnostics.map(
-		(diagnostic) =>
-			`  ${diagnostic.file}:${diagnostic.line}:${diagnostic.column} ${diagnostic.message}`,
-	);
-
-	return `Failed to parse ${path.basename(diagnostics[0]?.file ?? "vela.css")}:\n${lines.join("\n")}`;
 }
 
 function replayCacheEntry(entry: ConfigCacheEntry): LoadedProjectConfig {
@@ -600,23 +475,11 @@ function stripVelaRbxtsImports(
 }
 
 function findProjectConfigFile(directory: string): string | undefined {
-	return findFileUpwards(directory, CONFIG_FILE_NAMES, configPathCache);
-}
-
-function findProjectCssFile(directory: string): string | undefined {
-	return findFileUpwards(directory, CSS_FILE_NAMES, cssPathCache);
-}
-
-function findFileUpwards(
-	directory: string,
-	fileNames: readonly string[],
-	pathCache: Map<string, string | undefined>,
-): string | undefined {
-	const cached = pathCache.get(directory);
+	const cached = configPathCache.get(directory);
 	// A cached path is still checked for existence: deleting the config file is
 	// the one change that has to take effect without an explicit cache clear.
 	if (cached === undefined) {
-		if (pathCache.has(directory)) {
+		if (configPathCache.has(directory)) {
 			return undefined;
 		}
 	} else if (isExistingFile(cached)) {
@@ -632,11 +495,11 @@ function findFileUpwards(
 	while (true) {
 		visited.push(currentDirectory);
 
-		for (const fileName of fileNames) {
+		for (const fileName of CONFIG_FILE_NAMES) {
 			const candidate = path.join(currentDirectory, fileName);
 			if (isExistingFile(candidate)) {
 				for (const entry of visited) {
-					pathCache.set(entry, candidate);
+					configPathCache.set(entry, candidate);
 				}
 				return candidate;
 			}
@@ -645,7 +508,7 @@ function findFileUpwards(
 		const parentDirectory = path.dirname(currentDirectory);
 		if (parentDirectory === currentDirectory) {
 			for (const entry of visited) {
-				pathCache.set(entry, undefined);
+				configPathCache.set(entry, undefined);
 			}
 			return undefined;
 		}

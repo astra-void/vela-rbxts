@@ -12,13 +12,6 @@ const DEBOUNCE_MS = 60;
 const POLL_INTERVAL_MS = 400;
 const CONFIG_FILE_NAMES = new Set(["vela.config.ts", "vela.config.json"]);
 
-// A stylesheet the config folds in can sit anywhere the entry imports it from,
-// so any CSS edit counts as a config change rather than having the watcher
-// track the import graph.
-function isConfigFileName(fileName: string): boolean {
-	return CONFIG_FILE_NAMES.has(fileName) || fileName.endsWith(".css");
-}
-
 export function runBuild(options: CliOptions): number {
 	const reporter = createReporter(options.quiet);
 	const builder = prepare(options, reporter);
@@ -96,7 +89,7 @@ function watchLoop(
 			const isConfig =
 				relativePath !== undefined &&
 				relativePath !== "" &&
-				isConfigFileName(path.posix.basename(relativePath));
+				CONFIG_FILE_NAMES.has(path.posix.basename(relativePath));
 
 			// A config edit changes how every file lowers, so it takes the whole
 			// tree with it rather than just itself.
@@ -208,7 +201,7 @@ function watchProjectConfig(
 	try {
 		const watcher = fs.watch(options.projectRoot, (_event, fileName) => {
 			const name = fileName === null ? undefined : fileName.toString();
-			if (name !== undefined && isConfigFileName(name)) {
+			if (name !== undefined && CONFIG_FILE_NAMES.has(name)) {
 				onChange(name);
 			}
 		});
