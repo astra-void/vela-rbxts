@@ -26,6 +26,10 @@ Versions are released in lockstep across every workspace package.
 - Diagnostics about a prefix say what is wrong with the prefix. A `max-` in front of a name that is not a breakpoint is `unknown-breakpoint` and names the ones that are; an `attr-[…]` that does not parse is `malformed-attribute-variant` and names what is missing, rather than degrading into an unknown-utility error about a family called `attr`; a chain whose width bounds leave no viewport is `invalid-breakpoint-range` rather than a rule that is emitted and never fires.
 - Sorting ranks the new variants in bands of their own: min-width ascending, max-width widest-first, orientation, input, state variants, interaction, colour scheme. The order the previous variants already sorted into is unchanged, because moving one past another changes which rule wins where both apply.
 
+### Fixed
+
+- `border-[#3fa8c2]` and `border-red-500/50` rendered as a black stroke when the class reached the runtime path, which is where a dynamic `className` goes. The in-game parser still refused every bracketed border payload and every slash, rules the compiler had already dropped in favour of "a trailing `/N` is opacity, a bracket is a length or a color", so the color was discarded while `border-2` beside it still created the `UIStroke`, left at Roblox's default. The runtime gate reads the payload the way the compiler does now; directional and style forms such as `border-x` and `border-dashed` are still refused on both paths.
+
 ## [0.12.8] - 2026-08-21
 
 ### Fixed
