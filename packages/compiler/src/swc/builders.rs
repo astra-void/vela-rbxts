@@ -32,22 +32,31 @@ pub(crate) fn create_prop_attr_with_expr(name: String, expr: Box<Expr>) -> JSXAt
     })
 }
 
-pub(crate) fn create_helper_child(helper: HelperEntry) -> JSXElementChild {
-    create_helper_child_with_expr(helper, create_prop_attr)
+/// The tag name a helper is written with when the target can spell it as is.
+pub(crate) fn helper_tag_name(tag: &'static str) -> JSXElementName {
+    JSXElementName::Ident(Ident::new_no_ctxt(tag.into(), DUMMY_SP))
 }
 
-pub(crate) fn create_helper_child_cast_any(helper: HelperEntry) -> JSXElementChild {
-    create_helper_child_with_expr(helper, create_prop_attr_cast_any)
+pub(crate) fn create_helper_child(helper: HelperEntry, name: JSXElementName) -> JSXElementChild {
+    create_helper_child_with_expr(helper, name, create_prop_attr)
+}
+
+pub(crate) fn create_helper_child_cast_any(
+    helper: HelperEntry,
+    name: JSXElementName,
+) -> JSXElementChild {
+    create_helper_child_with_expr(helper, name, create_prop_attr_cast_any)
 }
 
 fn create_helper_child_with_expr(
     helper: HelperEntry,
+    name: JSXElementName,
     create_prop_attr: fn(PropEntry) -> JSXAttrOrSpread,
 ) -> JSXElementChild {
     JSXElementChild::JSXElement(Box::new(JSXElement {
         span: DUMMY_SP,
         opening: JSXOpeningElement {
-            name: JSXElementName::Ident(Ident::new_no_ctxt(helper.tag.into(), DUMMY_SP)),
+            name,
             span: DUMMY_SP,
             attrs: helper.props.into_iter().map(create_prop_attr).collect(),
             self_closing: true,
@@ -66,6 +75,10 @@ pub(crate) const OPACITY_NAMESPACE: &str = "__VelaOpacity";
 /// composed into the emit: `Consume` reads it at a component's root, `Pin`
 /// opens it over a container's subtree.
 pub(crate) const BOUNDARY_NAMESPACE: &str = "__VelaBoundary";
+
+/// The namespace a helper's exact Roblox class name is read from, for a target
+/// that cannot resolve the lowercase tag itself.
+pub(crate) const HELPER_NAMESPACE: &str = "__VelaHelper";
 
 /// Vide reads a `Derivable<T>`: a function value on a non-event property becomes
 /// an effect. Wrapping is what keeps an expression re-readable, since nothing

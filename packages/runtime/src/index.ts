@@ -414,6 +414,12 @@ export namespace __VelaBoundary {
 	}
 }
 
+/// The exact class each helper `@rbxts/react` cannot map from a lowercase tag
+/// names. Typed as the tag, so the JSX written against it still checks props.
+export namespace __VelaHelper {
+	export const uishadow = __VelaApply.hostClassName("uishadow") as "uishadow";
+}
+
 namespace __VelaDivide {
 	export function interleaveDivideSeparators(
 		divide: RuntimeDivide,

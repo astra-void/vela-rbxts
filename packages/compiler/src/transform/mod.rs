@@ -105,6 +105,7 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
         resolves_class_values: false,
         opacity_helper_needed: false,
         boundary_helper_needed: false,
+        helper_namespace_needed: false,
         rem: Default::default(),
         class_value_scopes: crate::class_value::scope::ClassValueScopeStack::default(),
         opacity_alpha: 1.0,

@@ -7,6 +7,7 @@ use crate::diagnostics::compiler::{
 use crate::ir::model::{PropEntry, StyleIr, TextSpec};
 use crate::swc::builders::{
     create_helper_child, create_helper_child_cast_any, create_prop_attr, create_prop_attr_cast_any,
+    helper_tag_name,
 };
 use crate::transform::boundary::{
     consume_component_function, consume_component_initializer, is_component_binding,
@@ -49,6 +50,8 @@ pub(crate) struct VelaTransformer {
     /// the consumer every component root carries, and the pin a `SurfaceGui`
     /// opens over a subtree this pass cannot see all of.
     pub(crate) boundary_helper_needed: bool,
+    /// Whether a helper child was named through the runtime's class names.
+    pub(crate) helper_namespace_needed: bool,
     /// Whether a statically lowered offset left as a rem binding, which needs
     /// the rem namespace the same way, and the slots those bindings took.
     pub(crate) rem: crate::transform::rem::RemScaler,
@@ -76,6 +79,7 @@ impl VisitMut for VelaTransformer {
                 rem: self.rem.used.then_some(&self.config.theme.rem),
                 opacity: self.opacity_helper_needed,
                 boundary: self.boundary_helper_needed,
+                helper_namespace: self.helper_namespace_needed,
             },
         );
 
@@ -366,24 +370,27 @@ impl VisitMut for VelaTransformer {
         // A helper is a host instance of its own that the runtime host never
         // reads back, so its offsets take the binding on either path.
         let scales_rem = !self.config.theme.rem.is_static() && !self.rem_pinned;
-        let helper_children = lowered
-            .style_ir
-            .base
-            .helpers
-            .into_iter()
-            .map(|helper| {
-                if !scales_rem {
-                    return helper;
-                }
-
+        let create_child = if lowered.needs_runtime_host {
+            create_helper_child_cast_any
+        } else {
+            create_helper_child
+        };
+        let mut helper_children = Vec::new();
+        for helper in lowered.style_ir.base.helpers {
+            let helper = if scales_rem {
                 self.rem.helper(helper)
-            })
-            .map(if lowered.needs_runtime_host {
-                create_helper_child_cast_any
             } else {
-                create_helper_child
-            })
-            .collect::<Vec<_>>();
+                helper
+            };
+            let name = match self.target.helper_element_name(helper.tag) {
+                Some(name) => {
+                    self.helper_namespace_needed = true;
+                    name
+                }
+                None => helper_tag_name(helper.tag),
+            };
+            helper_children.push(create_child(helper, name));
+        }
 
         if lowered.needs_runtime_host {
             self.runtime_host_needed = true;

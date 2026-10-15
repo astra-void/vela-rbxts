@@ -22,11 +22,16 @@ pub(crate) struct RuntimeNeeds<'a> {
     pub(crate) rem: Option<&'a RemConfig>,
     pub(crate) opacity: bool,
     pub(crate) boundary: bool,
+    pub(crate) helper_namespace: bool,
 }
 
 impl RuntimeNeeds<'_> {
     fn is_empty(&self) -> bool {
-        !self.host && self.rem.is_none() && !self.opacity && !self.boundary
+        !self.host
+            && self.rem.is_none()
+            && !self.opacity
+            && !self.boundary
+            && !self.helper_namespace
     }
 }
 
@@ -75,6 +80,10 @@ pub(crate) fn create_runtime_module_items(
 
     if needs.boundary {
         values.push(crate::swc::builders::BOUNDARY_NAMESPACE);
+    }
+
+    if needs.helper_namespace {
+        values.push(crate::swc::builders::HELPER_NAMESPACE);
     }
 
     source.push_str(&format!(
@@ -272,11 +281,16 @@ mod tests {
             "export namespace {}",
             crate::swc::builders::BOUNDARY_NAMESPACE
         );
+        let helper = format!(
+            "export namespace {}",
+            crate::swc::builders::HELPER_NAMESPACE
+        );
         let declarations = [
             "export function createVelaRuntimeHost",
             "export function createVelaRemScaler",
             opacity.as_str(),
             boundary.as_str(),
+            helper.as_str(),
             "VelaRuntimeHostComponent",
         ];
 

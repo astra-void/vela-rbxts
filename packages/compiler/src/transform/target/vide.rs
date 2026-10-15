@@ -152,6 +152,11 @@ impl EmitTarget for VideTarget {
             }),
         })
     }
+
+    /// Vide maps every lowercase tag through the engine's own class list.
+    fn helper_element_name(&self, _tag: &'static str) -> Option<JSXElementName> {
+        None
+    }
 }
 
 fn provider_element(

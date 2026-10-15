@@ -1,6 +1,7 @@
 use crate::config::model::TailwindConfig;
 use crate::swc::builders::{
-    BOUNDARY_NAMESPACE, OPACITY_NAMESPACE, create_prop_attr_with_expr, parse_expression,
+    BOUNDARY_NAMESPACE, HELPER_NAMESPACE, OPACITY_NAMESPACE, create_prop_attr_with_expr,
+    parse_expression,
 };
 use crate::transform::runtime_host::{
     REACT_RUNTIME_MODULE, RuntimeNeeds, create_runtime_module_items,
@@ -16,6 +17,11 @@ use swc_core::{
 };
 
 pub(crate) struct ReactTarget;
+
+/// Helper classes missing from the hardcoded class list `@rbxts/react` maps a
+/// lowercase tag through. It hands an unknown tag to `Instance.new` as is, and
+/// that is case sensitive.
+const UNLISTED_HELPER_TAGS: [&str; 1] = ["uishadow"];
 
 impl EmitTarget for ReactTarget {
     fn runtime_module_items(
@@ -151,6 +157,12 @@ impl EmitTarget for ReactTarget {
                 name,
             }),
         })
+    }
+
+    fn helper_element_name(&self, tag: &'static str) -> Option<JSXElementName> {
+        UNLISTED_HELPER_TAGS
+            .contains(&tag)
+            .then(|| namespace_member(HELPER_NAMESPACE, tag))
     }
 }
 

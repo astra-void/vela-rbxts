@@ -3,7 +3,9 @@ pub(crate) mod vide;
 
 use crate::config::model::TailwindConfig;
 use crate::transform::runtime_host::RuntimeNeeds;
-use swc_core::ecma::ast::{Expr, JSXAttrOrSpread, JSXElement, JSXElementChild, ModuleItem};
+use swc_core::ecma::ast::{
+    Expr, JSXAttrOrSpread, JSXElement, JSXElementChild, JSXElementName, ModuleItem,
+};
 
 /// What the IR to JSX bake has to spell differently per UI library. Everything
 /// above it — tokenization, utility resolution, the style IR — is shared, and
@@ -58,6 +60,10 @@ pub(crate) trait EmitTarget {
     /// something the transformer could compose into the emit: an inherited
     /// fade, and the pin a container opened above the file this pass compiled.
     fn boundary_element(&self, child: Expr) -> Box<JSXElement>;
+
+    /// The name a helper child is written with when its lowercase tag would not
+    /// reach the right Roblox class, or `None` to write the tag as is.
+    fn helper_element_name(&self, tag: &'static str) -> Option<JSXElementName>;
 }
 
 pub(crate) fn react_target() -> &'static dyn EmitTarget {
