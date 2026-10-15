@@ -47,7 +47,7 @@
 	},
 	"devDependencies": {
 		"@rbxts/compiler-types": "^3.0.0-types.0",
-		"@rbxts/types": "^1.0.935",
+		"@rbxts/types": "^1.0.958",
 		"roblox-ts": "^3.0.0",
 		"typescript": "5.9.3"
 	}

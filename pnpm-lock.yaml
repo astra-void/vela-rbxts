@@ -98,8 +98,8 @@ importers:
         specifier: ^3.0.0-types.0
         version: 3.0.0-types.0
       '@rbxts/types':
-        specifier: ^1.0.935
-        version: 1.0.935
+        specifier: ^1.0.958
+        version: 1.0.958
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
@@ -129,8 +129,8 @@ importers:
         specifier: ^3.0.0-types.0
         version: 3.0.0-types.0
       '@rbxts/types':
-        specifier: ^1.0.935
-        version: 1.0.935
+        specifier: ^1.0.958
+        version: 1.0.958
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
@@ -157,8 +157,8 @@ importers:
         specifier: ^3.0.0-types.0
         version: 3.0.0-types.0
       '@rbxts/types':
-        specifier: ^1.0.935
-        version: 1.0.935
+        specifier: ^1.0.958
+        version: 1.0.958
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
@@ -223,8 +223,8 @@ importers:
         specifier: ^17.3.7-ts.1
         version: 17.3.7-ts.1
       '@rbxts/types':
-        specifier: ^1.0.935
-        version: 1.0.935
+        specifier: ^1.0.958
+        version: 1.0.958
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
@@ -242,8 +242,8 @@ importers:
         specifier: ^3.0.0-types.0
         version: 3.0.0-types.0
       '@rbxts/types':
-        specifier: ^1.0.935
-        version: 1.0.935
+        specifier: ^1.0.958
+        version: 1.0.958
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
@@ -264,8 +264,8 @@ importers:
         specifier: ^3.0.0-types.0
         version: 3.0.0-types.0
       '@rbxts/types':
-        specifier: ^1.0.935
-        version: 1.0.935
+        specifier: ^1.0.958
+        version: 1.0.958
       '@rbxts/vide':
         specifier: ^0.6.1
         version: 0.6.1
@@ -303,8 +303,8 @@ importers:
         specifier: ^17.3.7-ts.1
         version: 17.3.7-ts.1
       '@rbxts/types':
-        specifier: ^1.0.935
-        version: 1.0.935
+        specifier: ^1.0.958
+        version: 1.0.958
       roblox-ts:
         specifier: ^3.0.0
         version: 3.0.0
@@ -1331,8 +1331,8 @@ packages:
   '@rbxts/services@1.6.0':
     resolution: {integrity: sha512-YH02E1/tGHeMXB0Mam8qPdAZa2fjQWdylEscSL4Zn0RIaQeByYImA2qUsXM3nBdhcyKHDwltzSznDKyCGfFEWA==}
 
-  '@rbxts/types@1.0.935':
-    resolution: {integrity: sha512-VyX1GIDcwtJFcpkrjLTK6xW1z5d1IsIrD+GST/b5L+uOsR2mZMXOxUu4BjNU+rLF7N1dTz+zhyy+3cBx+KBd6g==}
+  '@rbxts/types@1.0.958':
+    resolution: {integrity: sha512-/0G554MPBxX5ydA+KUSLHu2INK/QkpbohtDMHugJ0BW8Lp6UIwkZCqFhcaFYTg6o8i7qhDNtBaRVl5w7TXyZbw==}
 
   '@rbxts/vide@0.6.1':
     resolution: {integrity: sha512-syFqx+HYXy0TauDCGLhc68K2cAlfgYookIJSRtJZ01W7mUI+EKyj80x2L91dQxos3BwAAGJqBD/ovWU4M//+Lg==}
@@ -4134,7 +4134,7 @@ snapshots:
 
   '@rbxts/services@1.6.0': {}
 
-  '@rbxts/types@1.0.935': {}
+  '@rbxts/types@1.0.958': {}
 
   '@rbxts/vide@0.6.1': {}
 
