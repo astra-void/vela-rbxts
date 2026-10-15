@@ -563,6 +563,18 @@ pub(crate) fn unsupported_shadow_inset_diagnostic(token: &str) -> Diagnostic {
     }
 }
 
+pub(crate) fn unsupported_backdrop_blur_value_diagnostic(value: &str, token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-backdrop-blur-value".to_owned(),
+        message: format!(
+            "Tailwind `backdrop-blur-{value}` is not supported; Roblox `UIBlur` has three strengths, reached by `xs` through `3xl` and `none`."
+        ),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
 pub(crate) fn unsupported_overflow_diagnostic(value: &str, token: &str) -> Diagnostic {
     Diagnostic {
         level: "warning".to_owned(),

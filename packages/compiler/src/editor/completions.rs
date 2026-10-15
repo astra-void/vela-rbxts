@@ -8,16 +8,16 @@ use crate::editor::{
 use crate::semantic::{
     utility::{
         ALIGN_CONTENT_VALUES, ALIGN_SELF_VALUES, ALIGNMENT_VALUES, ANCHOR_ORIGIN_VALUES,
-        ANIMATION_VALUES, ASPECT_RATIO_VALUES, BACKGROUND_COLOR_FAMILY, BORDER_LINE_JOIN_VALUES,
-        BORDER_THICKNESS_VALUES, CANVAS_SIZE_VALUES, ColorResolution, DURATION_PRESET_VALUES,
-        EASE_VALUES, FLEX_DIRECTION_VALUES, FLEX_ITEM_VALUES, FONT_STYLE_VALUES,
-        FONT_WEIGHT_VALUES, GRADIENT_DIRECTION_VALUES, GRID_CELL_COUNT_MAX, JUSTIFY_FLEX_VALUES,
-        LAYOUT_ORDER_KEYWORDS, LINE_HEIGHT_VALUES, OBJECT_FIT_VALUES, OPACITY_VALUES,
-        OVERSCROLL_VALUES, PALETTE_DEFAULT_KEY, POINTER_EVENTS_VALUES, PaddingKind, RADIUS_KINDS,
-        RING_THICKNESS_VALUES, ROTATION_VALUES, SCALE_VALUES, SCROLL_DIRECTION_VALUES,
-        SHADOW_SIZE_VALUES, TEXT_SIZE_VALUES, TEXT_WRAP_VALUES, TEXT_X_ALIGN_VALUES,
-        TEXT_Y_ALIGN_VALUES, TRANSITION_PROPERTY_VALUES, UtilityKind, WHITESPACE_VALUES,
-        Z_INDEX_VALUES, color_completion_keys, font_family_completion_keys,
+        ANIMATION_VALUES, ASPECT_RATIO_VALUES, BACKDROP_BLUR_VALUES, BACKGROUND_COLOR_FAMILY,
+        BORDER_LINE_JOIN_VALUES, BORDER_THICKNESS_VALUES, CANVAS_SIZE_VALUES, ColorResolution,
+        DURATION_PRESET_VALUES, EASE_VALUES, FLEX_DIRECTION_VALUES, FLEX_ITEM_VALUES,
+        FONT_STYLE_VALUES, FONT_WEIGHT_VALUES, GRADIENT_DIRECTION_VALUES, GRID_CELL_COUNT_MAX,
+        JUSTIFY_FLEX_VALUES, LAYOUT_ORDER_KEYWORDS, LINE_HEIGHT_VALUES, OBJECT_FIT_VALUES,
+        OPACITY_VALUES, OVERSCROLL_VALUES, PALETTE_DEFAULT_KEY, POINTER_EVENTS_VALUES, PaddingKind,
+        RADIUS_KINDS, RING_THICKNESS_VALUES, ROTATION_VALUES, SCALE_VALUES,
+        SCROLL_DIRECTION_VALUES, SHADOW_SIZE_VALUES, TEXT_SIZE_VALUES, TEXT_WRAP_VALUES,
+        TEXT_X_ALIGN_VALUES, TEXT_Y_ALIGN_VALUES, TRANSITION_PROPERTY_VALUES, UtilityKind,
+        WHITESPACE_VALUES, Z_INDEX_VALUES, color_completion_keys, font_family_completion_keys,
         is_utility_allowed_on_host, position_completion_keys, radius_completion_keys,
         resolve_color_value, size_completion_keys, spacing_completion_keys,
     },
@@ -1302,6 +1302,27 @@ fn shadow_and_gradient_candidates(config: &TailwindConfig) -> Vec<CompletionSpec
             .with_swatch(color_swatch(config, &color_key)),
         );
     }
+
+    items.push(CompletionSpec::new(
+        "backdrop-blur",
+        "effects",
+        "Create a Roblox UIBlur with `Strength = Light`.".to_owned(),
+        UtilityKind::BackdropBlur,
+    ));
+    for (size, strength) in BACKDROP_BLUR_VALUES {
+        items.push(CompletionSpec::new(
+            format!("backdrop-blur-{size}"),
+            "effects",
+            format!("Create a Roblox UIBlur with `Strength = {strength}`."),
+            UtilityKind::BackdropBlur,
+        ));
+    }
+    items.push(CompletionSpec::new(
+        "backdrop-blur-none",
+        "effects",
+        "Disable the UIBlur via `UIBlur.Enabled = false`.".to_owned(),
+        UtilityKind::BackdropBlur,
+    ));
 
     for (direction, _) in GRADIENT_DIRECTION_VALUES {
         items.push(CompletionSpec::new(format!("bg-gradient-to-{direction}"), "effects", format!(

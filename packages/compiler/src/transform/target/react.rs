@@ -21,7 +21,7 @@ pub(crate) struct ReactTarget;
 /// Helper classes missing from the hardcoded class list `@rbxts/react` maps a
 /// lowercase tag through. It hands an unknown tag to `Instance.new` as is, and
 /// that is case sensitive.
-const UNLISTED_HELPER_TAGS: [&str; 1] = ["uishadow"];
+const UNLISTED_HELPER_TAGS: [&str; 2] = ["uishadow", "uiblur"];
 
 impl EmitTarget for ReactTarget {
     fn runtime_module_items(

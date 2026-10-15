@@ -755,10 +755,16 @@ export namespace __VelaApply {
 
 	/// `@rbxts/react` maps a lowercase tag through a hardcoded class list and passes
 	/// anything it does not know straight to `Instance.new`, which is case
-	/// sensitive. `UIShadow` is missing from that list, so the lowercase form fails
-	/// to instantiate and React unwinds the whole tree.
+	/// sensitive. `UIShadow` and `UIBlur` are missing from that list, so the
+	/// lowercase form fails to instantiate and React unwinds the whole tree.
 	export function hostClassName(tag: string): string {
-		return tag === "uishadow" ? "UIShadow" : tag;
+		if (tag === "uishadow") {
+			return "UIShadow";
+		}
+		if (tag === "uiblur") {
+			return "UIBlur";
+		}
+		return tag;
 	}
 
 	export function helperToProps(

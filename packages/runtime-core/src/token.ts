@@ -999,6 +999,14 @@ export namespace __VelaToken {
 			}
 		}
 
+		if (token === "backdrop-blur") {
+			return backdropBlurEffect("sm");
+		}
+
+		if (__VelaLua.startsWith(token, "backdrop-blur-")) {
+			return backdropBlurEffect(__VelaLua.after(token, "backdrop-blur-"));
+		}
+
 		if (token === "shadow") {
 			return shadowPresetEffect(3, 1, 0, 0.9);
 		}
@@ -1403,6 +1411,28 @@ export namespace __VelaToken {
 
 		props.push({ name: "Transparency", value: transparency });
 		return helperEffect("uishadow", props);
+	}
+
+	/// Mirrors `BACKDROP_BLUR_VALUES`: three strengths over Tailwind's seven sizes.
+	function backdropBlurEffect(
+		key: string,
+	): RuntimeResolvedEffectBundle | undefined {
+		if (key === "none") {
+			return helperEffect("uiblur", [{ name: "Enabled", value: false }]);
+		}
+
+		let strength: Enum.UIBlurStrength;
+		if (key === "xs" || key === "sm") {
+			strength = Enum.UIBlurStrength.Light;
+		} else if (key === "md" || key === "lg") {
+			strength = Enum.UIBlurStrength.Medium;
+		} else if (key === "xl" || key === "2xl" || key === "3xl") {
+			strength = Enum.UIBlurStrength.Heavy;
+		} else {
+			return undefined;
+		}
+
+		return helperEffect("uiblur", [{ name: "Strength", value: strength }]);
 	}
 
 	function resolveShadowPreset(

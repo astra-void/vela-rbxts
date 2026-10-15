@@ -418,6 +418,7 @@ export namespace __VelaBoundary {
 /// names. Typed as the tag, so the JSX written against it still checks props.
 export namespace __VelaHelper {
 	export const uishadow = __VelaApply.hostClassName("uishadow") as "uishadow";
+	export const uiblur = __VelaApply.hostClassName("uiblur") as "uiblur";
 }
 
 namespace __VelaDivide {

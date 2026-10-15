@@ -320,6 +320,10 @@ export const App = () => {
 					className="size-8 bg-slate-800 border-2 border-slate-500 hover:border-blue-500 transition-colors"
 				/>
 				<frame className="size-8 bg-slate-800 shadow-sm hover:shadow-lg transition-shadow" />
+				{/* Helpers missing from @rbxts/react's class list, lowered
+				    statically, plus a strength a hover swaps. */}
+				<frame className="size-8 bg-white/40 shadow-md backdrop-blur-md" />
+				<frame className="size-8 bg-slate-800 backdrop-blur-sm hover:backdrop-blur-xl" />
 			</frame>
 		</screengui>
 	);

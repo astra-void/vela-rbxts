@@ -2,7 +2,7 @@ export namespace __VelaOpacity {
 	/// Mirrors `opacity_transparency_props`: every channel an instance paints
 	/// itself. A CanvasGroup composites its whole subtree, so `GroupTransparency`
 	/// is the one property that already means what CSS `opacity` means. A helper
-	/// is not a host — only the two that draw ink carry a transparency, and a
+	/// is not a host: only the ones that draw carry a transparency, and a
 	/// background written onto the rest would throw.
 	export function transparencyProps(tag: string | undefined): string[] {
 		if (tag === "canvasgroup") {
@@ -17,7 +17,7 @@ export namespace __VelaOpacity {
 			return ["BackgroundTransparency", "ImageTransparency"];
 		}
 
-		if (tag === "uistroke" || tag === "uishadow") {
+		if (tag === "uistroke" || tag === "uishadow" || tag === "uiblur") {
 			return ["Transparency"];
 		}
 

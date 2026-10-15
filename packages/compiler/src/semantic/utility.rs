@@ -159,6 +159,7 @@ pub(crate) enum UtilityKind {
     MaxHeight,
     ShadowSize,
     ShadowColor,
+    BackdropBlur,
     GradientDirection,
     GradientFrom,
     GradientVia,
@@ -277,6 +278,17 @@ pub(crate) const FONT_WEIGHT_VALUES: [(&str, &str); 9] = [
     ("black", "Heavy"),
 ];
 pub(crate) const SHADOW_SIZE_VALUES: [&str; 6] = ["sm", "md", "lg", "xl", "2xl", "none"];
+/// `UIBlur` has three strengths where Tailwind has seven radii, so neighbouring
+/// sizes share one.
+pub(crate) const BACKDROP_BLUR_VALUES: [(&str, &str); 7] = [
+    ("xs", "Light"),
+    ("sm", "Light"),
+    ("md", "Medium"),
+    ("lg", "Medium"),
+    ("xl", "Heavy"),
+    ("2xl", "Heavy"),
+    ("3xl", "Heavy"),
+];
 pub(crate) const GRADIENT_DIRECTION_VALUES: [(&str, &str); 8] = [
     ("t", "270"),
     ("tr", "315"),
@@ -753,6 +765,24 @@ pub(crate) fn parse_utility(token: &str) -> ParsedUtility {
         }
     }
 
+    if token == "backdrop-blur" {
+        return ParsedUtility {
+            raw: token.to_owned(),
+            family: "backdrop-blur".to_owned(),
+            payload: None,
+            kind: UtilityKind::BackdropBlur,
+        };
+    }
+
+    if let Some(payload) = token.strip_prefix("backdrop-blur-") {
+        return ParsedUtility {
+            raw: token.to_owned(),
+            family: "backdrop-blur".to_owned(),
+            payload: Some(payload.to_owned()),
+            kind: UtilityKind::BackdropBlur,
+        };
+    }
+
     if token == "shadow" {
         return ParsedUtility {
             raw: token.to_owned(),
@@ -976,6 +1006,12 @@ pub(crate) fn resolve_shadow_preset(key: Option<&str>) -> Option<ShadowPreset> {
         spread,
         transparency,
     })
+}
+
+/// The `Enum.UIBlurStrength` item a size names. A bare `backdrop-blur` is
+/// Tailwind's `sm`.
+pub(crate) fn resolve_backdrop_blur_strength(key: Option<&str>) -> Option<&'static str> {
+    lookup_table(&BACKDROP_BLUR_VALUES, key.unwrap_or("sm"))
 }
 
 fn classify_text_utility(payload: &str) -> UtilityKind {
@@ -2444,6 +2480,27 @@ mod tests {
 
         assert!(resolve_shadow_preset(Some("none")).is_none());
         assert!(resolve_shadow_preset(Some("inner")).is_none());
+    }
+
+    #[test]
+    fn classifies_and_resolves_backdrop_blur_utilities() {
+        for token in ["backdrop-blur", "backdrop-blur-md", "backdrop-blur-none"] {
+            assert!(matches!(
+                parse_utility(token).kind,
+                UtilityKind::BackdropBlur
+            ));
+        }
+        assert!(matches!(
+            parse_utility("backdrop-brightness-50").kind,
+            UtilityKind::Unknown
+        ));
+
+        assert_eq!(resolve_backdrop_blur_strength(None), Some("Light"));
+        assert_eq!(resolve_backdrop_blur_strength(Some("xs")), Some("Light"));
+        assert_eq!(resolve_backdrop_blur_strength(Some("lg")), Some("Medium"));
+        assert_eq!(resolve_backdrop_blur_strength(Some("3xl")), Some("Heavy"));
+        assert_eq!(resolve_backdrop_blur_strength(Some("none")), None);
+        assert_eq!(resolve_backdrop_blur_strength(Some("[4px]")), None);
     }
 
     #[test]

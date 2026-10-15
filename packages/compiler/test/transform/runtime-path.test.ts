@@ -234,6 +234,7 @@ test("the runtime host knows every utility family the static path lowers", () =>
 		"outline-",
 		"divide-",
 		"shadow-",
+		"backdrop-blur-",
 		"font-",
 		"align-",
 		"duration-",
@@ -284,6 +285,7 @@ test("the runtime host knows every utility family the static path lowers", () =>
 		"uisizeconstraint",
 		"uigradient",
 		"uishadow",
+		"uiblur",
 	] as const;
 
 	for (const helper of RESOLVED_HELPERS) {

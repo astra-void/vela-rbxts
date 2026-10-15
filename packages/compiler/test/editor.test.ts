@@ -207,6 +207,40 @@ test("hovers directional radius utilities with their UICorner targets", () => {
 	expect(hover.contents?.documentation).toContain("new UDim(0.1, 0)");
 });
 
+test("hovers and completes backdrop-blur as a UIBlur strength", () => {
+	const source = '<frame className="backdrop-blur-lg backdrop-blur-none" />';
+	const strength = getHover({
+		source,
+		position: positionAfter(source, "backdrop-blur-lg") - 1,
+	});
+	const disabled = getHover({
+		source,
+		position: positionAfter(source, "backdrop-blur-none") - 1,
+	});
+
+	expect(strength.contents?.display).toBe("`backdrop-blur-lg` -> UIBlur");
+	expect(strength.contents?.documentation).toContain(
+		"Enum.UIBlurStrength.Medium",
+	);
+	expect(disabled.contents?.display).toBe(
+		"`backdrop-blur-none` -> UIBlur.Enabled",
+	);
+
+	const completionSource = '<frame className="backdrop-" />';
+	const completions = getCompletions({
+		source: completionSource,
+		position: positionAfter(completionSource, "backdrop-"),
+	});
+	expect(completions.items.map((item) => item.label)).toEqual(
+		expect.arrayContaining([
+			"backdrop-blur",
+			"backdrop-blur-xs",
+			"backdrop-blur-3xl",
+			"backdrop-blur-none",
+		]),
+	);
+});
+
 test("completes z-index utilities inside className", () => {
 	const source = '<frame className="z-" />';
 	const result = getCompletions({

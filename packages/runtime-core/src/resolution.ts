@@ -286,7 +286,11 @@ export namespace __VelaResolution {
 		}
 
 		for (const helper of resolution.helpers) {
-			if (helper.tag !== "uistroke" && helper.tag !== "uishadow") {
+			if (
+				helper.tag !== "uistroke" &&
+				helper.tag !== "uishadow" &&
+				helper.tag !== "uiblur"
+			) {
 				continue;
 			}
 

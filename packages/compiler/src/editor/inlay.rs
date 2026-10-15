@@ -8,6 +8,7 @@ use crate::transform::runtime::resolve_class_tokens;
 fn helper_class_name(tag: &str) -> &'static str {
     match tag {
         "uiaspectratioconstraint" => "UIAspectRatioConstraint",
+        "uiblur" => "UIBlur",
         "uicorner" => "UICorner",
         "uiflexitem" => "UIFlexItem",
         "uigradient" => "UIGradient",

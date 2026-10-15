@@ -205,6 +205,11 @@ const requiredFragments = [
 	'property = "shadow"',
 	'tag = "uishadow"',
 	'tag = "uicorner"',
+	// Helpers @rbxts/react cannot map from a lowercase tag reach their class.
+	"React.createElement(__VelaHelper.uishadow, {",
+	"React.createElement(__VelaHelper.uiblur, {",
+	"Strength = Enum.UIBlurStrength.Medium",
+	'tag = "uiblur"',
 ];
 
 // The runtime is imported, not copied, so every consumer reaches the same one.
@@ -268,6 +273,9 @@ const requiredRuntimePatterns_attributes = [
 
 // Intentional regression checks for the deleted runtime package and artifact paths.
 const forbiddenFragments = [
+	// `Instance.new` is case sensitive, so either of these unwinds the tree.
+	'React.createElement("uishadow"',
+	'React.createElement("uiblur"',
 	'React.createElement("RbxtsTailwindRuntimeHost"',
 	"__rbxtsTailwindRuntimeHost",
 	"RbxtsTailwindRuntimeHost",
@@ -297,7 +305,7 @@ const requiredPatterns = [
 	{
 		description: "the runtime arrives as an import, not as a copy",
 		pattern:
-			/TS\.import\([^\n]*"node_modules", "@rbxts", "vela-runtime"\)[\s\S]{0,240}?local VelaRuntimeHost = createVelaRuntimeHost\(/,
+			/TS\.import\([^\n]*"node_modules", "@rbxts", "vela-runtime"\)[\s\S]{0,320}?local VelaRuntimeHost = createVelaRuntimeHost\(/,
 	},
 	{
 		description: "transition config reaches the runtime host element",

@@ -469,7 +469,7 @@ each fades on its own, so the overlap ends up darker.
 | --- | --- |
 | `tracking-*`, `indent-*`, `break-*`, `hyphens-*`, `list-*` | The Roblox text engine has no letter-spacing/indent/line-break control |
 | `decoration-*`, `overline` | No matching RichText tag/attribute |
-| `blur-*`, `backdrop-*`, `grayscale`, `invert`, `sepia`, `contrast-*` | No per-UI-element filters (BlurEffect is camera-global) |
+| `blur-*`, `backdrop-*` (except `backdrop-blur-*`), `grayscale`, `invert`, `sepia`, `contrast-*` | No per-UI-element filters; `UIBlur` only covers `backdrop-blur-*` |
 | `skew-*`, `perspective-*`, `transform-3d` | No skew/perspective in 2D UI |
 | `float`, `clear`, `columns-*`, `col-span-*`, `row-span-*` | No corresponding layout concept (UIGridLayout has no span) |
 | `static/fixed/absolute/relative/sticky`, `block/inline/table/contents` | Roblox always positions absolutely relative to the parent; there is no positioning model at all |

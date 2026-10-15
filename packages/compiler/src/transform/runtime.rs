@@ -7,22 +7,23 @@ use crate::diagnostics::compiler::{
     unsupported_alignment_value_diagnostic, unsupported_anchor_value_diagnostic,
     unsupported_animation_value_diagnostic, unsupported_arbitrary_value_diagnostic,
     unsupported_arbitrary_z_index_diagnostic, unsupported_aspect_value_diagnostic,
-    unsupported_border_value_diagnostic, unsupported_canvas_size_diagnostic,
-    unsupported_color_keyword_diagnostic, unsupported_divide_value_diagnostic,
-    unsupported_flex_direction_diagnostic, unsupported_font_weight_diagnostic,
-    unsupported_gradient_direction_diagnostic, unsupported_grid_value_diagnostic,
-    unsupported_layout_order_value_diagnostic, unsupported_line_height_value_diagnostic,
-    unsupported_margin_value_diagnostic, unsupported_negative_margin_diagnostic,
-    unsupported_object_fit_value_diagnostic, unsupported_opacity_modifier_diagnostic,
-    unsupported_opacity_value_diagnostic, unsupported_overflow_diagnostic,
-    unsupported_overscroll_value_diagnostic, unsupported_pointer_events_value_diagnostic,
-    unsupported_rotation_value_diagnostic, unsupported_scale_diagnostic,
-    unsupported_scroll_value_diagnostic, unsupported_scrollbar_thickness_diagnostic,
-    unsupported_shadow_inset_diagnostic, unsupported_space_value_diagnostic,
-    unsupported_stroke_value_diagnostic, unsupported_text_alignment_diagnostic,
-    unsupported_text_size_diagnostic, unsupported_transition_value_diagnostic,
-    unsupported_utility_family_diagnostic, unsupported_whitespace_value_diagnostic,
-    unsupported_z_index_auto_diagnostic, unsupported_z_index_value_diagnostic,
+    unsupported_backdrop_blur_value_diagnostic, unsupported_border_value_diagnostic,
+    unsupported_canvas_size_diagnostic, unsupported_color_keyword_diagnostic,
+    unsupported_divide_value_diagnostic, unsupported_flex_direction_diagnostic,
+    unsupported_font_weight_diagnostic, unsupported_gradient_direction_diagnostic,
+    unsupported_grid_value_diagnostic, unsupported_layout_order_value_diagnostic,
+    unsupported_line_height_value_diagnostic, unsupported_margin_value_diagnostic,
+    unsupported_negative_margin_diagnostic, unsupported_object_fit_value_diagnostic,
+    unsupported_opacity_modifier_diagnostic, unsupported_opacity_value_diagnostic,
+    unsupported_overflow_diagnostic, unsupported_overscroll_value_diagnostic,
+    unsupported_pointer_events_value_diagnostic, unsupported_rotation_value_diagnostic,
+    unsupported_scale_diagnostic, unsupported_scroll_value_diagnostic,
+    unsupported_scrollbar_thickness_diagnostic, unsupported_shadow_inset_diagnostic,
+    unsupported_space_value_diagnostic, unsupported_stroke_value_diagnostic,
+    unsupported_text_alignment_diagnostic, unsupported_text_size_diagnostic,
+    unsupported_transition_value_diagnostic, unsupported_utility_family_diagnostic,
+    unsupported_whitespace_value_diagnostic, unsupported_z_index_auto_diagnostic,
+    unsupported_z_index_value_diagnostic,
 };
 use crate::ir::model::{
     DivideSpec, MarginSpec, PropEntry, RuntimeRule, SizeAxisValue, StyleEffectBundle, StyleIr,
@@ -41,22 +42,22 @@ use crate::semantic::{
         end_relative_position_axis, font_face_expression, format_ratio, is_automatic_size_key,
         is_known_unsupported_border_payload, resolve_align_content_flex_value,
         resolve_align_items_value, resolve_align_self_value, resolve_anchor_point_value,
-        resolve_animation_value, resolve_aspect_ratio_value, resolve_border_thickness_value,
-        resolve_canvas_size_value, resolve_color_value, resolve_duration_seconds,
-        resolve_ease_value, resolve_flex_direction_value, resolve_flex_item_mode,
-        resolve_flex_wrap_value, resolve_font_family_value, resolve_font_style_value,
-        resolve_font_weight_enum, resolve_gradient_rotation, resolve_grid_cell_count,
-        resolve_items_flex_value, resolve_justify_flex_value, resolve_justify_value,
-        resolve_layout_order_value, resolve_line_height_value, resolve_line_join_value,
-        resolve_object_fit_value, resolve_opacity_value, resolve_overflow_value,
-        resolve_overscroll_value, resolve_pointer_events_value, resolve_position_axis_value,
-        resolve_radius_value, resolve_rotation_value, resolve_scale_value,
-        resolve_scroll_direction_value, resolve_shadow_preset, resolve_size_axis_value,
-        resolve_size_spacing_offset, resolve_spacing_value, resolve_text_decoration_value,
-        resolve_text_size_value, resolve_text_transform_value, resolve_text_wrap_value,
-        resolve_text_x_alignment_value, resolve_text_y_alignment_value, resolve_transition_toggle,
-        resolve_visibility_value, resolve_whitespace_value, resolve_z_index_value,
-        spacing_value_to_offset, split_color_opacity,
+        resolve_animation_value, resolve_aspect_ratio_value, resolve_backdrop_blur_strength,
+        resolve_border_thickness_value, resolve_canvas_size_value, resolve_color_value,
+        resolve_duration_seconds, resolve_ease_value, resolve_flex_direction_value,
+        resolve_flex_item_mode, resolve_flex_wrap_value, resolve_font_family_value,
+        resolve_font_style_value, resolve_font_weight_enum, resolve_gradient_rotation,
+        resolve_grid_cell_count, resolve_items_flex_value, resolve_justify_flex_value,
+        resolve_justify_value, resolve_layout_order_value, resolve_line_height_value,
+        resolve_line_join_value, resolve_object_fit_value, resolve_opacity_value,
+        resolve_overflow_value, resolve_overscroll_value, resolve_pointer_events_value,
+        resolve_position_axis_value, resolve_radius_value, resolve_rotation_value,
+        resolve_scale_value, resolve_scroll_direction_value, resolve_shadow_preset,
+        resolve_size_axis_value, resolve_size_spacing_offset, resolve_spacing_value,
+        resolve_text_decoration_value, resolve_text_size_value, resolve_text_transform_value,
+        resolve_text_wrap_value, resolve_text_x_alignment_value, resolve_text_y_alignment_value,
+        resolve_transition_toggle, resolve_visibility_value, resolve_whitespace_value,
+        resolve_z_index_value, spacing_value_to_offset, split_color_opacity,
     },
     variant::{ParsedVariant, VariantRegistry, utility_of},
 };
@@ -909,7 +910,8 @@ fn apply_analyzed_token(
         UtilityKind::Opacity
         | UtilityKind::DivideX
         | UtilityKind::DivideY
-        | UtilityKind::ShadowSize => {
+        | UtilityKind::ShadowSize
+        | UtilityKind::BackdropBlur => {
             apply_effects_token(analysis, config, diagnostics, style, pending)
         }
         UtilityKind::Transition
@@ -1963,6 +1965,22 @@ fn apply_effects_token(
                     apply_shadow_preset(style, &preset);
                 }
             }
+        },
+        UtilityKind::BackdropBlur => match analysis.payload() {
+            Some("none") => {
+                style.set_helper_prop("uiblur", "Enabled", "false".to_owned());
+            }
+            key => match resolve_backdrop_blur_strength(key) {
+                Some(strength) => style.set_helper_prop(
+                    "uiblur",
+                    "Strength",
+                    format!("Enum.UIBlurStrength.{strength}"),
+                ),
+                None => diagnostics.push(unsupported_backdrop_blur_value_diagnostic(
+                    key.unwrap_or_default(),
+                    &analysis.parsed.raw,
+                )),
+            },
         },
         _ => {}
     }
