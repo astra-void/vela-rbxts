@@ -135,7 +135,11 @@ export namespace __VelaMotion {
 		}
 
 		if (property === "shadow") {
-			return helper === "uishadow";
+			return (
+				helper === "uishadow" ||
+				helper === "uiinsetshadow" ||
+				helper === "uitextshadow"
+			);
 		}
 
 		if (property === "colors") {

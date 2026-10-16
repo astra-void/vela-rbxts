@@ -233,7 +233,7 @@ fn group_rank(utility: &UtilityKind) -> u32 {
         UtilityKind::Border | UtilityKind::Ring | UtilityKind::Outline => 10,
         UtilityKind::Radius(_) => 11,
         UtilityKind::DivideX | UtilityKind::DivideY | UtilityKind::DivideColor => 12,
-        UtilityKind::ShadowSize | UtilityKind::ShadowColor | UtilityKind::BackdropBlur => 13,
+        UtilityKind::ShadowSize(_) | UtilityKind::ShadowColor(_) | UtilityKind::BackdropBlur => 13,
         UtilityKind::Rotation | UtilityKind::Scale => 14,
         UtilityKind::TextSize => 15,
         UtilityKind::FontFamily | UtilityKind::FontWeight | UtilityKind::FontStyle => 16,

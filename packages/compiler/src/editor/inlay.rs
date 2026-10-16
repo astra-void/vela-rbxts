@@ -11,6 +11,8 @@ fn helper_class_name(tag: &str) -> &'static str {
         "uiblur" => "UIBlur",
         "uicorner" => "UICorner",
         "uiflexitem" => "UIFlexItem",
+        "uiinsetshadow" => "UIShadow (Inset)",
+        "uitextshadow" => "UIShadow (Mode = Text)",
         "uigradient" => "UIGradient",
         "uigridlayout" => "UIGridLayout",
         "uilistlayout" => "UIListLayout",

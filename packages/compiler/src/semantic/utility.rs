@@ -157,8 +157,8 @@ pub(crate) enum UtilityKind {
     MaxWidth,
     MinHeight,
     MaxHeight,
-    ShadowSize,
-    ShadowColor,
+    ShadowSize(ShadowLayer),
+    ShadowColor(ShadowLayer),
     BackdropBlur,
     GradientDirection,
     GradientFrom,
@@ -278,6 +278,8 @@ pub(crate) const FONT_WEIGHT_VALUES: [(&str, &str); 9] = [
     ("black", "Heavy"),
 ];
 pub(crate) const SHADOW_SIZE_VALUES: [&str; 6] = ["sm", "md", "lg", "xl", "2xl", "none"];
+pub(crate) const INSET_SHADOW_SIZE_VALUES: [&str; 4] = ["2xs", "xs", "sm", "none"];
+pub(crate) const TEXT_SHADOW_SIZE_VALUES: [&str; 6] = ["2xs", "xs", "sm", "md", "lg", "none"];
 /// `UIBlur` has three strengths where Tailwind has seven radii, so neighbouring
 /// sizes share one.
 pub(crate) const BACKDROP_BLUR_VALUES: [(&str, &str); 7] = [
@@ -538,7 +540,7 @@ impl UtilityKind {
                 | UtilityKind::MaxWidth
                 | UtilityKind::MinHeight
                 | UtilityKind::MaxHeight
-                | UtilityKind::ShadowColor
+                | UtilityKind::ShadowColor(_)
                 | UtilityKind::ScrollbarThickness
                 | UtilityKind::ScrollbarColor
                 | UtilityKind::FontFamily
@@ -575,6 +577,10 @@ pub(crate) fn is_utility_allowed_on_host(element_tag: Option<&str>, kind: &Utili
         UtilityKind::ImageColor | UtilityKind::ObjectFit => {
             matches!(element_tag, "imagelabel" | "imagebutton")
         }
+        UtilityKind::ShadowSize(ShadowLayer::Text)
+        | UtilityKind::ShadowColor(ShadowLayer::Text) => {
+            matches!(element_tag, "textlabel" | "textbutton" | "textbox")
+        }
         UtilityKind::PlaceholderColor => element_tag == "textbox",
         UtilityKind::Overscroll
         | UtilityKind::ScrollDirection
@@ -586,6 +592,21 @@ pub(crate) fn is_utility_allowed_on_host(element_tag: Option<&str>, kind: &Utili
 }
 
 pub(crate) fn parse_utility(token: &str) -> ParsedUtility {
+    // Both prefixes would otherwise be swallowed by `inset-*` and `text-*`.
+    for layer in [ShadowLayer::Inset, ShadowLayer::Text] {
+        if let Some(payload) = token
+            .strip_prefix(layer.prefix())
+            .and_then(|rest| rest.strip_prefix('-'))
+        {
+            return ParsedUtility {
+                raw: token.to_owned(),
+                family: layer.prefix().to_owned(),
+                payload: Some(payload.to_owned()),
+                kind: classify_shadow_utility(layer, payload),
+            };
+        }
+    }
+
     if token.starts_with("-z-") {
         return ParsedUtility {
             raw: token.to_owned(),
@@ -788,7 +809,7 @@ pub(crate) fn parse_utility(token: &str) -> ParsedUtility {
             raw: token.to_owned(),
             family: "shadow".to_owned(),
             payload: None,
-            kind: UtilityKind::ShadowSize,
+            kind: UtilityKind::ShadowSize(ShadowLayer::Drop),
         };
     }
 
@@ -797,7 +818,7 @@ pub(crate) fn parse_utility(token: &str) -> ParsedUtility {
             raw: token.to_owned(),
             family: "shadow".to_owned(),
             payload: Some(payload.to_owned()),
-            kind: classify_shadow_utility(payload),
+            kind: classify_shadow_utility(ShadowLayer::Drop, payload),
         };
     }
 
@@ -977,11 +998,79 @@ pub(crate) struct ShadowPreset {
     pub(crate) transparency: &'static str,
 }
 
-fn classify_shadow_utility(payload: &str) -> UtilityKind {
-    if SHADOW_SIZE_VALUES.contains(&payload) || payload == "inner" {
-        UtilityKind::ShadowSize
+/// Which `UIShadow` a shadow utility draws. Each is an instance of its own, so a
+/// drop shadow, an inset and a text shadow can sit on one element together.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ShadowLayer {
+    Drop,
+    Inset,
+    Text,
+}
+
+impl ShadowLayer {
+    /// The helper tag the IR keys this layer by. All three are a `UIShadow`.
+    pub(crate) fn helper_tag(self) -> &'static str {
+        match self {
+            ShadowLayer::Drop => "uishadow",
+            ShadowLayer::Inset => "uiinsetshadow",
+            ShadowLayer::Text => "uitextshadow",
+        }
+    }
+
+    /// The prop that makes a plain `UIShadow` this layer.
+    pub(crate) fn mode_prop(self) -> Option<(&'static str, &'static str)> {
+        match self {
+            ShadowLayer::Drop => None,
+            ShadowLayer::Inset => Some(("Inset", "true")),
+            ShadowLayer::Text => Some(("Mode", "Enum.ApplyShadowMode.Text")),
+        }
+    }
+
+    /// How a hover names the instance this layer draws.
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            ShadowLayer::Drop => "UIShadow",
+            ShadowLayer::Inset => "UIShadow (Inset)",
+            ShadowLayer::Text => "UIShadow (Mode = Text)",
+        }
+    }
+
+    pub(crate) fn prefix(self) -> &'static str {
+        match self {
+            ShadowLayer::Drop => "shadow",
+            ShadowLayer::Inset => "inset-shadow",
+            ShadowLayer::Text => "text-shadow",
+        }
+    }
+
+    pub(crate) fn size_values(self) -> &'static [&'static str] {
+        match self {
+            ShadowLayer::Drop => &SHADOW_SIZE_VALUES,
+            ShadowLayer::Inset => &INSET_SHADOW_SIZE_VALUES,
+            ShadowLayer::Text => &TEXT_SHADOW_SIZE_VALUES,
+        }
+    }
+}
+
+/// The JSX tag a helper is written with. The shadow layers are keyed apart in
+/// the IR but are all the one Roblox class.
+pub(crate) fn helper_element_tag(tag: &str) -> &str {
+    match tag {
+        "uiinsetshadow" | "uitextshadow" => "uishadow",
+        _ => tag,
+    }
+}
+
+fn classify_shadow_utility(layer: ShadowLayer, payload: &str) -> UtilityKind {
+    // Tailwind v3's only inset shadow, kept under the name it had.
+    if layer == ShadowLayer::Drop && payload == "inner" {
+        return UtilityKind::ShadowSize(ShadowLayer::Inset);
+    }
+
+    if layer.size_values().contains(&payload) {
+        UtilityKind::ShadowSize(layer)
     } else {
-        UtilityKind::ShadowColor
+        UtilityKind::ShadowColor(layer)
     }
 }
 
@@ -989,14 +1078,24 @@ pub(crate) fn resolve_gradient_rotation(direction: &str) -> Option<&'static str>
     lookup_table(&GRADIENT_DIRECTION_VALUES, direction)
 }
 
-pub(crate) fn resolve_shadow_preset(key: Option<&str>) -> Option<ShadowPreset> {
-    let (blur, offset_y, spread, transparency) = match key {
-        None => (3, 1, 0, "0.9"),
-        Some("sm") => (2, 1, 0, "0.95"),
-        Some("md") => (6, 4, -1, "0.9"),
-        Some("lg") => (15, 10, -3, "0.9"),
-        Some("xl") => (25, 20, -5, "0.9"),
-        Some("2xl") => (50, 25, -12, "0.75"),
+/// Tailwind's multi-layer text shadows collapse onto their widest layer, with
+/// the stacked alpha of the rest folded into its transparency.
+pub(crate) fn resolve_shadow_preset(layer: ShadowLayer, key: Option<&str>) -> Option<ShadowPreset> {
+    let (blur, offset_y, spread, transparency) = match (layer, key) {
+        (ShadowLayer::Drop, None) => (3, 1, 0, "0.9"),
+        (ShadowLayer::Drop, Some("sm")) => (2, 1, 0, "0.95"),
+        (ShadowLayer::Drop, Some("md")) => (6, 4, -1, "0.9"),
+        (ShadowLayer::Drop, Some("lg")) => (15, 10, -3, "0.9"),
+        (ShadowLayer::Drop, Some("xl")) => (25, 20, -5, "0.9"),
+        (ShadowLayer::Drop, Some("2xl")) => (50, 25, -12, "0.75"),
+        (ShadowLayer::Inset, Some("2xs")) => (0, 1, 0, "0.95"),
+        (ShadowLayer::Inset, Some("xs")) => (1, 1, 0, "0.95"),
+        (ShadowLayer::Inset, Some("sm" | "inner")) => (4, 2, 0, "0.95"),
+        (ShadowLayer::Text, Some("2xs")) => (0, 1, 0, "0.85"),
+        (ShadowLayer::Text, Some("xs")) => (1, 1, 0, "0.8"),
+        (ShadowLayer::Text, Some("sm")) => (2, 2, 0, "0.8"),
+        (ShadowLayer::Text, Some("md")) => (4, 2, 0, "0.75"),
+        (ShadowLayer::Text, Some("lg")) => (8, 4, 0, "0.75"),
         _ => return None,
     };
 
@@ -2447,39 +2546,66 @@ mod tests {
 
     #[test]
     fn classifies_and_resolves_shadow_utilities() {
-        assert!(matches!(
-            parse_utility("shadow").kind,
-            UtilityKind::ShadowSize
-        ));
-        assert!(matches!(
-            parse_utility("shadow-lg").kind,
-            UtilityKind::ShadowSize
-        ));
-        assert!(matches!(
-            parse_utility("shadow-none").kind,
-            UtilityKind::ShadowSize
-        ));
-        assert!(matches!(
-            parse_utility("shadow-inner").kind,
-            UtilityKind::ShadowSize
-        ));
-        assert!(matches!(
-            parse_utility("shadow-red-500").kind,
-            UtilityKind::ShadowColor
-        ));
+        let kind = |token: &str| parse_utility(token).kind;
+        assert_eq!(kind("shadow"), UtilityKind::ShadowSize(ShadowLayer::Drop));
+        assert_eq!(
+            kind("shadow-lg"),
+            UtilityKind::ShadowSize(ShadowLayer::Drop)
+        );
+        assert_eq!(
+            kind("shadow-none"),
+            UtilityKind::ShadowSize(ShadowLayer::Drop)
+        );
+        assert_eq!(
+            kind("shadow-inner"),
+            UtilityKind::ShadowSize(ShadowLayer::Inset)
+        );
+        assert_eq!(
+            kind("shadow-red-500"),
+            UtilityKind::ShadowColor(ShadowLayer::Drop)
+        );
+        assert_eq!(
+            kind("inset-shadow-xs"),
+            UtilityKind::ShadowSize(ShadowLayer::Inset)
+        );
+        assert_eq!(
+            kind("inset-shadow-sky-500"),
+            UtilityKind::ShadowColor(ShadowLayer::Inset)
+        );
+        assert_eq!(kind("inset-4"), UtilityKind::Inset);
+        assert_eq!(
+            kind("text-shadow-md"),
+            UtilityKind::ShadowSize(ShadowLayer::Text)
+        );
+        assert_eq!(
+            kind("text-shadow-black/50"),
+            UtilityKind::ShadowColor(ShadowLayer::Text)
+        );
+        assert_eq!(kind("text-sm"), UtilityKind::TextSize);
 
-        let base = resolve_shadow_preset(None).unwrap();
+        let base = resolve_shadow_preset(ShadowLayer::Drop, None).unwrap();
         assert_eq!(base.blur, 3);
         assert_eq!(base.offset_y, 1);
         assert_eq!(base.transparency, "0.9");
 
-        let two_xl = resolve_shadow_preset(Some("2xl")).unwrap();
+        let two_xl = resolve_shadow_preset(ShadowLayer::Drop, Some("2xl")).unwrap();
         assert_eq!(two_xl.blur, 50);
         assert_eq!(two_xl.spread, -12);
         assert_eq!(two_xl.transparency, "0.75");
 
-        assert!(resolve_shadow_preset(Some("none")).is_none());
-        assert!(resolve_shadow_preset(Some("inner")).is_none());
+        assert_eq!(
+            resolve_shadow_preset(ShadowLayer::Inset, Some("inner")),
+            resolve_shadow_preset(ShadowLayer::Inset, Some("sm"))
+        );
+        assert_eq!(
+            resolve_shadow_preset(ShadowLayer::Text, Some("lg"))
+                .unwrap()
+                .blur,
+            8
+        );
+        assert!(resolve_shadow_preset(ShadowLayer::Drop, Some("none")).is_none());
+        assert!(resolve_shadow_preset(ShadowLayer::Inset, Some("md")).is_none());
+        assert!(resolve_shadow_preset(ShadowLayer::Text, None).is_none());
     }
 
     #[test]

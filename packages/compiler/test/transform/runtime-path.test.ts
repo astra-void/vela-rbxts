@@ -234,6 +234,8 @@ test("the runtime host knows every utility family the static path lowers", () =>
 		"outline-",
 		"divide-",
 		"shadow-",
+		"inset-shadow-",
+		"text-shadow-",
 		"backdrop-blur-",
 		"font-",
 		"align-",
@@ -285,6 +287,8 @@ test("the runtime host knows every utility family the static path lowers", () =>
 		"uisizeconstraint",
 		"uigradient",
 		"uishadow",
+		"uiinsetshadow",
+		"uitextshadow",
 		"uiblur",
 	] as const;
 

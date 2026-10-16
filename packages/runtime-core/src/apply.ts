@@ -705,9 +705,37 @@ export namespace __VelaApply {
 		props.push({ name, value });
 	}
 
+	/// The drop, inset and text layers are keyed apart so one element can carry
+	/// all three, and are each a `UIShadow`.
+	export function isShadowHelper(tag: string): boolean {
+		return (
+			tag === "uishadow" || tag === "uiinsetshadow" || tag === "uitextshadow"
+		);
+	}
+
+	function shadowModeProp(tag: string): RuntimeHelperProp | undefined {
+		if (tag === "uiinsetshadow") {
+			return { name: "Inset", value: true };
+		}
+		if (tag === "uitextshadow") {
+			return { name: "Mode", value: Enum.ApplyShadowMode.Text };
+		}
+		return undefined;
+	}
+
 	/// Some Roblox helper defaults do not match their CSS-style utility semantics.
 	export function applyHelperDefaults(helpers: RuntimeHelper[]) {
 		for (const helper of helpers) {
+			// What makes a `UIShadow` an inset or a text shadow, whichever rule
+			// happened to reach it first.
+			const mode = shadowModeProp(helper.tag);
+			if (
+				mode !== undefined &&
+				helper.props.find((prop) => prop.name === mode.name) === undefined
+			) {
+				helper.props.push(mode);
+			}
+
 			if (helper.tag === "uicorner") {
 				const directionalProps = [
 					"TopLeftRadius",
@@ -758,7 +786,7 @@ export namespace __VelaApply {
 	/// sensitive. `UIShadow` and `UIBlur` are missing from that list, so the
 	/// lowercase form fails to instantiate and React unwinds the whole tree.
 	export function hostClassName(tag: string): string {
-		if (tag === "uishadow") {
+		if (isShadowHelper(tag)) {
 			return "UIShadow";
 		}
 		if (tag === "uiblur") {

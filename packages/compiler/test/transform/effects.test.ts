@@ -144,3 +144,106 @@ test("a variant backdrop-blur resolves on the runtime host", () => {
 	expect(runtimeSource).toContain('"backdrop-blur-"');
 	expect(runtimeSource).toContain("Enum.UIBlurStrength.Heavy");
 });
+
+test("an inset and a text shadow are UIShadows of their own beside a drop shadow", () => {
+	const result = transform(
+		'<textlabel className="shadow-md inset-shadow-xs text-shadow-lg" />',
+		withoutPreflight,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	const code = emitted(result.code);
+	expect(code.match(/<__VelaHelper\.uishadow /g)).toHaveLength(3);
+	expect(code).toMatch(
+		/<__VelaHelper\.uishadow Inset=\{true\} BlurRadius=\{[^}]*new UDim\(0, 1\)[^}]*\}/,
+	);
+	expect(code).toMatch(
+		/<__VelaHelper\.uishadow Mode=\{Enum\.ApplyShadowMode\.Text\} BlurRadius=\{[^}]*new UDim\(0, 8\)/,
+	);
+});
+
+test("shadow-inner is the inset-shadow-sm layer", () => {
+	const inner = transform(
+		'<frame className="shadow-inner" />',
+		withoutPreflight,
+	);
+	const sm = transform(
+		'<frame className="inset-shadow-sm" />',
+		withoutPreflight,
+	);
+
+	expect(inner.diagnostics).toEqual([]);
+	expect(emitted(inner.code)).toBe(emitted(sm.code));
+	expect(emitted(inner.code)).toContain("Inset={true}");
+});
+
+test("a shadow layer's color and none reach only that layer", () => {
+	const result = transform(
+		'<textlabel className="shadow-sm text-shadow-sky-500/50 inset-shadow-none" />',
+		withoutPreflight,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	const code = emitted(result.code);
+	expect(code).toContain(
+		"<__VelaHelper.uishadow Mode={Enum.ApplyShadowMode.Text} Color={Color3.fromRGB(",
+	);
+	expect(code).toMatch(
+		/Mode=\{Enum\.ApplyShadowMode\.Text\}[^>]*Transparency=\{0\.5\}/,
+	);
+	expect(code).toContain(
+		"<__VelaHelper.uishadow Inset={true} Enabled={false}/>",
+	);
+});
+
+test("inset-* and text-* keep their own meaning next to the shadow prefixes", () => {
+	const result = transform(
+		'<textlabel className="inset-4 text-sm text-red-500" />',
+		withoutPreflight,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(emitted(result.code)).not.toContain("uishadow");
+});
+
+test("Vide writes every shadow layer as a plain uishadow", () => {
+	const result = transform(
+		'<textlabel className="inset-shadow-xs text-shadow-sm" />',
+		withVide,
+	);
+
+	expect(result.code).not.toContain("__VelaHelper");
+	expect(emitted(result.code).match(/<uishadow /g)).toHaveLength(2);
+});
+
+test("a variant shadow layer resolves on the runtime host with its mode", () => {
+	const result = transform(
+		'<textlabel className="hover:text-shadow-md" />',
+		withoutPreflight,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	const [rule] = hostRules(result.code);
+	expect(rule.effects.helpers[0].tag).toBe("uitextshadow");
+	expect(rule.effects.helpers[0].props[0]).toEqual({
+		name: "Mode",
+		value: "Enum.ApplyShadowMode.Text",
+	});
+	expect(runtimeSource).toContain('"inset-shadow-"');
+	expect(runtimeSource).toContain('"text-shadow-"');
+	expect(runtimeSource).toContain("Enum.ApplyShadowMode.Text");
+	expect(runtimeSource).toContain("export function isShadowHelper");
+});
+
+test("opacity fades every shadow layer", () => {
+	const result = transform(
+		'<textlabel className="inset-shadow-sm text-shadow-sm opacity-50" />',
+		withoutPreflight,
+	);
+
+	const code = emitted(result.code);
+	expect(code).toMatch(/Inset=\{true\}[^>]*Transparency=\{0\.975\}/);
+	expect(code).toMatch(
+		/Mode=\{Enum\.ApplyShadowMode\.Text\}[^>]*Transparency=\{0\.9\}/,
+	);
+});

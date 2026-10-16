@@ -18,12 +18,11 @@ use crate::diagnostics::compiler::{
     unsupported_overflow_diagnostic, unsupported_overscroll_value_diagnostic,
     unsupported_pointer_events_value_diagnostic, unsupported_rotation_value_diagnostic,
     unsupported_scale_diagnostic, unsupported_scroll_value_diagnostic,
-    unsupported_scrollbar_thickness_diagnostic, unsupported_shadow_inset_diagnostic,
-    unsupported_space_value_diagnostic, unsupported_stroke_value_diagnostic,
-    unsupported_text_alignment_diagnostic, unsupported_text_size_diagnostic,
-    unsupported_transition_value_diagnostic, unsupported_utility_family_diagnostic,
-    unsupported_whitespace_value_diagnostic, unsupported_z_index_auto_diagnostic,
-    unsupported_z_index_value_diagnostic,
+    unsupported_scrollbar_thickness_diagnostic, unsupported_space_value_diagnostic,
+    unsupported_stroke_value_diagnostic, unsupported_text_alignment_diagnostic,
+    unsupported_text_size_diagnostic, unsupported_transition_value_diagnostic,
+    unsupported_utility_family_diagnostic, unsupported_whitespace_value_diagnostic,
+    unsupported_z_index_auto_diagnostic, unsupported_z_index_value_diagnostic,
 };
 use crate::ir::model::{
     DivideSpec, MarginSpec, PropEntry, RuntimeRule, SizeAxisValue, StyleEffectBundle, StyleIr,
@@ -37,8 +36,8 @@ use crate::semantic::{
         BACKGROUND_COLOR_FAMILY, BORDER_COLOR_FAMILY, ColorFamilySpec, ColorResolution,
         DEFAULT_TRANSITION_TIME, DIVIDE_COLOR_FAMILY, GRADIENT_COLOR_FAMILY, IMAGE_COLOR_FAMILY,
         OUTLINE_COLOR_FAMILY, PLACEHOLDER_COLOR_FAMILY, PaddingKind, RING_COLOR_FAMILY,
-        RING_THICKNESS_VALUES, SCROLLBAR_COLOR_FAMILY, SHADOW_COLOR_FAMILY, ShadowPreset,
-        StrokePayload, TEXT_COLOR_FAMILY, UtilityKind, classify_stroke_payload,
+        RING_THICKNESS_VALUES, SCROLLBAR_COLOR_FAMILY, SHADOW_COLOR_FAMILY, ShadowLayer,
+        ShadowPreset, StrokePayload, TEXT_COLOR_FAMILY, UtilityKind, classify_stroke_payload,
         end_relative_position_axis, font_face_expression, format_ratio, is_automatic_size_key,
         is_known_unsupported_border_payload, resolve_align_content_flex_value,
         resolve_align_items_value, resolve_align_self_value, resolve_anchor_point_value,
@@ -827,7 +826,7 @@ fn apply_analyzed_token(
         | UtilityKind::PlaceholderColor
         | UtilityKind::ScrollbarColor
         | UtilityKind::DivideColor
-        | UtilityKind::ShadowColor
+        | UtilityKind::ShadowColor(_)
         | UtilityKind::GradientDirection
         | UtilityKind::GradientFrom
         | UtilityKind::GradientVia
@@ -910,7 +909,7 @@ fn apply_analyzed_token(
         UtilityKind::Opacity
         | UtilityKind::DivideX
         | UtilityKind::DivideY
-        | UtilityKind::ShadowSize
+        | UtilityKind::ShadowSize(_)
         | UtilityKind::BackdropBlur => {
             apply_effects_token(analysis, config, diagnostics, style, pending)
         }
@@ -1022,9 +1021,16 @@ fn apply_color_token(
                 }
             }
         }
-        UtilityKind::ShadowColor => {
+        UtilityKind::ShadowColor(layer) => {
             if let Some(color_key) = analysis.payload() {
-                apply_shadow_color(style, config, diagnostics, color_key, &analysis.parsed.raw);
+                apply_shadow_color(
+                    style,
+                    config,
+                    diagnostics,
+                    *layer,
+                    color_key,
+                    &analysis.parsed.raw,
+                );
             }
         }
         UtilityKind::GradientDirection => {
@@ -1953,16 +1959,13 @@ fn apply_effects_token(
                 }
             }
         }
-        UtilityKind::ShadowSize => match analysis.payload() {
+        UtilityKind::ShadowSize(layer) => match analysis.payload() {
             Some("none") => {
-                style.set_helper_prop("uishadow", "Enabled", "false".to_owned());
-            }
-            Some("inner") => {
-                diagnostics.push(unsupported_shadow_inset_diagnostic(&analysis.parsed.raw));
+                set_shadow_prop(style, *layer, "Enabled", "false".to_owned());
             }
             key => {
-                if let Some(preset) = resolve_shadow_preset(key) {
-                    apply_shadow_preset(style, &preset);
+                if let Some(preset) = resolve_shadow_preset(*layer, key) {
+                    apply_shadow_preset(style, *layer, &preset);
                 }
             }
         },
@@ -2295,6 +2298,7 @@ fn apply_shadow_color(
     style: &mut StyleIr,
     config: &TailwindConfig,
     diagnostics: &mut Vec<Diagnostic>,
+    layer: ShadowLayer,
     color_key: &str,
     token: &str,
 ) {
@@ -2307,36 +2311,60 @@ fn apply_shadow_color(
 
     match resolution {
         ColorResolution::Expression(value) => {
-            style.set_helper_prop("uishadow", "Color", value);
+            set_shadow_prop(style, layer, "Color", value);
             if let Some(percent) = opacity {
-                style.set_helper_prop("uishadow", "Transparency", opacity_to_transparency(percent));
+                set_shadow_prop(
+                    style,
+                    layer,
+                    "Transparency",
+                    opacity_to_transparency(percent),
+                );
             }
         }
         ColorResolution::Transparent => {
-            style.set_helper_prop("uishadow", "Transparency", "1".to_owned());
+            set_shadow_prop(style, layer, "Transparency", "1".to_owned());
         }
     }
 }
 
-fn apply_shadow_preset(style: &mut StyleIr, preset: &ShadowPreset) {
-    style.set_helper_prop(
-        "uishadow",
+fn apply_shadow_preset(style: &mut StyleIr, layer: ShadowLayer, preset: &ShadowPreset) {
+    set_shadow_prop(
+        style,
+        layer,
         "BlurRadius",
         format!("new UDim(0, {})", preset.blur),
     );
-    style.set_helper_prop(
-        "uishadow",
+    set_shadow_prop(
+        style,
+        layer,
         "Offset",
         format!("UDim2.fromOffset(0, {})", preset.offset_y),
     );
     if preset.spread != 0 {
-        style.set_helper_prop(
-            "uishadow",
+        set_shadow_prop(
+            style,
+            layer,
             "Spread",
             format!("UDim2.fromOffset({}, {})", preset.spread, preset.spread),
         );
     }
-    style.set_helper_prop("uishadow", "Transparency", preset.transparency.to_owned());
+    set_shadow_prop(style, layer, "Transparency", preset.transparency.to_owned());
+}
+
+/// Every write names the layer's mode too, so a variant that only recolors an
+/// inset still reaches an instance that draws as one.
+fn set_shadow_prop(style: &mut StyleIr, layer: ShadowLayer, name: &'static str, value: String) {
+    let tag = layer.helper_tag();
+    if let Some((mode, mode_value)) = layer.mode_prop() {
+        let has_mode =
+            style.base.helpers.iter().any(|helper| {
+                helper.tag == tag && helper.props.iter().any(|prop| prop.name == mode)
+            });
+        if !has_mode {
+            style.set_helper_prop(tag, mode, mode_value.to_owned());
+        }
+    }
+    style.set_helper_prop(tag, name, value);
 }
 
 fn apply_gap_utility(

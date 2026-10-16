@@ -106,7 +106,7 @@ fn describe_token(
         | UtilityKind::PlaceholderColor
         | UtilityKind::DivideColor
         | UtilityKind::ScrollbarColor
-        | UtilityKind::ShadowColor
+        | UtilityKind::ShadowColor(_)
         | UtilityKind::GradientDirection
         | UtilityKind::GradientFrom
         | UtilityKind::GradientVia
@@ -191,7 +191,7 @@ fn describe_token(
         UtilityKind::Opacity
         | UtilityKind::DivideX
         | UtilityKind::DivideY
-        | UtilityKind::ShadowSize
+        | UtilityKind::ShadowSize(_)
         | UtilityKind::BackdropBlur => {
             describe_effects_family(&analysis, token, config, element_tag, &variant_prefix)
         }
@@ -283,7 +283,8 @@ fn describe_color_family(
             "ScrollBarImageColor3",
             variant_prefix,
         ),
-        UtilityKind::ShadowColor => {
+        UtilityKind::ShadowColor(layer) => {
+            let label = layer.label();
             let color_key = analysis.payload()?;
             let mut diagnostics = Vec::new();
             let resolution = resolve_color_value(
@@ -295,14 +296,14 @@ fn describe_color_family(
             )?;
             let documentation = match resolution {
                 ColorResolution::Expression(value) => {
-                    format!("{variant_prefix}Sets `UIShadow.Color` to `{value}`.")
+                    format!("{variant_prefix}Sets `{label}.Color` to `{value}`.")
                 }
                 ColorResolution::Transparent => {
-                    format!("{variant_prefix}Sets `UIShadow.Transparency` to `1`.")
+                    format!("{variant_prefix}Sets `{label}.Transparency` to `1`.")
                 }
             };
             Some(HoverContent {
-                display: format!("`{token}` -> UIShadow.Color"),
+                display: format!("`{token}` -> {label}.Color"),
                 documentation,
             })
         }
@@ -1221,30 +1222,25 @@ fn describe_effects_family(
                 ),
             })
         }
-        UtilityKind::ShadowSize => {
+        UtilityKind::ShadowSize(layer) => {
+            let label = layer.label();
             let key = analysis.payload();
             match key {
                 Some("none") => Some(HoverContent {
-                    display: format!("`{token}` -> UIShadow.Enabled"),
-                    documentation: format!("{variant_prefix}Sets `UIShadow.Enabled` to `false`."),
-                }),
-                Some("inner") => Some(HoverContent {
-                    display: format!("`{token}`"),
-                    documentation: format!(
-                        "{variant_prefix}`shadow-inner` is not supported; Roblox `UIShadow` cannot render inset shadows."
-                    ),
+                    display: format!("`{token}` -> {label}.Enabled"),
+                    documentation: format!("{variant_prefix}Sets `{label}.Enabled` to `false`."),
                 }),
                 _ => {
-                    let preset = resolve_shadow_preset(key)?;
+                    let preset = resolve_shadow_preset(*layer, key)?;
                     let scaling = if config.theme.rem.is_static() {
                         ""
                     } else {
                         " `BlurRadius` scales with the viewport rem."
                     };
                     Some(HoverContent {
-                        display: format!("`{token}` -> UIShadow"),
+                        display: format!("`{token}` -> {label}"),
                         documentation: format!(
-                            "{variant_prefix}Creates a Roblox UIShadow with `BlurRadius = {}`, `Offset = (0, {})`, and `Transparency = {}`.{scaling}",
+                            "{variant_prefix}Creates a Roblox {label} with `BlurRadius = {}`, `Offset = (0, {})`, and `Transparency = {}`.{scaling}",
                             preset.blur, preset.offset_y, preset.transparency
                         ),
                     })

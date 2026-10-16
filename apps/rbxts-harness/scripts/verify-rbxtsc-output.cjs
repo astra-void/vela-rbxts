@@ -210,6 +210,9 @@ const requiredFragments = [
 	"React.createElement(__VelaHelper.uiblur, {",
 	"Strength = Enum.UIBlurStrength.Medium",
 	'tag = "uiblur"',
+	"Inset = true",
+	'value = "Enum.ApplyShadowMode.Text"',
+	'tag = "uitextshadow"',
 ];
 
 // The runtime is imported, not copied, so every consumer reaches the same one.

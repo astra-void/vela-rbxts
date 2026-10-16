@@ -553,16 +553,6 @@ pub(crate) fn unsupported_gradient_direction_diagnostic(value: &str, token: &str
     }
 }
 
-pub(crate) fn unsupported_shadow_inset_diagnostic(token: &str) -> Diagnostic {
-    Diagnostic {
-        level: "warning".to_owned(),
-        code: "unsupported-shadow-inset".to_owned(),
-        message: "Tailwind `shadow-inner` is not supported; Roblox `UIShadow` cannot render inset shadows.".to_owned(),
-        token: Some(token.to_owned()),
-        range: None,
-    }
-}
-
 pub(crate) fn unsupported_backdrop_blur_value_diagnostic(value: &str, token: &str) -> Diagnostic {
     Diagnostic {
         level: "warning".to_owned(),

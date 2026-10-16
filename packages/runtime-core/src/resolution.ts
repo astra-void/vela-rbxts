@@ -288,8 +288,8 @@ export namespace __VelaResolution {
 		for (const helper of resolution.helpers) {
 			if (
 				helper.tag !== "uistroke" &&
-				helper.tag !== "uishadow" &&
-				helper.tag !== "uiblur"
+				helper.tag !== "uiblur" &&
+				!__VelaApply.isShadowHelper(helper.tag)
 			) {
 				continue;
 			}

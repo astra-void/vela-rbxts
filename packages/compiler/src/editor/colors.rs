@@ -76,7 +76,7 @@ fn color_family_spec(kind: &UtilityKind) -> Option<ColorFamilySpec> {
         UtilityKind::ImageColor => Some(IMAGE_COLOR_FAMILY),
         UtilityKind::PlaceholderColor => Some(PLACEHOLDER_COLOR_FAMILY),
         UtilityKind::Border => Some(BORDER_COLOR_FAMILY),
-        UtilityKind::ShadowColor => Some(SHADOW_COLOR_FAMILY),
+        UtilityKind::ShadowColor(_) => Some(SHADOW_COLOR_FAMILY),
         UtilityKind::ScrollbarColor => Some(SCROLLBAR_COLOR_FAMILY),
         UtilityKind::GradientFrom | UtilityKind::GradientVia | UtilityKind::GradientTo => {
             Some(GRADIENT_COLOR_FAMILY)

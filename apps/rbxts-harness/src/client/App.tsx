@@ -324,6 +324,11 @@ export const App = () => {
 				    statically, plus a strength a hover swaps. */}
 				<frame className="size-8 bg-white/40 shadow-md backdrop-blur-md" />
 				<frame className="size-8 bg-slate-800 backdrop-blur-sm hover:backdrop-blur-xl" />
+				{/* Three UIShadows on one element: drop, inset and text. */}
+				<textlabel
+					Text="glow"
+					className="size-8 bg-slate-800 text-white shadow-md inset-shadow-xs text-shadow-lg hover:text-shadow-sky-500"
+				/>
 			</frame>
 		</screengui>
 	);

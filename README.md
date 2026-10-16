@@ -581,6 +581,8 @@ The exhaustive table of accepted values lives in the [utility reference](https:/
 | Ring / outline | `ring`, `ring-{0,1,2,4,8}`, `ring-{color}`, `outline`, `outline-{0,1,2,4,8}`, `outline-{color}`, `outline-none` | The same `UIStroke` as `border-*`, with `ApplyStrokeMode = Border` |
 | Radius | `rounded`, `rounded-*`, `rounded-{t,r,b,l,tl,tr,bl,br}-*` | `UICorner` all-corner or directional radius properties, resolved from the theme |
 | Shadow | `shadow`, `shadow-{sm,md,lg,xl,2xl}`, `shadow-none`, `shadow-{color}` | `UIShadow` |
+| Inset shadow | `inset-shadow-{2xs,xs,sm}`, `shadow-inner`, `inset-shadow-none`, `inset-shadow-{color}` | A second `UIShadow` with `Inset = true`. `shadow-inner` is `inset-shadow-sm`. |
+| Text shadow | `text-shadow-{2xs,xs,sm,md,lg}`, `text-shadow-none`, `text-shadow-{color}` | A third `UIShadow` with `Mode = Text`, on text hosts. Tailwind's stacked layers collapse onto the widest one. |
 | Backdrop blur | `backdrop-blur`, `backdrop-blur-{xs,sm,md,lg,xl,2xl,3xl}`, `backdrop-blur-none` | `UIBlur.Strength`: `xs`/`sm` are `Light`, `md`/`lg` are `Medium`, `xl` and up are `Heavy`. A bare `backdrop-blur` is `sm`. Needs `@rbxts/types` 1.0.958 or later. |
 | Stacking | `z-{0,10,20,30,40,50}` | `ZIndex` |
 | Padding | `p-*`, `px-*`, `py-*`, `pt-*`, `pr-*`, `pb-*`, `pl-*` | `UIPadding` |
@@ -634,7 +636,7 @@ What each group covers:
 | `transition-colors` | `*Color3` | `UIStroke.Color`, `UIShadow.Color` |
 | `transition-opacity` | `*Transparency` | `UIStroke.Transparency`, `UIShadow.Transparency` |
 | `transition-transform` | `Position`, `Size`, `Rotation`, `AnchorPoint` | `UIScale.Scale` |
-| `transition-shadow` | nothing | every `UIShadow` prop |
+| `transition-shadow` | nothing | every `UIShadow` prop, on all three layers |
 
 `UICorner.CornerRadius` and the layout helpers belong to no narrow group; `transition` covers them. A value Roblox cannot tween, such as the `ColorSequence` or `NumberSequence` a `UIGradient` holds, is written instantly whatever the group says.
 

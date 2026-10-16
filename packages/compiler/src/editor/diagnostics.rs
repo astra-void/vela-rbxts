@@ -87,7 +87,7 @@ fn candidate_keys(config: &TailwindConfig, utility: &UtilityKind) -> Option<Vec<
         | UtilityKind::TextColor
         | UtilityKind::ImageColor
         | UtilityKind::PlaceholderColor
-        | UtilityKind::ShadowColor
+        | UtilityKind::ShadowColor(_)
         | UtilityKind::GradientFrom
         | UtilityKind::GradientVia
         | UtilityKind::GradientTo

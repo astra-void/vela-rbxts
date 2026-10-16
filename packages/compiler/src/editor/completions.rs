@@ -15,7 +15,7 @@ use crate::semantic::{
         JUSTIFY_FLEX_VALUES, LAYOUT_ORDER_KEYWORDS, LINE_HEIGHT_VALUES, OBJECT_FIT_VALUES,
         OPACITY_VALUES, OVERSCROLL_VALUES, PALETTE_DEFAULT_KEY, POINTER_EVENTS_VALUES, PaddingKind,
         RADIUS_KINDS, RING_THICKNESS_VALUES, ROTATION_VALUES, SCALE_VALUES,
-        SCROLL_DIRECTION_VALUES, SHADOW_SIZE_VALUES, TEXT_SIZE_VALUES, TEXT_WRAP_VALUES,
+        SCROLL_DIRECTION_VALUES, ShadowLayer, TEXT_SIZE_VALUES, TEXT_WRAP_VALUES,
         TEXT_X_ALIGN_VALUES, TEXT_Y_ALIGN_VALUES, TRANSITION_PROPERTY_VALUES, UtilityKind,
         WHITESPACE_VALUES, Z_INDEX_VALUES, color_completion_keys, font_family_completion_keys,
         is_utility_allowed_on_host, position_completion_keys, radius_completion_keys,
@@ -1274,33 +1274,43 @@ fn shadow_and_gradient_candidates(config: &TailwindConfig) -> Vec<CompletionSpec
         "shadow",
         "effects",
         "Create a Roblox UIShadow with the default drop shadow.".to_owned(),
-        UtilityKind::ShadowSize,
+        UtilityKind::ShadowSize(ShadowLayer::Drop),
+    ));
+    items.push(CompletionSpec::new(
+        "shadow-inner",
+        "effects",
+        "Create an inset Roblox UIShadow, the same as `inset-shadow-sm`.".to_owned(),
+        UtilityKind::ShadowSize(ShadowLayer::Inset),
     ));
 
-    for size in SHADOW_SIZE_VALUES {
-        let documentation = if size == "none" {
-            "Disable the UIShadow via `UIShadow.Enabled = false`.".to_owned()
-        } else {
-            format!("Create a Roblox UIShadow sized like Tailwind `shadow-{size}`.")
-        };
-        items.push(CompletionSpec::new(
-            format!("shadow-{size}"),
-            "effects",
-            documentation,
-            UtilityKind::ShadowSize,
-        ));
-    }
+    for layer in [ShadowLayer::Drop, ShadowLayer::Inset, ShadowLayer::Text] {
+        let prefix = layer.prefix();
+        let label = layer.label();
+        for size in layer.size_values() {
+            let documentation = if *size == "none" {
+                format!("Disable the {label} via `Enabled = false`.")
+            } else {
+                format!("Create a Roblox {label} sized like Tailwind `{prefix}-{size}`.")
+            };
+            items.push(CompletionSpec::new(
+                format!("{prefix}-{size}"),
+                "effects",
+                documentation,
+                UtilityKind::ShadowSize(layer),
+            ));
+        }
 
-    for color_key in color_completion_keys(config) {
-        items.push(
-            CompletionSpec::new(
-                format!("shadow-{color_key}"),
-                "color",
-                format!("Set Roblox UIShadow.Color from theme color `{color_key}`."),
-                UtilityKind::ShadowColor,
-            )
-            .with_swatch(color_swatch(config, &color_key)),
-        );
+        for color_key in color_completion_keys(config) {
+            items.push(
+                CompletionSpec::new(
+                    format!("{prefix}-{color_key}"),
+                    "color",
+                    format!("Set Roblox {label}.Color from theme color `{color_key}`."),
+                    UtilityKind::ShadowColor(layer),
+                )
+                .with_swatch(color_swatch(config, &color_key)),
+            );
+        }
     }
 
     items.push(CompletionSpec::new(

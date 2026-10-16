@@ -269,9 +269,8 @@ export namespace __VelaToken {
 			return helperEffect("uishadow", [{ name: "Enabled", value: false }]);
 		}
 
-		// An inset shadow has no UIStroke-style equivalent to render into.
 		if (key === "inner") {
-			return undefined;
+			return resolveShadowLayerPreset("uiinsetshadow", "sm");
 		}
 
 		const preset = resolveShadowPreset(key);
@@ -982,6 +981,32 @@ export namespace __VelaToken {
 			return propEffect("FontStyle", Enum.FontStyle.Normal);
 		}
 
+		// Matched ahead of `text-*` and `inset-*`, which would read them as a color
+		// and a position.
+		if (__VelaLua.startsWith(token, "inset-shadow-")) {
+			return resolveLayeredShadowToken(
+				theme,
+				"uiinsetshadow",
+				__VelaLua.after(token, "inset-shadow-"),
+			);
+		}
+
+		if (__VelaLua.startsWith(token, "text-shadow-")) {
+			if (
+				tag !== undefined &&
+				tag !== "textlabel" &&
+				tag !== "textbutton" &&
+				tag !== "textbox"
+			) {
+				return undefined;
+			}
+			return resolveLayeredShadowToken(
+				theme,
+				"uitextshadow",
+				__VelaLua.after(token, "text-shadow-"),
+			);
+		}
+
 		// `text-*` is an overloaded prefix: sizes, alignment, wrapping and colors all
 		// share it, and the static path classifies them in this order.
 		if (__VelaLua.startsWith(token, "text-")) {
@@ -1399,6 +1424,7 @@ export namespace __VelaToken {
 		offsetY: number,
 		spread: number,
 		transparency: number,
+		tag = "uishadow",
 	): RuntimeResolvedEffectBundle {
 		const props: RuntimeResolvedPropEntry[] = [
 			{ name: "BlurRadius", value: new UDim(0, blur) },
@@ -1410,7 +1436,43 @@ export namespace __VelaToken {
 		}
 
 		props.push({ name: "Transparency", value: transparency });
-		return helperEffect("uishadow", props);
+		return helperEffect(tag, props);
+	}
+
+	/// The inset and text layers are `UIShadow`s of their own, so they sit beside
+	/// a drop shadow rather than overwriting it.
+	function resolveLayeredShadowToken(
+		theme: RuntimeTheme,
+		tag: string,
+		key: string,
+	): RuntimeResolvedEffectBundle | undefined {
+		if (key === "none") {
+			return helperEffect(tag, [{ name: "Enabled", value: false }]);
+		}
+
+		return (
+			resolveShadowLayerPreset(tag, key) ?? shadowColorEffect(theme, key, tag)
+		);
+	}
+
+	/// Mirrors the inset and text arms of `resolve_shadow_preset`.
+	function resolveShadowLayerPreset(
+		tag: string,
+		key: string,
+	): RuntimeResolvedEffectBundle | undefined {
+		if (tag === "uiinsetshadow") {
+			if (key === "2xs") return shadowPresetEffect(0, 1, 0, 0.95, tag);
+			if (key === "xs") return shadowPresetEffect(1, 1, 0, 0.95, tag);
+			if (key === "sm") return shadowPresetEffect(4, 2, 0, 0.95, tag);
+			return undefined;
+		}
+
+		if (key === "2xs") return shadowPresetEffect(0, 1, 0, 0.85, tag);
+		if (key === "xs") return shadowPresetEffect(1, 1, 0, 0.8, tag);
+		if (key === "sm") return shadowPresetEffect(2, 2, 0, 0.8, tag);
+		if (key === "md") return shadowPresetEffect(4, 2, 0, 0.75, tag);
+		if (key === "lg") return shadowPresetEffect(8, 4, 0, 0.75, tag);
+		return undefined;
 	}
 
 	/// Mirrors `BACKDROP_BLUR_VALUES`: three strengths over Tailwind's seven sizes.
@@ -1449,6 +1511,7 @@ export namespace __VelaToken {
 	function shadowColorEffect(
 		theme: RuntimeTheme,
 		key: string,
+		tag = "uishadow",
 	): RuntimeResolvedEffectBundle | undefined {
 		const [base, opacity] = __VelaValue.splitColorOpacity(key);
 		const resolved = __VelaColor.resolveThemeColor(theme, base);
@@ -1457,7 +1520,7 @@ export namespace __VelaToken {
 		}
 
 		if (resolved.color === undefined) {
-			return helperEffect("uishadow", [{ name: "Transparency", value: 1 }]);
+			return helperEffect(tag, [{ name: "Transparency", value: 1 }]);
 		}
 
 		const props: RuntimeResolvedPropEntry[] = [
@@ -1470,6 +1533,6 @@ export namespace __VelaToken {
 			});
 		}
 
-		return helperEffect("uishadow", props);
+		return helperEffect(tag, props);
 	}
 }

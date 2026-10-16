@@ -138,7 +138,9 @@ export namespace __VelaRem {
 	}
 
 	export function scalesHelperProp(tag: string, name: string): boolean {
-		return scalesProp(name) || (tag === "uishadow" && name === "Offset");
+		const shadow =
+			tag === "uishadow" || tag === "uiinsetshadow" || tag === "uitextshadow";
+		return scalesProp(name) || (shadow && name === "Offset");
 	}
 
 	export function apply(

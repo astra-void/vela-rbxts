@@ -46,7 +46,8 @@ pub(crate) fn scales_prop(name: &str) -> bool {
 }
 
 fn scales_helper_prop(tag: &str, name: &str) -> bool {
-    scales_prop(name) || (tag == "uishadow" && name == "Offset")
+    scales_prop(name)
+        || (crate::semantic::utility::helper_element_tag(tag) == "uishadow" && name == "Offset")
 }
 
 /// Roblox stops honoring `TextSize` past 100, so that one prop takes a scale

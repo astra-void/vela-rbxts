@@ -241,6 +241,37 @@ test("hovers and completes backdrop-blur as a UIBlur strength", () => {
 	);
 });
 
+test("hovers and completes the inset and text shadow layers", () => {
+	const source =
+		'<textlabel className="shadow-inner text-shadow-lg inset-shadow-red-500" />';
+	const hover = (token: string) =>
+		getHover({ source, position: positionAfter(source, token) - 1 }).contents;
+
+	expect(hover("shadow-inner")?.display).toBe(
+		"`shadow-inner` -> UIShadow (Inset)",
+	);
+	expect(hover("text-shadow-lg")?.display).toBe(
+		"`text-shadow-lg` -> UIShadow (Mode = Text)",
+	);
+	expect(hover("inset-shadow-red-500")?.display).toBe(
+		"`inset-shadow-red-500` -> UIShadow (Inset).Color",
+	);
+
+	const completionSource = '<textlabel className="text-shadow-" />';
+	const completions = getCompletions({
+		source: completionSource,
+		position: positionAfter(completionSource, "text-shadow-"),
+	});
+	expect(completions.items.map((item) => item.label)).toEqual(
+		expect.arrayContaining([
+			"text-shadow-2xs",
+			"text-shadow-lg",
+			"text-shadow-none",
+			"text-shadow-slate-900",
+		]),
+	);
+});
+
 test("completes z-index utilities inside className", () => {
 	const source = '<frame className="z-" />';
 	const result = getCompletions({

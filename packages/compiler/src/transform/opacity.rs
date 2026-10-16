@@ -22,7 +22,13 @@ pub(crate) fn opacity_transparency_props(element_tag: Option<&str>) -> &'static 
 
 /// Helpers that paint alongside the instance and carry a transparency of their
 /// own. A border that stayed solid over a faded fill would read as a bug.
-const TRANSPARENT_HELPERS: [&str; 3] = ["uistroke", "uishadow", "uiblur"];
+const TRANSPARENT_HELPERS: [&str; 5] = [
+    "uistroke",
+    "uishadow",
+    "uiinsetshadow",
+    "uitextshadow",
+    "uiblur",
+];
 
 /// The alpha an `opacity-*` in this class list leaves behind, or `None` when it
 /// names none. Only static tokens count: a variant is decided at render time,

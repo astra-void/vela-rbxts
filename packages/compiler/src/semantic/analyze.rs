@@ -225,7 +225,7 @@ fn supports_opacity_modifier(utility: &UtilityKind) -> bool {
         UtilityKind::BackgroundColor
             | UtilityKind::TextColor
             | UtilityKind::ImageColor
-            | UtilityKind::ShadowColor
+            | UtilityKind::ShadowColor(_)
             | UtilityKind::Ring
             | UtilityKind::Outline
             | UtilityKind::GradientFrom
@@ -274,7 +274,7 @@ fn is_color_utility(utility: &UtilityKind) -> bool {
             | UtilityKind::TextColor
             | UtilityKind::ImageColor
             | UtilityKind::PlaceholderColor
-            | UtilityKind::ShadowColor
+            | UtilityKind::ShadowColor(_)
             | UtilityKind::GradientFrom
             | UtilityKind::GradientVia
             | UtilityKind::GradientTo

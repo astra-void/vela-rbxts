@@ -382,12 +382,13 @@ impl VisitMut for VelaTransformer {
             } else {
                 helper
             };
-            let name = match self.target.helper_element_name(helper.tag) {
+            let tag = crate::semantic::utility::helper_element_tag(helper.tag);
+            let name = match self.target.helper_element_name(tag) {
                 Some(name) => {
                     self.helper_namespace_needed = true;
                     name
                 }
-                None => helper_tag_name(helper.tag),
+                None => helper_tag_name(tag),
             };
             helper_children.push(create_child(helper, name));
         }
