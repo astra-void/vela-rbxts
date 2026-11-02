@@ -54,6 +54,11 @@ export type HostTransformResult = {
 	diagnostics: HostDiagnostic[];
 	changed: boolean;
 	skipped: boolean;
+	/**
+	 * An error-level diagnostic was reported, so `sourceText` is not this file
+	 * lowered and must not be emitted in its place.
+	 */
+	fatal: boolean;
 	eligibility: HostFileEligibility;
 	compilerResult?: HostCompilerResult;
 	/** Sorted `[genLine, genCol, origLine, origCol]` quads, 0-based with UTF-16 columns. */

@@ -1,0 +1,21 @@
+{
+	"name": "broken-config",
+	"tree": {
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"node_modules": {
+				"$className": "Folder",
+				"@rbxts": { "$path": "../../node_modules/@rbxts" }
+			},
+			"TS": { "$path": "../../include" }
+		},
+		"StarterPlayer": {
+			"$className": "StarterPlayer",
+			"StarterPlayerScripts": {
+				"$className": "StarterPlayerScripts",
+				"Client": { "$path": "out/client" }
+			}
+		}
+	}
+}

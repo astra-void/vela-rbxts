@@ -1,0 +1,11 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"rootDir": "fixtures/broken-config/src",
+		"outDir": "fixtures/broken-config/out",
+		"baseUrl": "fixtures/broken-config/src",
+		"tsBuildInfoFile": "fixtures/broken-config/out/tsconfig.tsbuildinfo"
+	},
+	"include": ["fixtures/broken-config/src"],
+	"exclude": []
+}

@@ -738,6 +738,27 @@ Two branches that touch the same property are applied in the order they were wri
 
 **Variants resolve the same on both paths.** The runtime reads a `md:`, an `open:` or an `attr-[State=open]:` prefix through the same table the compiler resolved it against: the breakpoints and registrations travel with the config to any file that hands the host a class value to parse, and a file that hands it none carries neither.
 
+### Build Failures
+
+A Vela failure fails the build; a recognized utility that Vela cannot lower does not.
+
+| Failure | Level | What happens |
+| --- | --- | --- |
+| `vela.config.*` or `vela.css` does not load or resolve (`compiler-invocation-failed`, `config-resolution-failed`) | error | the file is not lowered and not emitted |
+| the native compiler cannot load (`compiler-unavailable`) or throws | error | every file with a `className` fails |
+| `configJson` the compiler cannot read (`invalid-config-json`), a TSX parse or emit failure | error | the file is not emitted |
+| a lowered file that no longer parses (`transformed-source-invalid`) | error | the file is not emitted |
+| an unknown utility, theme key or variant | warning | the class is dropped, as before |
+
+Through the `rbxtsc` plugin the errors are `rbxtsc` errors, so `rbxtsc` (and anything that runs it, such as Aruna) exits non-zero and writes no Luau for the build. Two cases used to slip through and no longer do:
+
+- **A config that broke after the last incremental build.** `rbxtsc` only re-transforms the files that changed, so the plugin checks the config of every file it would lower on every build, changed or not, and fails the build with `config-resolution-failed` until it resolves.
+- **A compiler that cannot load.** `rbxtsc` reports a plugin that throws while loading as a warning and builds without it, which shipped every `className` unlowered. `vela-rbxts/transformer` now loads the compiler itself and fails each file it would have lowered with `compiler-unavailable`.
+
+`vela build` and `vela watch` apply the same rules: a file with an error is not written to `.vela/src`, the copy an earlier run wrote is removed so `rbxtsc` cannot compile a stale or raw one, and `vela build` exits 1.
+
+A config edit that still resolves is not a failure, and under an incremental `rbxtsc` build the files that did not change keep what they were lowered against before. Run a clean build (or Aruna's `--no-cache`) after changing the theme.
+
 ### Diagnostics
 
 - unsupported utility families and unknown theme keys emit warnings and are not lowered
@@ -745,7 +766,7 @@ Two branches that touch the same property are applied in the order they were wri
 - `invalid-custom-variant` reports a `plugins.variants` registration that would shadow something vela already reads
 - unsupported `className` patterns emit diagnostics instead of being silently dropped
 - `className` on an element that is neither a supported host nor a component emits `classname-on-unsupported-host` and is left in the output
-- diagnostics reach `rbxtsc` through `context.addDiagnostic`; a host that does not expose it drops them
+- diagnostics reach `rbxtsc` through `context.addDiagnostic`; a host that does not expose it drops the warnings and gets an exception for an error, so a failure cannot pass as a lowered file
 - `overridden-class` is an editor lint, never reported by a build; see [Overridden Classes](#overridden-classes)
 
 `text-*` utilities are meaningful only on `textlabel`, `textbutton`, and `textbox`, `image-*` only on `imagelabel` and `imagebutton`, and `placeholder-*` only on `textbox`. That restriction is enforced by the editor, which reports `unsupported-host-utility`, and **not** by the compiler — `<frame className="text-red-500" />` compiles and emits `TextColor3` on a Frame with no build warning. It does not apply to components at all, since the eventual host element is unknown.

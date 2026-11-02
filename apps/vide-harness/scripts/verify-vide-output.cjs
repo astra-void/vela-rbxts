@@ -2,6 +2,10 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const {
+	verifyFailClosed,
+} = require("../../../scripts/harness/verify-fail-closed.cjs");
+
 const projectRoot = path.join(__dirname, "..");
 
 fs.rmSync(path.join(projectRoot, "out"), { recursive: true, force: true });
@@ -276,6 +280,8 @@ expect(
 	source.includes('kind = "group"') && source.includes('kind = "peer"'),
 );
 expect("the emit never writes a Tag prop on Vide", !/\bTag = /.test(source));
+
+failures.push(...verifyFailClosed(projectRoot));
 
 if (failures.length > 0) {
 	for (const failure of failures) {

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { clearProjectConfigCache } from "@vela-rbxts/rbxtsc-host";
 import { afterEach, expect, test } from "vitest";
 
 import { createBuilder } from "../src/cli/builder";
@@ -170,6 +171,30 @@ test("runBuild exits non-zero when a file fails to parse", () => {
 	});
 
 	expect(runBuild(options)).toBe(1);
+});
+
+test("writes no lowering for a file whose config does not resolve, and removes the last one", () => {
+	const options = createProject({ "src/Panel.tsx": STYLED_COMPONENT });
+	const builder = createBuilder(options);
+	builder.buildAll();
+	expect(readGenerated(options, "Panel.tsx")).toContain("BackgroundColor3");
+
+	fs.writeFileSync(
+		path.join(options.projectRoot, "vela.config.json"),
+		JSON.stringify({
+			theme: { extend: { colors: { surface: { raised: "Color3.new()" } } } },
+		}),
+	);
+	clearProjectConfigCache();
+	const stats = builder.buildAll();
+
+	expect(stats.errors).toBe(1);
+	expect(stats.diagnostics[0].text).toContain(
+		"Panel.tsx - error vela/host(compiler-invocation-failed)",
+	);
+	expect(fs.existsSync(path.join(options.outDir, "Panel.tsx"))).toBe(false);
+	expect(runBuild(options)).toBe(1);
+	expect(fs.existsSync(path.join(options.outDir, "Panel.tsx"))).toBe(false);
 });
 
 test("runBuild exits zero on a clean tree", () => {

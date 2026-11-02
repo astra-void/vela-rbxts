@@ -297,3 +297,117 @@ test("falls back to a text match when the compiler reports no range", () => {
 
 	result.dispose();
 });
+
+test("keeps a file whose lowering reported an error out of the emit", () => {
+	mockedCompilerTransform.mockReturnValueOnce({
+		code: "<frame BackgroundColor3={Color3.fromRGB(1, 2, 3)} />",
+		diagnostics: [
+			{
+				level: "error",
+				code: "invalid-config-json",
+				message: "configJson is not a valid vela config",
+			},
+		],
+		changed: true,
+		ir: [],
+		needsRuntimeHost: false,
+	});
+
+	const project = createProject();
+	const result = runLifecycleTransform(
+		'<frame className="bg-slate-500" />',
+		project.root,
+	);
+
+	expect(result.transformedSource).toContain('className="bg-slate-500"');
+	expect(result.diagnostics[0].category).toBe(ts.DiagnosticCategory.Error);
+
+	result.dispose();
+});
+
+test("throws a failure it has no diagnostic channel for rather than emitting the file unlowered", () => {
+	mockedCompilerTransform.mockImplementationOnce(() => {
+		throw new Error("native compiler invocation failed");
+	});
+
+	const project = createProject();
+	const sourceFile = ts.createSourceFile(
+		project.sourceFile,
+		'<frame className="bg-slate-500" />',
+		ts.ScriptTarget.ESNext,
+		true,
+		ts.ScriptKind.TSX,
+	);
+	const factory = createVelaProgramTransformer(
+		{} as ts.Program,
+		{ projectRoot: project.root },
+		{ ts },
+	);
+	const context = {} as ts.TransformationContext;
+
+	expect(() => factory(context)(sourceFile)).toThrow(
+		"compiler-invocation-failed",
+	);
+});
+
+test("rejects a lowering that no longer parses", () => {
+	mockedCompilerTransform.mockReturnValueOnce({
+		code: "<frame BackgroundColor3={ />",
+		diagnostics: [],
+		changed: true,
+		ir: [],
+		needsRuntimeHost: false,
+	});
+
+	const project = createProject();
+	const result = runLifecycleTransform(
+		'<frame className="bg-slate-500" />',
+		project.root,
+	);
+
+	expect(result.transformedSource).toContain('className="bg-slate-500"');
+	expect(result.diagnostics).toHaveLength(1);
+	expect(result.diagnostics[0]).toMatchObject({
+		category: ts.DiagnosticCategory.Error,
+		messageText: expect.stringContaining("transformed-source-invalid"),
+	});
+
+	result.dispose();
+});
+
+test("fails a build whose config broke even when no file changed", () => {
+	const project = createProject();
+	fs.mkdirSync(path.dirname(project.sourceFile), { recursive: true });
+	fs.writeFileSync(
+		path.join(project.root, "vela.config.json"),
+		JSON.stringify({
+			theme: { extend: { colors: { surface: { raised: "Color3.new()" } } } },
+		}),
+	);
+	const sourceText = '<frame className="bg-surface" />';
+	fs.writeFileSync(project.sourceFile, sourceText);
+	const program = {
+		getCurrentDirectory: () => project.root,
+		getSourceFiles: () => [
+			ts.createSourceFile(
+				project.sourceFile,
+				sourceText,
+				ts.ScriptTarget.ESNext,
+				true,
+				ts.ScriptKind.TSX,
+			),
+		],
+	} as unknown as ts.Program;
+	const factory = createVelaProgramTransformer(program, {}, { ts });
+	const result = ts.transform([] as ts.SourceFile[], [factory]);
+
+	expect(result.diagnostics).toHaveLength(1);
+	expect(result.diagnostics?.[0]).toMatchObject({
+		category: ts.DiagnosticCategory.Error,
+		file: undefined,
+		messageText: expect.stringContaining("config-resolution-failed"),
+	});
+	expect(mockedCompilerTransform).not.toHaveBeenCalled();
+
+	result.dispose();
+});

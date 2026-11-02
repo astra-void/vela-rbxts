@@ -60,6 +60,7 @@ export function transformSourceForHost(
 			diagnostics: [],
 			changed: false,
 			skipped: true,
+			fatal: false,
 			eligibility,
 		};
 	}
@@ -76,6 +77,7 @@ export function transformSourceForHost(
 		const compilerResult = normalizeCompilerResult(
 			compiler.transform(request.sourceText, compilerOptions),
 		);
+		const fatal = compilerResult.diagnostics.some(isErrorDiagnostic);
 
 		return {
 			fileName: request.fileName,
@@ -86,6 +88,7 @@ export function transformSourceForHost(
 			),
 			changed: compilerResult.changed,
 			skipped: false,
+			fatal,
 			eligibility,
 			compilerResult,
 			...(compilerResult.mappings ? { mappings: compilerResult.mappings } : {}),
@@ -105,9 +108,14 @@ export function transformSourceForHost(
 			],
 			changed: false,
 			skipped: false,
+			fatal: true,
 			eligibility,
 		};
 	}
+}
+
+function isErrorDiagnostic(diagnostic: { level: string }): boolean {
+	return diagnostic.level.toLowerCase() === "error";
 }
 
 function normalizeCompilerResult(

@@ -392,6 +392,56 @@ test("carries compiler diagnostics through the host diagnostic boundary", () => 
 	]);
 });
 
+test("marks a file the compiler reported an error for as fatal", () => {
+	expect(transformSourceForHost(sourceFile).fatal).toBe(false);
+
+	vi.mocked(transform).mockReturnValueOnce({
+		code: mockTransformedCode,
+		diagnostics: [
+			{
+				level: "error",
+				code: "invalid-config-json",
+				message: "configJson is not a valid vela config",
+			},
+		],
+		changed: true,
+		ir: [],
+		needsRuntimeHost: false,
+	});
+
+	expect(transformSourceForHost(sourceFile).fatal).toBe(true);
+});
+
+test("passes the source through as fatal when the config does not resolve", () => {
+	const project = createProject();
+	fs.writeFileSync(
+		path.join(project.root, "vela.config.json"),
+		JSON.stringify({
+			theme: { extend: { colors: { surface: { raised: "Color3.new()" } } } },
+		}),
+	);
+	clearProjectConfigCache();
+
+	const result = transformSourceForHost({
+		fileName: project.sourceFile,
+		sourceText: sourceFile.sourceText,
+	});
+
+	expect(transform).not.toHaveBeenCalled();
+	expect(result).toMatchObject({
+		fatal: true,
+		changed: false,
+		sourceText: sourceFile.sourceText,
+		diagnostics: [
+			expect.objectContaining({
+				level: "error",
+				code: "compiler-invocation-failed",
+				message: expect.stringContaining("surface.raised"),
+			}),
+		],
+	});
+});
+
 test("bridge exposes selection and transform entrypoints", () => {
 	const bridge = createRbxtscTransformerBridge();
 

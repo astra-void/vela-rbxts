@@ -96,6 +96,16 @@ export function createBuilder(options: CliOptions): Builder {
 			}
 		}
 
+		// Neither the source nor an older lowering may stand in for a file that failed: rbxtsc would compile either without complaint.
+		if (result.fatal) {
+			removeMap(relativePath);
+			if (removeFile(outputPath)) {
+				stats.removed += 1;
+			}
+			emitted.delete(relativePath);
+			return;
+		}
+
 		// An unchanged file goes out as written, and a map lands before its file so `rbxtsc -w` never reads one through a stale map.
 		const generatedText = result.changed ? result.sourceText : sourceText;
 		if (result.changed && writesMaps) {
@@ -158,7 +168,6 @@ export function createBuilder(options: CliOptions): Builder {
 				}
 			}
 
-			emitted = live;
 			writeManifest(manifestPath, options, emitted);
 
 			return finish(stats, started);

@@ -1,4 +1,7 @@
+import path from "node:path";
+
 import { createRbxtscTransformerBridge } from "./bridge.js";
+import { resolveProjectConfigInfo } from "./project-config.js";
 import type {
 	HostDiagnostic,
 	HostTransformRequest,
@@ -99,6 +102,43 @@ function mapHostDiagnosticToTsDiagnostic(
 	};
 }
 
+/// roblox-ts only transforms the files that changed, so a config that broke
+/// after the last build would otherwise go unreported until a file is edited.
+function projectConfigFailures(
+	program: import("typescript").Program,
+	isEligible: (sourceFile: import("typescript").SourceFile) => boolean,
+): string[] {
+	if (typeof program.getSourceFiles !== "function") {
+		return [];
+	}
+
+	const directories = new Set<string>();
+	for (const sourceFile of program.getSourceFiles()) {
+		if (!sourceFile.isDeclarationFile && isEligible(sourceFile)) {
+			directories.add(path.dirname(sourceFile.fileName));
+		}
+	}
+
+	const failures = new Set<string>();
+	for (const directory of directories) {
+		try {
+			resolveProjectConfigInfo(path.join(directory, "index.tsx"));
+		} catch (error) {
+			failures.add(error instanceof Error ? error.message : String(error));
+		}
+	}
+
+	return [...failures];
+}
+
+function hasParseErrors(sourceFile: import("typescript").SourceFile): boolean {
+	const parseDiagnostics = (
+		sourceFile as { parseDiagnostics?: readonly unknown[] }
+	).parseDiagnostics;
+
+	return parseDiagnostics !== undefined && parseDiagnostics.length > 0;
+}
+
 function inferScriptKind(
 	ts: TsModule,
 	fileName: string,
@@ -178,6 +218,37 @@ export function createVelaProgramTransformer(
 				addDiagnostic?: (diagnostic: import("typescript").Diagnostic) => void;
 			}
 		).addDiagnostic;
+		// Without a channel for diagnostics, a failure is thrown rather than
+		// dropped, since dropping it would emit the file unlowered.
+		const report = (diagnostic: import("typescript").Diagnostic) => {
+			if (addDiagnostic) {
+				addDiagnostic(diagnostic);
+			} else if (diagnostic.category === ts.DiagnosticCategory.Error) {
+				throw new Error(
+					ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+				);
+			}
+		};
+
+		const configFailures =
+			bridgeOptions.config === undefined
+				? projectConfigFailures(_program, (sourceFile) =>
+						bridge.shouldTransformFile({
+							fileName: sourceFile.fileName,
+							sourceText: sourceFile.text,
+						}),
+					)
+				: [];
+		for (const failure of configFailures) {
+			report({
+				category: ts.DiagnosticCategory.Error,
+				code: diagnosticCodeBase,
+				file: undefined,
+				start: undefined,
+				length: undefined,
+				messageText: `[@vela-rbxts/rbxtsc-host] config-resolution-failed: ${failure}`,
+			});
+		}
 
 		return (sourceFile) => {
 			const request: HostTransformRequest = {
@@ -193,24 +264,44 @@ export function createVelaProgramTransformer(
 
 			const result = bridge.transformSource(request);
 
-			if (addDiagnostic) {
-				for (let i = 0; i < result.diagnostics.length; i++) {
-					addDiagnostic(
-						mapHostDiagnosticToTsDiagnostic(
-							ts,
-							sourceFile,
-							result.diagnostics[i],
-							diagnosticCodeBase + i,
-						),
-					);
-				}
+			for (let i = 0; i < result.diagnostics.length; i++) {
+				report(
+					mapHostDiagnosticToTsDiagnostic(
+						ts,
+						sourceFile,
+						result.diagnostics[i],
+						diagnosticCodeBase + i,
+					),
+				);
 			}
 
-			if (!result.changed || result.sourceText === sourceFile.text) {
+			if (
+				result.fatal ||
+				!result.changed ||
+				result.sourceText === sourceFile.text
+			) {
 				return sourceFile;
 			}
 
-			return reinjectTransformedSource(ts, sourceFile, result.sourceText);
+			const transformed = reinjectTransformedSource(
+				ts,
+				sourceFile,
+				result.sourceText,
+			);
+			if (hasParseErrors(transformed)) {
+				report({
+					category: ts.DiagnosticCategory.Error,
+					code: diagnosticCodeBase + result.diagnostics.length,
+					file: sourceFile,
+					start: 0,
+					length: 0,
+					messageText:
+						"[@vela-rbxts/rbxtsc-host] transformed-source-invalid: the lowered file does not parse, so it was not emitted. Please report this with the file's className usage.",
+				});
+				return sourceFile;
+			}
+
+			return transformed;
 		};
 	};
 }

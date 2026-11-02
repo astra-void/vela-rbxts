@@ -2,6 +2,10 @@ const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const {
+	verifyFailClosed,
+} = require("../../../scripts/harness/verify-fail-closed.cjs");
+
 const { peakLocalRegisters } = require("./luau-local-registers.cjs");
 
 const transformerModule = require("vela-rbxts/transformer");
@@ -539,6 +543,8 @@ for (const [label, text] of [
 		);
 	}
 }
+
+failures.push(...verifyFailClosed(projectRoot));
 
 if (failures.length > 0) {
 	console.error(failures.join("\n"));
