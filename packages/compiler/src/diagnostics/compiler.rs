@@ -796,3 +796,56 @@ pub(crate) fn color_missing_shade_diagnostic(
         range: None,
     }
 }
+
+pub(crate) fn explicit_prop_overrides_class_diagnostic(
+    token: Option<&str>,
+    prop: &str,
+) -> Diagnostic {
+    let source = token.map_or_else(|| "className".to_owned(), |token| format!("`{token}`"));
+
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "explicit-prop-overrides-class".to_owned(),
+        message: format!(
+            "Vela: {source} generates {prop}, but this element already declares {prop}. The declared {prop} wins, so the class does not emit one; remove the class or the prop."
+        ),
+        token: token.map(str::to_owned),
+        range: None,
+    }
+}
+
+pub(crate) fn explicit_helper_overrides_class_diagnostic(
+    token: Option<&str>,
+    helper: &str,
+    tag: &str,
+) -> Diagnostic {
+    let source = token.map_or_else(|| "className".to_owned(), |token| format!("`{token}`"));
+
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "explicit-helper-overrides-class".to_owned(),
+        message: format!(
+            "Vela: {source} generates a {helper}, but this element already has a <{tag}> child. The written {helper} wins, so the class does not add a second one; remove the class or the child."
+        ),
+        token: token.map(str::to_owned),
+        range: None,
+    }
+}
+
+pub(crate) fn possible_duplicate_helper_diagnostic(
+    token: Option<&str>,
+    helper: &str,
+    tag: &str,
+) -> Diagnostic {
+    let source = token.map_or_else(|| "className".to_owned(), |token| format!("`{token}`"));
+
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "possible-duplicate-helper".to_owned(),
+        message: format!(
+            "Vela: {source} generates a {helper}, and this element may also render a <{tag}> child the compiler cannot rule out (a conditional child, or a class variant that changes the {helper}). Both are kept, and Roblox applies only one {helper}; write the {helper} one way."
+        ),
+        token: token.map(str::to_owned),
+        range: None,
+    }
+}

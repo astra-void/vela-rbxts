@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+	duplicateTableKeys,
 	verifyFailClosed,
 } = require("../../../scripts/harness/verify-fail-closed.cjs");
 
@@ -541,6 +542,27 @@ for (const [label, text] of [
 		failures.push(
 			`${label} spends ${peak.registers} local registers in ${peak.name} (line ${peak.line}), over the ${REGISTER_BUDGET} budget`,
 		);
+	}
+}
+
+// A declared prop and a written helper are each emitted once, the author's.
+for (const duplicate of duplicateTableKeys(source)) {
+	failures.push(`emitted Luau writes a prop twice: ${duplicate}`);
+}
+for (const fragment of [
+	"BackgroundColor3 = Color3.fromRGB(1, 2, 3)",
+	"CornerRadius = UDim.new(0, 3)",
+]) {
+	if (!source.includes(fragment)) {
+		failures.push(`emitted Luau is missing the declared ${fragment}`);
+	}
+}
+for (const code of [
+	"explicit-prop-overrides-class",
+	"explicit-helper-overrides-class",
+]) {
+	if (!buildOutput.includes(code)) {
+		failures.push(`the build does not report ${code}`);
 	}
 }
 

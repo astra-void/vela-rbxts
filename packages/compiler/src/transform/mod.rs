@@ -1,5 +1,6 @@
 pub(crate) mod boundary;
 pub(crate) mod branch;
+pub(crate) mod conflicts;
 pub(crate) mod context;
 pub(crate) mod emit;
 pub(crate) mod jsx;

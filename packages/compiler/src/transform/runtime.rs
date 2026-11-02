@@ -648,18 +648,22 @@ const COLOR_OPACITY_FAMILIES: [ColorFamilySpec; 3] = [
 ///
 /// `own_alpha` is the element's own `opacity-*`, which left the background to
 /// this step: only here is it known whether the author painted one.
+///
+/// Returns the defaults it set, which outrank nothing the element is handed.
 pub(crate) fn apply_preflight(
     style: &mut StyleIr,
     declared_props: &[String],
     element_tag: Option<&str>,
     own_alpha: Option<f64>,
-) {
+) -> Vec<&'static str> {
     let declared = |name: &str| declared_props.iter().any(|prop| prop == name);
     let styled =
         |style: &StyleIr, name: &str| style.base.props.iter().any(|prop| prop.name == name);
+    let mut neutralized = Vec::new();
 
     if !styled(style, "BorderSizePixel") && !declared("BorderSizePixel") {
         style.set_prop("BorderSizePixel", "0".to_owned());
+        neutralized.push("BorderSizePixel");
     }
 
     // A background the base already paints is opaque on purpose, and a variant
@@ -670,6 +674,7 @@ pub(crate) fn apply_preflight(
     {
         if !declared("BackgroundColor3") {
             style.set_prop("BackgroundTransparency", "1".to_owned());
+            neutralized.push("BackgroundTransparency");
         } else if let Some(alpha) = own_alpha
             && opacity_transparency_props(element_tag).contains(&"BackgroundTransparency")
         {
@@ -678,6 +683,7 @@ pub(crate) fn apply_preflight(
     }
 
     reset_variant_color_opacity(style);
+    neutralized
 }
 
 /// A variant bundle overlays the base at runtime, so dropping the transparency

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+	duplicateTableKeys,
 	verifyFailClosed,
 } = require("../../../scripts/harness/verify-fail-closed.cjs");
 
@@ -280,6 +281,26 @@ expect(
 	source.includes('kind = "group"') && source.includes('kind = "peer"'),
 );
 expect("the emit never writes a Tag prop on Vide", !/\bTag = /.test(source));
+
+// A declared prop and a written helper are each emitted once, the author's.
+expect(
+	"no element writes a prop twice",
+	duplicateTableKeys(source).length === 0,
+);
+expect(
+	"the declared BackgroundColor3 survives beside a bg-* class",
+	source.includes("BackgroundColor3 = function()") &&
+		source.includes("return Color3.fromRGB(1, 2, 3)"),
+);
+expect(
+	"the written UICorner stands in for the class's",
+	source.includes("CornerRadius = UDim.new(0, 3)"),
+);
+expect(
+	"the build names the class a declared prop outranks",
+	buildOutput.includes("explicit-prop-overrides-class") &&
+		buildOutput.includes("explicit-helper-overrides-class"),
+);
 
 failures.push(...verifyFailClosed(projectRoot));
 

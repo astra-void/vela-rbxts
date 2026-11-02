@@ -5,7 +5,7 @@ use crate::transform::runtime::resolve_class_tokens;
 
 /// The Roblox class a helper tag names. The tags are the lowercase JSX ones the
 /// emit writes; a hint reads better with the name the API uses.
-fn helper_class_name(tag: &str) -> &'static str {
+pub(crate) fn helper_class_name(tag: &str) -> &'static str {
     match tag {
         "uiaspectratioconstraint" => "UIAspectRatioConstraint",
         "uiblur" => "UIBlur",

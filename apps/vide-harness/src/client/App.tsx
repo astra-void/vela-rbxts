@@ -38,6 +38,16 @@ function StaticUtilities() {
 			<Row label="bg + rounded + p">
 				<frame className="w-24 h-6 bg-slate-800 rounded-lg p-2" />
 			</Row>
+			{/* A declared prop outranks the class that names it, and a written
+			    helper the class's own. */}
+			<Row label="declared over class">
+				<frame
+					className="w-24 h-6 bg-slate-800 rounded-lg"
+					BackgroundColor3={() => Color3.fromRGB(1, 2, 3)}
+				>
+					<uicorner CornerRadius={new UDim(0, 3)} />
+				</frame>
+			</Row>
 			<Row label="directional rounded">
 				<frame className="w-24 h-6 bg-slate-800 rounded-l-lg" />
 			</Row>

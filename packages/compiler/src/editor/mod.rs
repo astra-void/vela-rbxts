@@ -38,6 +38,8 @@ pub(crate) struct ClassNameContext {
     /// between, so the token at that edge is only part of a class.
     pub(crate) open_start: bool,
     pub(crate) open_end: bool,
+    /// The props the element writes itself, which outrank the class's.
+    pub(crate) declared_props: Vec<String>,
 }
 
 impl ClassNameContext {
@@ -75,6 +77,7 @@ pub(crate) struct ClassNameCollector<'a> {
     /// offsets travel back over a document that still has it.
     bom: usize,
     contexts: Vec<ClassNameContext>,
+    declared_props: Vec<String>,
 }
 
 impl ClassNameCollector<'_> {
@@ -112,6 +115,7 @@ impl ClassNameCollector<'_> {
             },
             open_start: false,
             open_end: false,
+            declared_props: self.declared_props.clone(),
         });
     }
 
@@ -248,6 +252,8 @@ impl Visit for ClassNameCollector<'_> {
             {
                 element_tag = Some("canvasgroup".to_owned());
             }
+            self.declared_props =
+                crate::transform::jsx::declared_prop_names(&element.opening.attrs);
             for attr in &element.opening.attrs {
                 let JSXAttrOrSpread::JSXAttr(attr) = attr else {
                     continue;
@@ -393,6 +399,7 @@ pub(crate) fn collect_class_name_contexts(source: &str) -> Vec<ClassNameContext>
         source_base: fm.start_pos.0,
         bom: bom_len(source),
         contexts: Vec::new(),
+        declared_props: Vec::new(),
     };
     module.visit_with(&mut collector);
     collector.contexts
@@ -500,6 +507,7 @@ fn push_lexical_quasi(
         },
         open_start: edges.0,
         open_end: edges.1,
+        declared_props: Vec::new(),
     });
 }
 

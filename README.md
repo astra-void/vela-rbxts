@@ -738,6 +738,40 @@ Two branches that touch the same property are applied in the order they were wri
 
 **Variants resolve the same on both paths.** The runtime reads a `md:`, an `open:` or an `attr-[State=open]:` prefix through the same table the compiler resolved it against: the breakpoints and registrations travel with the config to any file that hands the host a class value to parse, and a file that hands it none carries neither.
 
+### Declared Props, Helpers and Spreads
+
+**A prop written on the element outranks every class that names it, under every condition**, the way an inline style outranks a stylesheet. The class's copy is not emitted, so the element never ends up with the same attribute twice, and a reactive binding is never replaced by a class:
+
+```tsx
+<frame className="bg-surface rounded-lg" BackgroundColor3={dynamicColor} />
+// lowers to
+<frame BackgroundColor3={dynamicColor} BorderSizePixel={0}>
+  <uicorner CornerRadius={new UDim(0, 8)} />
+</frame>
+// warning explicit-prop-overrides-class: Vela: `bg-surface` generates BackgroundColor3,
+// but this element already declares BackgroundColor3. ...
+```
+
+Only a class that lowers to the very property declared counts: `rounded-lg` beside `BackgroundTransparency={0.25}` is two different properties and stays quiet. The same rule applies to a variant (`hover:bg-blue-500` does nothing beside a declared `BackgroundColor3`, and an element whose only variant named that prop stays on the static path), to a class branch, to a component element's props, and on the runtime host: a class value resolved at render time is told which props the element declares (`__velaOwn`) and leaves them standing. To let a class win, remove the prop; to let state drive the prop, write the prop and drop the class.
+
+**A helper written as a child outranks the class's.** Roblox applies one `UICorner`, `UIStroke`, `UIPadding`, `UIListLayout`, `UIGridLayout`, `UIGradient`, constraint or `UIScale` per instance, so a class does not add a second one beside a written child, a fragment's child included:
+
+```tsx
+<frame className="rounded-lg p-2">
+  <uicorner CornerRadius={new UDim(0, 12)} />
+</frame>
+// keeps the written UICorner and the class's UIPadding, warns explicit-helper-overrides-class
+```
+
+`UIShadow` is the exception: drop, inset and text shadows are separate layers, so a written one sits beside the class's. What the compiler cannot rule out is kept and reported as `possible-duplicate-helper`: a child that is only sometimes there (`{open && <uicorner />}`) and a helper a variant changes (`rounded-lg hover:rounded-xl`), which the runtime host keys its rules on. A helper a child component renders is invisible to the compiler and is not reported.
+
+**A spread follows JSX order.** The compiler cannot see what a spread carries, so it reports nothing about one and lets the order it was written in decide: what a class lowers to takes the `className`'s place, and preflight's defaults go ahead of everything, where a spread can paint over them. A spread is evaluated once, where it was written, and its handlers are kept.
+
+```tsx
+<textbutton className="bg-slate-700 rounded" {...props} />  // props.BackgroundColor3 wins
+<textbutton {...props} className="bg-slate-700 rounded" />  // bg-slate-700 wins
+```
+
 ### Build Failures
 
 A Vela failure fails the build; a recognized utility that Vela cannot lower does not.
@@ -748,6 +782,7 @@ A Vela failure fails the build; a recognized utility that Vela cannot lower does
 | the native compiler cannot load (`compiler-unavailable`) or throws | error | every file with a `className` fails |
 | `configJson` the compiler cannot read (`invalid-config-json`), a TSX parse or emit failure | error | the file is not emitted |
 | a lowered file that no longer parses (`transformed-source-invalid`) | error | the file is not emitted |
+| `explicit-prop-overrides-class`, `explicit-helper-overrides-class`, `possible-duplicate-helper` | warning | the declared prop or written helper wins |
 | an unknown utility, theme key or variant | warning | the class is dropped, as before |
 
 Through the `rbxtsc` plugin the errors are `rbxtsc` errors, so `rbxtsc` (and anything that runs it, such as Aruna) exits non-zero and writes no Luau for the build. Two cases used to slip through and no longer do:
@@ -767,6 +802,7 @@ A config edit that still resolves is not a failure, and under an incremental `rb
 - unsupported `className` patterns emit diagnostics instead of being silently dropped
 - `className` on an element that is neither a supported host nor a component emits `classname-on-unsupported-host` and is left in the output
 - diagnostics reach `rbxtsc` through `context.addDiagnostic`; a host that does not expose it drops the warnings and gets an exception for an error, so a failure cannot pass as a lowered file
+- `explicit-prop-overrides-class` and the helper conflicts are reported by builds and by the editor alike; the editor offers no quick fix for them, since the fix is the class or the prop and the prop may be a binding
 - `overridden-class` is an editor lint, never reported by a build; see [Overridden Classes](#overridden-classes)
 
 `text-*` utilities are meaningful only on `textlabel`, `textbutton`, and `textbox`, `image-*` only on `imagelabel` and `imagebutton`, and `placeholder-*` only on `textbox`. That restriction is enforced by the editor, which reports `unsupported-host-utility`, and **not** by the compiler — `<frame className="text-red-500" />` compiles and emits `TextColor3` on a Frame with no build warning. It does not apply to components at all, since the eventual host element is unknown.
@@ -861,7 +897,7 @@ The third is the rem pin: a Vide child is built before the container that holds 
 
 Roblox paints every `GuiObject` as an opaque gray box with a 1px border, and a framework that only ever adds properties can never take that back. Preflight neutralizes those defaults, so every **host element that carries a `className`** starts from `BackgroundTransparency = 1` and `BorderSizePixel = 0` — `<frame className="w-40 h-10" />` is an invisible box, not a gray rectangle, and `bg-transparent` no longer has to be spelled out everywhere.
 
-A `bg-*` utility still wins, including one that only appears in a variant (`hover:bg-blue-600`) or in a dynamic class value, and a prop written on the element itself (`<frame BackgroundTransparency={0.25} className="w-full" />`) is left alone. Props arriving through a spread are not — the transformer cannot see their names, so preflight overrides them like any other utility does.
+A `bg-*` utility still wins, including one that only appears in a variant (`hover:bg-blue-600`) or in a dynamic class value, and a prop written on the element itself is left alone: `<frame BackgroundTransparency={0.25} className="w-full" />` keeps its 0.25, and `<frame BackgroundColor3={color} className="rounded-lg" />` is a painted, opaque frame, not one preflight hides. A spread outranks preflight too: the transformer cannot see its names, so the neutral defaults are written ahead of it and whatever it carries paints over them.
 
 It is deliberately not global: an element with no `className` keeps the Roblox defaults, so `<frame />` and `<frame className="w-full" />` do not render the same. Components are skipped too, since the eventual host element is unknown.
 

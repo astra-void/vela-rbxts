@@ -810,6 +810,10 @@ fn replacement_suggestions(
 /// An overridden class is spelled correctly, so the only fix is to drop it.
 const OVERRIDDEN_CLASS_CODE: &str = "overridden-class";
 
+/// The fix is the class or the prop, and the prop may be a binding the author
+/// means to keep, so neither is offered.
+const EXPLICIT_PROP_CODE: &str = "explicit-prop-overrides-class";
+
 fn quickfix_actions(
     uri: &Url,
     document: &Document,
@@ -830,6 +834,9 @@ fn quickfix_actions(
     };
     if code == Some(OVERRIDDEN_CLASS_CODE) {
         return vec![remove_action(uri, diagnostic, &token)];
+    }
+    if code == Some(EXPLICIT_PROP_CODE) {
+        return Vec::new();
     }
 
     // Asked at the utility rather than at the token start: a position inside
@@ -1217,6 +1224,32 @@ mod tests {
         let edits = &remove.edit.unwrap().changes.unwrap()[&uri];
         assert_eq!(edits[0].new_text, "");
         assert_eq!(edits[0].range, diagnostic.range);
+    }
+
+    #[test]
+    fn a_class_shadowed_by_a_declared_prop_gets_no_quickfix() {
+        let uri = Url::parse("file:///App.tsx").unwrap();
+        let source = "export const App = () => <frame className=\"bg-slate-700\" BackgroundColor3={color} />;";
+        let document = Document::new(uri.clone(), source.to_owned(), Some(1));
+        let options = EditorOptions {
+            config_json: None,
+            file_name: None,
+            project_root: None,
+        };
+        let diagnostic = get_diagnostics(DiagnosticsRequest {
+            source: source.to_owned(),
+            options: Some(options.clone()),
+        })
+        .diagnostics
+        .into_iter()
+        .map(|diagnostic| compiler_diagnostic_to_lsp(&document, diagnostic))
+        .find(|diagnostic| {
+            diagnostic.code == Some(NumberOrString::String(EXPLICIT_PROP_CODE.to_owned()))
+        })
+        .expect("bg-slate-700 is shadowed by the declared BackgroundColor3");
+
+        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::WARNING));
+        assert!(quickfix_actions(&uri, &document, &options, &diagnostic).is_empty());
     }
 
     #[test]

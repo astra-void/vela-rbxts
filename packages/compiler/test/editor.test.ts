@@ -2381,3 +2381,27 @@ test("sorting a class list never changes which classes are overridden", () => {
 		expect(summarize(sorted), classes).toEqual(summarize(source));
 	}
 });
+
+test("flags a class whose prop the element also declares, at the class", () => {
+	const source =
+		'const ui = <frame className="rounded-lg bg-slate-700" BackgroundColor3={color} />;';
+	const start = source.indexOf("bg-slate-700");
+
+	expect(getDiagnostics({ source }).diagnostics).toEqual([
+		{
+			level: "warning",
+			code: "explicit-prop-overrides-class",
+			message:
+				"Vela: `bg-slate-700` generates BackgroundColor3, but this element already declares BackgroundColor3. The declared BackgroundColor3 wins, so the class does not emit one; remove the class or the prop.",
+			token: "bg-slate-700",
+			range: { start, end: start + "bg-slate-700".length },
+		},
+	]);
+});
+
+test("does not flag a declared prop the class never names", () => {
+	const source =
+		'const ui = <frame className="rounded-lg" BackgroundColor3={color} Size={size} />;';
+
+	expect(getDiagnostics({ source }).diagnostics).toEqual([]);
+});

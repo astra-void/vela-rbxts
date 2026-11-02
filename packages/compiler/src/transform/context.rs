@@ -17,8 +17,8 @@ use crate::transform::boundary::{
     consume_component_function, consume_component_initializer, is_component_binding,
 };
 use crate::transform::jsx::{
-    element_display_name, element_expression_source, is_component_element, lower_class_name,
-    unsupported_host_class_name_diagnostic,
+    attach_token_ranges, declared_prop_names, element_display_name, element_expression_source,
+    is_component_element, lower_class_name, unsupported_host_class_name_diagnostic,
 };
 use crate::transform::module::{RuntimeNeeds, element_tag_name, is_supported_host_element};
 use crate::transform::opacity::{
@@ -280,11 +280,30 @@ impl VisitMut for VelaTransformer {
             lowered.style_ir.animation = None;
         }
 
+        if !is_component && !lowered.style_ir.base.helpers.is_empty() {
+            let texts: Vec<&str> = lowered
+                .tokens
+                .iter()
+                .map(|token| token.text.as_str())
+                .collect();
+            let mut helper_diagnostics =
+                crate::transform::conflicts::drop_helpers_written_as_children(
+                    &mut lowered.style_ir,
+                    &element.children,
+                    &texts,
+                    &self.config,
+                    element_tag.as_deref(),
+                );
+            attach_token_ranges(&mut helper_diagnostics, &lowered.tokens);
+            self.diagnostics.extend(helper_diagnostics);
+        }
+
         // A component decides its own rendering, so there is no Roblox default
         // to neutralize and no attribute list that speaks for the instance.
+        let mut neutralized = Vec::new();
         if self.config.preflight && !is_component {
             let own_alpha = self.own_opacity_alpha(&element.opening.attrs, element_tag.as_deref());
-            crate::transform::runtime::apply_preflight(
+            neutralized = crate::transform::runtime::apply_preflight(
                 &mut lowered.style_ir,
                 &declared_prop_names(&lowered.preserved_attrs),
                 element_tag.as_deref(),
@@ -403,6 +422,7 @@ impl VisitMut for VelaTransformer {
 
         let tests = std::mem::take(&mut lowered.tests);
         let runtime_margin = lowered.runtime_margin;
+        let declared = declared_prop_names(&lowered.preserved_attrs);
         let mut attrs = lowered.preserved_attrs;
         if let Some(runtime_class_name) = lowered.runtime_class_name {
             attrs.push(JSXAttrOrSpread::JSXAttr(runtime_class_name));
@@ -451,14 +471,25 @@ impl VisitMut for VelaTransformer {
             } else {
                 Vec::new()
             };
-            attrs.extend(
-                lowered
-                    .style_ir
-                    .base
-                    .props
-                    .into_iter()
-                    .map(create_prop_attr_cast_any),
+            place_lowered_props(
+                &mut attrs,
+                lowered.style_ir.base.props,
+                &neutralized,
+                lowered.class_name_index,
+                create_prop_attr_cast_any,
             );
+            // What the host resolves at render time cannot be checked against
+            // the element's own props here, so it is told which ones to keep.
+            if lowered.style_ir.runtime_class_value {
+                let own = own_prop_names(&declared);
+                if !own.is_empty() {
+                    attrs.push(create_prop_attr(PropEntry {
+                        name: "__velaOwn".into(),
+                        value: serde_json::to_string(&own)
+                            .expect("own prop names must serialize to JSON"),
+                    }));
+                }
+            }
             if !rem_props.is_empty() {
                 attrs.push(create_prop_attr(PropEntry {
                     name: "__velaRem".into(),
@@ -548,13 +579,20 @@ impl VisitMut for VelaTransformer {
                 closing.name = element.opening.name.clone();
             }
         } else {
-            attrs.extend(lowered.style_ir.base.props.into_iter().map(|prop| {
-                if !scales_rem {
-                    return create_prop_attr(prop);
-                }
+            let rem = &mut self.rem;
+            place_lowered_props(
+                &mut attrs,
+                lowered.style_ir.base.props,
+                &neutralized,
+                lowered.class_name_index,
+                |prop| {
+                    if !scales_rem {
+                        return create_prop_attr(prop);
+                    }
 
-                create_prop_attr(self.rem.prop(prop))
-            }));
+                    create_prop_attr(rem.prop(prop))
+                },
+            );
         }
 
         element.opening.attrs = attrs;
@@ -1028,15 +1066,48 @@ pub(crate) fn contains_jsx(expr: &Expr) -> bool {
     presence.found
 }
 
-fn declared_prop_names(attrs: &[JSXAttrOrSpread]) -> Vec<String> {
-    attrs
+/// Only a spread can still collide with what the class lowers to, since a
+/// declared prop has already taken the class's copy out. So with one present,
+/// preflight's defaults go ahead of everything, where whatever paints the
+/// element outranks them, and the class's props take the class's own place, so
+/// JSX order decides between them and the spread as it was written.
+fn place_lowered_props(
+    attrs: &mut Vec<JSXAttrOrSpread>,
+    props: Vec<PropEntry>,
+    neutralized: &[&'static str],
+    class_name_index: usize,
+    mut lower: impl FnMut(PropEntry) -> JSXAttrOrSpread,
+) {
+    if !attrs
         .iter()
-        .filter_map(|attr| match attr {
-            JSXAttrOrSpread::JSXAttr(JSXAttr {
-                name: JSXAttrName::Ident(ident),
-                ..
-            }) => Some(ident.sym.to_string()),
-            _ => None,
+        .any(|attr| matches!(attr, JSXAttrOrSpread::SpreadElement(_)))
+    {
+        attrs.extend(props.into_iter().map(lower));
+        return;
+    }
+
+    let (defaults, props): (Vec<_>, Vec<_>) = props
+        .into_iter()
+        .partition(|prop| neutralized.iter().any(|name| prop.name == *name));
+    let index = class_name_index.min(attrs.len());
+    let props: Vec<_> = props.into_iter().map(&mut lower).collect();
+    attrs.splice(index..index, props);
+    let defaults: Vec<_> = defaults.into_iter().map(&mut lower).collect();
+    attrs.splice(0..0, defaults);
+}
+
+/// The element's own props the runtime host has to leave standing: everything
+/// it was written with, less what only the host or React reads.
+fn own_prop_names(declared: &[String]) -> Vec<&str> {
+    declared
+        .iter()
+        .map(String::as_str)
+        .filter(|name| {
+            !name.starts_with("__vela")
+                && !matches!(
+                    *name,
+                    "children" | "key" | "ref" | "Event" | "Change" | "Text"
+                )
         })
         .collect()
 }

@@ -413,6 +413,14 @@ export const App = () => {
 						className="w-12 h-6 text-slate-400 peer-focus/field:text-blue-400 peer-hover/field:text-rose-500"
 					/>
 				</frame>
+				{/* A declared prop outranks the class that names it, and a written
+				    helper the class's own. */}
+				<frame
+					className="size-6 bg-slate-700 rounded-md"
+					BackgroundColor3={Color3.fromRGB(1, 2, 3)}
+				>
+					<uicorner CornerRadius={new UDim(0, 3)} />
+				</frame>
 				{/* Three UIShadows on one element: drop, inset and text. */}
 				<textlabel
 					Text="glow"

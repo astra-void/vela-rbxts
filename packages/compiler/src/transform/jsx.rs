@@ -10,14 +10,15 @@ use crate::semantic::analyze::analyze_class_token;
 use crate::semantic::utility::UtilityKind;
 use crate::semantic::variant::VariantRegistry;
 use crate::transform::branch::lower_branches;
+use crate::transform::conflicts::drop_props_declared_on_element;
 use crate::transform::module::is_class_name_attr;
 use crate::transform::runtime::{
     resolve_class_tokens, share_grid_inputs, share_size_inputs, share_transform_inputs,
 };
 use swc_core::common::{DUMMY_SP, Span};
 use swc_core::ecma::ast::{
-    ArrayLit, Expr, ExprOrSpread, JSXAttr, JSXAttrOrSpread, JSXAttrValue, JSXElementName, JSXExpr,
-    JSXExprContainer, JSXObject,
+    ArrayLit, Expr, ExprOrSpread, JSXAttr, JSXAttrName, JSXAttrOrSpread, JSXAttrValue,
+    JSXElementName, JSXExpr, JSXExprContainer, JSXObject,
 };
 
 pub(crate) struct LoweredClassName {
@@ -34,6 +35,12 @@ pub(crate) struct LoweredClassName {
     pub(crate) runtime_margin: bool,
     /// Where the `className` was written, for what is synthesized in its place.
     pub(crate) class_name_span: Span,
+    /// How many of `preserved_attrs` were written before the `className`, which
+    /// is where what it lowers to goes, so a spread after it still wins.
+    pub(crate) class_name_index: usize,
+    /// The tokens this pass read, for diagnostics raised once the element is
+    /// known, with ranges when the value is a literal.
+    pub(crate) tokens: Vec<ClassToken>,
 }
 
 pub(crate) fn lower_class_name(
@@ -59,6 +66,16 @@ pub(crate) fn lower_class_name(
         })
         .cloned()
         .collect();
+    let class_name_index = attrs
+        .iter()
+        .position(|attr| {
+            matches!(
+                attr,
+                JSXAttrOrSpread::JSXAttr(attr) if is_class_name_attr(&attr.name)
+            )
+        })
+        .unwrap_or(0);
+    let declared = declared_prop_names(attrs);
 
     match &class_name_attr.value {
         Some(JSXAttrValue::Str(value)) => {
@@ -77,6 +94,14 @@ pub(crate) fn lower_class_name(
             share_grid_inputs(&mut style, false);
             share_size_inputs(&mut style);
             share_transform_inputs(&mut style);
+            let texts: Vec<&str> = spans.iter().map(|token| token.text.as_str()).collect();
+            diagnostics.extend(drop_props_declared_on_element(
+                &mut style,
+                &declared,
+                &texts,
+                config,
+                element_tag,
+            ));
             attach_token_ranges(&mut diagnostics[diagnostics_before..], &spans);
             // A preset animation loops on its own, so it promotes an otherwise
             // static element to the runtime host.
@@ -104,6 +129,8 @@ pub(crate) fn lower_class_name(
                 tests: Vec::new(),
                 runtime_margin,
                 class_name_span: class_name_attr.span,
+                class_name_index,
+                tokens: spans,
             })
         }
         Some(JSXAttrValue::JSXExprContainer(container)) => {
@@ -119,6 +146,8 @@ pub(crate) fn lower_class_name(
                     tests: Vec::new(),
                     runtime_margin: false,
                     class_name_span: class_name_attr.span,
+                    class_name_index,
+                    tokens: Vec::new(),
                 });
             };
 
@@ -172,6 +201,37 @@ pub(crate) fn lower_class_name(
             share_grid_inputs(&mut style, collapse.dynamic_expr.is_some());
             share_size_inputs(&mut style);
             share_transform_inputs(&mut style);
+            let texts: Vec<&str> = collapse
+                .static_tokens()
+                .into_iter()
+                .chain(
+                    collapse
+                        .branches()
+                        .flat_map(|branch| branch.tokens.iter().map(String::as_str)),
+                )
+                .collect();
+            diagnostics.extend(drop_props_declared_on_element(
+                &mut style,
+                &declared,
+                &texts,
+                config,
+                element_tag,
+            ));
+            // The tests are read only by the branch rules, and a declared prop
+            // can take every one of those out.
+            if style.runtime_rules.is_empty() {
+                tests.clear();
+            }
+            let tokens: Vec<ClassToken> = texts
+                .iter()
+                .map(|text| ClassToken {
+                    text: (*text).to_owned(),
+                    range: EditorRange {
+                        start: container.span.lo.0,
+                        end: container.span.hi.0,
+                    },
+                })
+                .collect();
 
             let runtime_class_value =
                 collapse.dynamic_expr.is_some() || !tests.is_empty() || style.runtime_class_value;
@@ -223,6 +283,8 @@ pub(crate) fn lower_class_name(
                 tests,
                 runtime_margin,
                 class_name_span: class_name_attr.span,
+                class_name_index,
+                tokens,
             })
         }
         _ => Some(LoweredClassName {
@@ -237,6 +299,8 @@ pub(crate) fn lower_class_name(
             // Nothing here was readable, so nothing can be said about a margin.
             runtime_margin: false,
             class_name_span: class_name_attr.span,
+            class_name_index,
+            tokens: Vec::new(),
         }),
     }
 }
@@ -295,7 +359,7 @@ fn runtime_class_attr(class_name_attr: &JSXAttr, value: Box<Expr>, span: Option<
     runtime_attr
 }
 
-fn attach_token_ranges(diagnostics: &mut [Diagnostic], spans: &[ClassToken]) {
+pub(crate) fn attach_token_ranges(diagnostics: &mut [Diagnostic], spans: &[ClassToken]) {
     for diagnostic in diagnostics {
         if diagnostic.range.is_some() {
             continue;
@@ -355,6 +419,21 @@ pub(crate) fn element_expression_source(name: &JSXElementName) -> Option<String>
         }
         JSXElementName::JSXNamespacedName(_) => None,
     }
+}
+
+/// The props an element writes itself. A spread names nothing this pass can
+/// read, so it is left to the order JSX gives it.
+pub(crate) fn declared_prop_names(attrs: &[JSXAttrOrSpread]) -> Vec<String> {
+    attrs
+        .iter()
+        .filter_map(|attr| match attr {
+            JSXAttrOrSpread::JSXAttr(JSXAttr {
+                name: JSXAttrName::Ident(ident),
+                ..
+            }) if ident.sym != "className" => Some(ident.sym.to_string()),
+            _ => None,
+        })
+        .collect()
 }
 
 fn find_class_name_attr(attrs: &[JSXAttrOrSpread]) -> Option<&JSXAttr> {

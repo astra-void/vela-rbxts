@@ -1,5 +1,6 @@
 use crate::api::{DiagnosticsRequest, DiagnosticsResponse, EditorDiagnostic};
 use crate::config::model::TailwindConfig;
+use crate::diagnostics::compiler::explicit_prop_overrides_class_diagnostic;
 use crate::diagnostics::editor::{compiler_to_editor_diagnostic, host_utility_diagnostic};
 use crate::editor::conflicts::overridden_classes;
 use crate::editor::{collect_class_name_contexts, tokenize_class_name_with_ranges};
@@ -45,12 +46,20 @@ pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsRe
 
             written.push(token);
             let mut compiler_diagnostics = Vec::new();
-            crate::transform::runtime::resolve_class_tokens(
+            let mut style = crate::transform::runtime::resolve_class_tokens(
                 vec![token.text.as_str()],
                 &config,
                 context.element_tag.as_deref(),
                 &mut compiler_diagnostics,
             );
+            crate::transform::runtime::share_size_inputs(&mut style);
+            crate::transform::runtime::share_transform_inputs(&mut style);
+            for prop in declared_props_the_class_names(&style, &context.declared_props) {
+                compiler_diagnostics.push(explicit_prop_overrides_class_diagnostic(
+                    Some(&token.text),
+                    &prop,
+                ));
+            }
 
             diagnostics.extend(
                 compiler_diagnostics
@@ -79,6 +88,25 @@ pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsRe
     }
 
     DiagnosticsResponse { diagnostics }
+}
+
+/// What the build drops from this class because the element declares it too.
+fn declared_props_the_class_names(
+    style: &crate::ir::model::StyleIr,
+    declared: &[String],
+) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let effects =
+        std::iter::once(&style.base).chain(style.runtime_rules.iter().map(|rule| &rule.effects));
+    for prop in effects.flat_map(|effects| effects.props.iter()) {
+        if declared.iter().any(|name| *name == prop.name)
+            && !names.iter().any(|name| *name == prop.name)
+        {
+            names.push(prop.name.to_string());
+        }
+    }
+
+    names
 }
 
 /// A payload that is a strict prefix of a real theme key is still being typed,

@@ -629,6 +629,9 @@ type VelaRuntimeHostProps = {
 	/// re-renders on a rem change anyway, and a value beats a binding the
 	/// composition step would have to read back.
 	__velaRem?: readonly string[];
+	/// The props the element declares itself, which outrank whatever its class
+	/// value resolves to here, as they outrank the classes the emit lowered.
+	__velaOwn?: readonly string[];
 	/// Whether a container this pass could see pins those offsets to literal
 	/// pixels. What arrives as context says the same thing for a pin that was
 	/// opened in a file this element's own was compiled without.
@@ -658,6 +661,7 @@ const HOST_OWN_PROPS = new Set<string>([
 	"__velaRules",
 	"__velaTests",
 	"__velaRem",
+	"__velaOwn",
 	"__velaRemPinned",
 	"__velaTransition",
 	"__velaAnimation",
@@ -852,6 +856,10 @@ export function createVelaRuntimeHost(
 					}
 				}
 			}
+			const ownProps = props.__velaOwn ?? [];
+			for (const name of ownProps) {
+				delete resolution.props[name];
+			}
 			for (const [name, value] of pairs(resolution.props)) {
 				hostProps[name] = value;
 			}
@@ -885,7 +893,16 @@ export function createVelaRuntimeHost(
 				}
 			}
 
+			// A composer can still rebuild one from pseudo props a class value
+			// resolved, such as an axis of `Size`.
+			const ownValues: Record<string, unknown> = {};
+			for (const name of ownProps) {
+				ownValues[name] = hostProps[name];
+			}
 			__VelaApply.applyComposedResolution(hostProps, resolution, preflight);
+			for (const [name, value] of pairs(ownValues)) {
+				hostProps[name] = value;
+			}
 
 			if (resolution.usesHover === true) {
 				__VelaVariant.attachHoverTracking(hostProps, setHovered);

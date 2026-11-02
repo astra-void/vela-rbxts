@@ -53,6 +53,9 @@ type VelaRuntimeHostProps = {
 	/// ones. Nothing re-runs this component, so each test arrives as a thunk.
 	__velaTests?: readonly (() => boolean)[];
 	__velaRem?: readonly string[];
+	/// The props the element declares itself, which outrank whatever its class
+	/// value resolves to here, as they outrank the classes the emit lowered.
+	__velaOwn?: readonly string[];
 	/// Whether a container this pass could see pins those offsets to literal
 	/// pixels. What the scope says is the same thing for a pin that was opened
 	/// in a file this element's own was compiled without.
@@ -85,6 +88,7 @@ const HOST_OWN_PROPS = new Set<string>([
 	"__velaRules",
 	"__velaTests",
 	"__velaRem",
+	"__velaOwn",
 	"__velaRemPinned",
 	"__velaTransition",
 	"__velaAnimation",
@@ -702,6 +706,11 @@ export function createVelaRuntimeHost(
 				: (rawClassName as ClassValue);
 		}
 
+		const ownProps = new Set<string>();
+		for (const name of props.__velaOwn ?? []) {
+			ownProps.add(name);
+		}
+
 		const resolution = Vide.derive(() => {
 			const current = __VelaResolution.resolveRuntimeResolution(
 				theme,
@@ -717,6 +726,10 @@ export function createVelaRuntimeHost(
 			// it twice.
 			if (hostTag !== undefined && alpha < 1) {
 				__VelaResolution.composeInheritedOpacity(current, hostTag, alpha);
+			}
+
+			for (const name of ownProps) {
+				delete current.props[name];
 			}
 
 			return current;
@@ -811,6 +824,13 @@ export function createVelaRuntimeHost(
 			const textSize = composed.TextSize;
 			if (typeIs(textSize, "number")) {
 				composed.TextSize = math.min(textSize, __VelaRemCore.TEXT_SIZE_CEILING);
+			}
+			// A composer can still rebuild one from pseudo props a class value
+			// resolved, such as an axis of `Size`.
+			for (const name of ownProps) {
+				if (base[name] !== undefined) {
+					composed[name] = base[name];
+				}
 			}
 
 			return composed;

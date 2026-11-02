@@ -92,4 +92,33 @@ function verifyFailClosed(projectRoot) {
 	return failures;
 }
 
-module.exports = { verifyFailClosed };
+/// Keys written twice in one Luau table constructor, which is what a JSX prop
+/// written by hand and by a class becomes: the later one wins silently.
+function duplicateTableKeys(luau) {
+	const duplicates = [];
+	const scopes = [new Set()];
+
+	for (const line of luau.split("\n")) {
+		const trimmed = line.trim();
+		const key = /^([A-Za-z_][A-Za-z0-9_]*) = /.exec(trimmed);
+		if (key && !trimmed.startsWith("local ")) {
+			const scope = scopes[scopes.length - 1];
+			if (scope.has(key[1])) {
+				duplicates.push(trimmed);
+			}
+			scope.add(key[1]);
+		}
+
+		for (const char of trimmed) {
+			if (char === "{") {
+				scopes.push(new Set());
+			} else if (char === "}" && scopes.length > 1) {
+				scopes.pop();
+			}
+		}
+	}
+
+	return duplicates;
+}
+
+module.exports = { duplicateTableKeys, verifyFailClosed };
