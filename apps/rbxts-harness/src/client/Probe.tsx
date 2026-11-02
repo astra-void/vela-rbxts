@@ -35,7 +35,11 @@ export const Probe = () => (
 			DisplayOrder={100}
 			ZIndexBehavior={Enum.ZIndexBehavior.Sibling}
 		>
-			<frame key="Backdrop" Size={UDim2.fromScale(1, 1)} BackgroundTransparency={1}>
+			<frame
+				key="Backdrop"
+				Size={UDim2.fromScale(1, 1)}
+				BackgroundTransparency={1}
+			>
 				{stripes}
 			</frame>
 			<frame
