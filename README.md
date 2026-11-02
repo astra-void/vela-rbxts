@@ -1,7 +1,7 @@
 # vela-rbxts
 
 `vela-rbxts` is a Tailwind-style `className` integration layer for [roblox-ts](https://roblox-ts.com/).
-This monorepo contains the native compiler, the `rbxtsc` host adapter, shared config and type packages, the runtime the transformer imports, a standalone Rust LSP adapter, and three harness apps.
+This monorepo contains the native compiler, the `rbxtsc` host adapter, shared config and type packages, the runtime the transformer imports, a standalone Rust LSP adapter, and five harness apps.
 
 Release workflow documentation is available in `docs/release.md`.
 
@@ -40,6 +40,7 @@ Full documentation lives at [docs.astra-void.xyz/vela-rbxts](https://docs.astra-
 | `apps/vide-harness` | The same, for the Vide target: asserts the lowering contracts on the emit and renders every runtime path in Studio. |
 | `apps/compiler-harness` | Browser-based preview for the compiler API and diagnostics. |
 | `apps/lsp-harness` | Drives the real `vela-rbxts-lsp` binary over stdio and asserts on diagnostics, completions, hover, and document colors. |
+| `apps/parity-harness` | Runs the static rules the compiler emits and the runtime resolution side by side under [Lune](https://lune-org.github.io/docs) and fails when a class list resolves differently on the two paths. |
 
 ## Using vela-rbxts in a roblox-ts project
 
@@ -158,6 +159,8 @@ A stylesheet only ever extends, so it does not compete with the config file: `ve
 
 There is no cascade behind any of this. Roblox has no specificity, no inheritance, and no selectors, so a rule names one class and nothing else: combinators (`.card > .title`), pseudo-classes (`.btn:hover`, written `hover:` on the class instead), `@media` (breakpoints are `theme.screens`), and CSS properties (`display: flex`) are diagnostics that name the vela equivalent. `theme.rem` stays in the config file, where its resolution and `pinnedUnder` list have somewhere to live.
 
+`vela watch` follows every stylesheet the config was built from, including one an `@import` pulls in from outside the project root or `src`, and rebuilds the whole tree when one changes. The transformer plugin cannot: `rbxtsc -w` re-emits only the source files it saw change, and a stylesheet is not part of the TypeScript program, so editing `vela.css` or a file it imports leaves every unchanged file lowered against the old tokens until that file is saved again. The same goes for `vela.config.ts` and `vela.config.json`, since rbxtsc does not know the lowered files depend on them. Restart `rbxtsc -w` after editing one, or run [`vela watch`](#without-the-transformer-the-vela-cli) beside `rbxtsc -w` instead of the plugin.
+
 ### 4. Add the declaration file
 
 Add a declaration file such as `src/vela-env.d.ts` so `className` is available on React attributes:
@@ -232,7 +235,7 @@ vela build
 vela watch
 ```
 
-`vela build` reads `src` and writes the lowered tree to `.vela/src`, transforming `.tsx` files that use `className` and copying everything else through byte for byte. `vela watch` does the same, then re-transforms on change. Point `rbxtsc` at the generated tree instead of your sources:
+`vela build` reads `src` and writes the lowered tree to `.vela/src`, transforming `.tsx` files that use `className` and copying everything else through byte for byte. `vela watch` does the same, then re-transforms on change; a change to the config, or to any stylesheet it was built from wherever that sits, re-transforms the whole tree. Where the platform cannot watch a directory, `vela watch` polls it every 400ms and says so. Point `rbxtsc` at the generated tree instead of your sources:
 
 ```json
 {
@@ -265,6 +268,18 @@ src/client/App.tsx:80:31 - warning vela/compiler(unknown-variant): Unknown varia
 
 `vela build` exits non-zero when a file fails to compile, so it is safe to chain with `&&`.
 
+rbxtsc itself only knows the generated tree, so its own errors name `.vela/src` and the lines of the lowered code. Run it through `vela rbxtsc` instead and they point back at `src`:
+
+```bash
+vela build && vela rbxtsc -p tsconfig.json
+```
+
+```bash
+vela watch & vela rbxtsc -w -p tsconfig.json
+```
+
+`vela rbxtsc` runs the project's own roblox-ts with every argument after `rbxtsc` passed through, rewrites the path, line and column of each diagnostic from the source maps `vela build` writes to `.vela/maps`, redraws the code frame from your line, and exits with rbxtsc's exit code. Options for `vela` itself go before the command, as in `vela --src app rbxtsc -w`. rbxtsc runs in the project root, so with `vela -p game rbxtsc -p tsconfig.json` it reads `game/tsconfig.json` and prints its paths relative to `game`. To keep calling rbxtsc yourself, pipe it through the same rewrite with `rbxtsc -p tsconfig.json 2>&1 | vela remap`; a pipe reports the exit code of its last command unless your shell sets `pipefail`. A diagnostic against a file that changed after its map was written, or a lowered file with no map yet, is printed untouched rather than pointed at the wrong line.
+
 | Option | What it does |
 | --- | --- |
 | `-p, --project <dir>` | Project root. Defaults to the current directory. |
@@ -275,7 +290,9 @@ src/client/App.tsx:80:31 - warning vela/compiler(unknown-variant): Unknown varia
 
 The CLI writes `.vela/.gitignore` so the generated tree stays out of version control, and it records what it emitted in `.vela/build-manifest.json`. Pruning is driven by that manifest, so a file the CLI never wrote is never deleted.
 
-Two consequences are worth knowing before you switch. Editors, stack traces, and `tsc --noEmit` see the generated tree rather than `src`, because that is what `rbxtsc` compiles; the LSP still reads your real sources, so completions and hover are unaffected. And the lowered tree is a build output — edit `src`, never `.vela/src`.
+Two consequences are worth knowing before you switch. Editors, stack traces, plain `rbxtsc` and `tsc --noEmit` see the generated tree rather than `src`, because that is what `rbxtsc` compiles; only `vela rbxtsc` and `vela remap` map diagnostics back, and Luau stack traces at runtime still name the generated code. The LSP reads your real sources, so completions and hover are unaffected. And the lowered tree is a build output — edit `src`, never `.vela/src`.
+
+The transformer plugin has the same limit in another shape: rbxtsc checks the lowered code but labels it with your source path, so a line number it reports in a lowered file can point past what you wrote, and source maps do not reach it.
 
 ## Supported Surface
 
@@ -442,6 +459,7 @@ Built-in variants:
 - `active:`, tracked through `InputBegan`/`InputEnded` for mouse and touch presses
 - `focus:`, tracked through `Focused`/`FocusLost` on a `textbox` and through `SelectionGained`/`SelectionLost` everywhere else
 - `dark:`, read from the local player's `VelaColorScheme` attribute
+- `group-hover:`, `group-active:` and `group-focus:`, and the same three as `peer-*:`, which read another instance's state; see [Group and Peer Variants](#group-and-peer-variants)
 
 Two more come from the project rather than from vela: variants a plugin [registers with `addVariant`](#state-variants), and the inline `attr-[Name=value]:` that reads a Roblox attribute without registering anything.
 
@@ -461,6 +479,30 @@ A variant on a utility that actually resolves forces the runtime path for that e
 
 What the variant does **not** do is send the utility behind it to the in-game parser. `open:rounded-lg` resolves `rounded-lg` at compile time exactly as a bare `rounded-lg` would; only the condition travels, as a rule the host evaluates. That holds for every variant, built-in or your own.
 
+### Group and Peer Variants
+
+`group-*` and `peer-*` style an element by the state of another one. Mark that one with `group` or `peer`, and the state variants read it:
+
+```tsx
+<frame className="group bg-slate-800">
+  <textlabel className="text-slate-400 group-hover:text-blue-400" Text="Card" />
+</frame>
+
+<frame className="flex flex-row">
+  <textbox className="peer/email" />
+  <textlabel className="text-slate-400 peer-focus/email:text-blue-400" Text="Email" />
+</frame>
+```
+
+- `group-hover:`, `group-active:` and `group-focus:` match while the nearest ancestor marked `group` is hovered, pressed or focused. The search starts at the parent, so an element never reads its own state this way.
+- `group-hover/card:` reads the nearest ancestor marked `group/card` instead, past any unnamed group nested inside it. A named marker answers to its name only: `group/card` does not make an element a plain `group`.
+- `peer-hover:`, `peer-active:` and `peer-focus:` match while any sibling under the same parent marked `peer` is in that state, and `peer-focus/email:` reads the sibling marked `peer/email`. Roblox keeps no order between siblings, so Tailwind's rule that a peer has to come earlier is dropped: any marked sibling counts, and several of them OR together. Name your peers when a parent holds more than one. An `m-*` element sits in a margin box frame (tagged `VelaMarginBox`), and peers are looked for beside the box, so a margin on either side does not split a pair.
+- Only hover, active and focus are read in this version. Anything else after `group-` or `peer-` (`group-md:`, `peer-dark:`) is reported as `unsupported-relational-variant`, and so is a name outside the variant charset.
+
+They follow the instance tree rather than the component tree: a marker lowers to a CollectionService tag on the instance (`VelaGroup`, `VelaGroup/card`, `VelaPeer`, `VelaPeer/email`), and the runtime finds it by walking up from the element or across its parent's children. That is why it works across component and file boundaries, and the same way on React and Vide. On a static React element the tag rides the `Tag` prop, merged with a literal `Tag` you wrote; an element whose `Tag` is an expression, or that spreads props, moves to the runtime host so the two can merge at render time. On Vide the host tags the instance itself. A marker under a variant (`hover:group`) is reported as `conditional-marker`, and one on a component element, which has no instance of its own, as `marker-on-component`.
+
+Hover is Roblox's `MouseEnter`/`MouseLeave` on the group instance, which is geometric: a child drawn outside the group's bounds does not hover it, and an element that mounts under a group the pointer is already over reads it as unhovered until the next event. Press and focus are tracked the way `active:` and `focus:` are. On React a statically lowered group stays static and only the elements reading it pay; on Vide the marked element becomes a runtime host so it can tag itself. Either way there is one connection set per observed instance however many read it, one place-wide CollectionService subscription per marker tag, and everything is let go when the reader or the instance goes away.
+
 ### Responsive Variants
 
 `md:` applies from a breakpoint up; `max-md:` applies strictly below it. The bounds meet rather than overlap, because the minimum is inclusive and the maximum is not, so at exactly 768px `md:` applies and `max-md:` does not, and between them the two cover every viewport exactly once.
@@ -476,6 +518,8 @@ They chain into a range, which is how you address one bucket and nothing else:
 ```
 
 A range whose bounds leave no viewport, such as `md:max-sm:`, is reported as `invalid-breakpoint-range` rather than emitted as a rule that silently never fires.
+
+Where several classes write one property, what applies is ranked the way Tailwind's stylesheet orders it, not by where it was written: a matching variant beats the base, a breakpoint beats a state such as `hover:`, a wider breakpoint beats a narrower one, and `portrait:`/`landscape:`, `dark:` and the input variants beat every breakpoint, so `lg:p-8 md:p-4 p-2` is `p-8` on a wide screen and `dark:p-1 lg:p-8` is `p-1` in dark mode. Classes of equal rank fall to the one written last.
 
 #### Configurable breakpoints
 
@@ -589,7 +633,7 @@ The exhaustive table of accepted values lives in the [utility reference](https:/
 | Margin | `m-*`, `mx-*`, `my-*`, `mt-*`, `mr-*`, `mb-*`, `ml-*`, `mx-auto`, `my-auto`, `-mt-*`, `-ml-*` | A CSS-style margin box: a transparent wrapper frame padded by the margins, with layout props routed onto it. `mx-auto`/`my-auto` center an axis through `AnchorPoint`; negative `-mt-*`/`-ml-*` pull through `Position`. |
 | Gap | `gap-*` | `UIListLayout.Padding` (and `UIGridLayout.CellPadding` under `grid`) |
 | List spacing | `space-x-*`, `space-y-*` | `UIListLayout.Padding` plus the matching `FillDirection` |
-| Divide | `divide-x`, `divide-y`, `divide-{x,y}-{0,1,2,4,8}`, `divide-{color}` | Separator frames inserted between content children at runtime |
+| Divide | `divide-x`, `divide-y`, `divide-{x,y}-{0,1,2,4,8}`, `divide-{color}` | Separator frames inserted between content children at runtime. Needs a list layout (`flex`, `flex-col`, `gap-*`, `space-*` or a `<uilistlayout>` child): without one it warns `divide-without-list-layout`, and beside `grid` it warns `divide-with-grid`. Children are ranked by their `LayoutOrder` or static `order-*` and the separators follow the sorted order; in React a component child has to forward `LayoutOrder` to its root, and a child whose `order-*` the parent cannot read statically warns `divide-unreadable-order`. `divide-{x,y}-0` removes the separators, and they fade with `opacity-*`. The separators are list items, so `gap-*` applies on both sides of each one (an approximation of CSS) |
 | Size | `w-*`, `h-*`, `size-*` | `Size`. `px` is a one-pixel offset, `full` is scale `1`, `fit` and `auto` set `AutomaticSize`, and a fixed set of fractions maps to scale. |
 | Constraints | `min-w-*`, `max-w-*`, `min-h-*`, `max-h-*` | `UISizeConstraint` |
 | Position | `left-*`, `top-*`, `right-*`, `bottom-*`, `inset-*` and their negated forms | `Position`. `right-*`/`bottom-*` position from the far edge. |
@@ -601,7 +645,8 @@ The exhaustive table of accepted values lives in the [utility reference](https:/
 | Order | `order-*`, `order-{first,last,none}`, `-order-*` | `LayoutOrder`; every emitted `UIListLayout` and `UIGridLayout` carries `SortOrder = LayoutOrder` so the values take effect |
 | Aspect ratio | `aspect-square`, `aspect-video`, `aspect-[W/H]`, `aspect-[N]` | `UIAspectRatioConstraint` |
 | Transform | `rotate-*`, `-rotate-*`, `scale-*` | `Rotation`, `UIScale` |
-| Effects | `opacity-*` | Every channel the element paints itself, integers 0 to 100: `BackgroundTransparency`, `TextTransparency` on text hosts, `ImageTransparency` on image hosts, and the `Transparency` of a stroke, shadow or blur drawn with it. It multiplies with the color's own alpha and composes into the subtree, across component boundaries in both directions. On `canvasgroup` it lowers to `GroupTransparency`, which composites the subtree in one pass and ends the fade there. |
+| Effects | `opacity-*` | Every channel the element paints itself, integers 0 to 100: `BackgroundTransparency`, `TextTransparency` on text hosts, `ImageTransparency` on image hosts, and the `Transparency` of a stroke, shadow or blur drawn with it. It multiplies with the color's own alpha and composes into the subtree, across component boundaries in both directions. On `canvasgroup` it lowers to `GroupTransparency`, which composites the subtree in one pass and ends the fade there. Elsewhere each descendant fades on its own, so overlapping children read darker where they overlap. |
+| Effects | `isolate` | On `frame`, builds the element as a `canvasgroup`, so `opacity-*` fades the subtree as one layer. A CanvasGroup clips its descendants, renders them to a texture, and is what a ref sees. Must be static and unconditional, since the instance class cannot change: under a variant or in a class value it warns `isolate-not-static`, and on another host or a component `isolate-needs-frame` |
 | Typography | `text-{xs..9xl}`, `font-*`, `italic`, `not-italic`, `text-{left,center,right}`, `align-*`, `leading-*`, `text-wrap`, `text-nowrap`, `whitespace-{normal,nowrap}`, `truncate`, `uppercase`, `lowercase`, `capitalize`, `underline`, `line-through` | `TextSize`, `FontFace` (family, weight, and style), `TextXAlignment`, `TextYAlignment`, `LineHeight`, `TextWrapped`, `TextTruncate`; case transforms rewrite `Text` (at compile time for literals, at runtime otherwise) and decorations render through `RichText`. `font-{family}` selects the family from `theme.fontFamily`, and family, weight, and style merge into one `FontFace`. |
 | Motion | `transition`, `transition-{all,colors,opacity,transform,shadow,none}`, `duration-*`, `ease-{linear,in,out,in-out}`, `delay-*`, `animate-{spin,pulse,bounce,none}` | Runtime style changes tween through `TweenService` instead of snapping, on the element **and on the UI\* helpers under it**; the property group narrows which props tween and everything outside it applies instantly. `animate-*` runs looping presets. Warns `motion-on-component` on component elements. See [Transitions](#transitions). |
 | Interaction | `pointer-events-{none,auto}` | `Interactable` |
@@ -696,11 +741,12 @@ Two branches that touch the same property are applied in the order they were wri
 ### Diagnostics
 
 - unsupported utility families and unknown theme keys emit warnings and are not lowered
-- a prefix vela recognises and cannot read is reported as itself rather than as a generic unknown variant: `unknown-breakpoint` for a `max-` in front of a name that is not a breakpoint, `malformed-attribute-variant` for an `attr-[…]` that does not parse, and `invalid-breakpoint-range` for a chain whose width bounds leave no viewport
+- a prefix vela recognises and cannot read is reported as itself rather than as a generic unknown variant: `unknown-breakpoint` for a `max-` in front of a name that is not a breakpoint, `malformed-attribute-variant` for an `attr-[…]` that does not parse, `unsupported-relational-variant` for a `group-*`/`peer-*` that names a state or a name vela cannot read, and `invalid-breakpoint-range` for a chain whose width bounds leave no viewport
 - `invalid-custom-variant` reports a `plugins.variants` registration that would shadow something vela already reads
 - unsupported `className` patterns emit diagnostics instead of being silently dropped
 - `className` on an element that is neither a supported host nor a component emits `classname-on-unsupported-host` and is left in the output
 - diagnostics reach `rbxtsc` through `context.addDiagnostic`; a host that does not expose it drops them
+- `overridden-class` is an editor lint, never reported by a build; see [Overridden Classes](#overridden-classes)
 
 `text-*` utilities are meaningful only on `textlabel`, `textbutton`, and `textbox`, `image-*` only on `imagelabel` and `imagebutton`, and `placeholder-*` only on `textbox`. That restriction is enforced by the editor, which reports `unsupported-host-utility`, and **not** by the compiler — `<frame className="text-red-500" />` compiles and emits `TextColor3` on a Frame with no build warning. It does not apply to components at all, since the eventual host element is unknown.
 
@@ -857,7 +903,7 @@ plugin(({ addVariant }) => {
 });
 ```
 
-[State Variants](#state-variants) covers the semantics, the escape hatch that needs no registration, and what it costs. Registrations are checked where they are written: a name vela already reads as something else (a built-in variant, a configured breakpoint, or anything starting with `max-` or `attr-`) is rejected with a message saying which. A `vela.config.json` states the same thing under `plugins.variants`, and one that registers such a name is reported as `invalid-custom-variant` and ignored rather than silently shadowing a built-in.
+[State Variants](#state-variants) covers the semantics, the escape hatch that needs no registration, and what it costs. Registrations are checked where they are written: a name vela already reads as something else (a built-in variant, a configured breakpoint, `group` or `peer`, or anything starting with `max-`, `attr-`, `group-` or `peer-`) is rejected with a message saying which. A `vela.config.json` states the same thing under `plugins.variants`, and one that registers such a name is reported as `invalid-custom-variant` and ignored rather than silently shadowing a built-in.
 
 ```json
 {
@@ -937,6 +983,19 @@ It provides completions inside a `className` (and nowhere else), hover, push dia
 
 Everything a project configures is part of that vocabulary: a breakpoint you defined completes as `tablet:` and `max-tablet:`, a variant a plugin registered completes with the attribute it reads, and `attr-[` completes to the inline form, plus every attribute your config already names, written out. Completing a variant inside a chain rewrites that segment alone, so the utility behind it survives.
 
+### Overridden Classes
+
+A class that later classes override sets nothing that survives, and the editor marks it with an `overridden-class` warning, drawn faded, that names the class that wins:
+
+```tsx
+<frame className="px-2 bg-red-500 p-4 bg-blue-500" />
+//                ↑ "px-2" has no effect: "p-4" overrides every property it sets under the same conditions.
+```
+
+The check resolves the class list with the compiler's own resolver, once with each class and once without it, so it agrees with the emit: `w-4 h-8` and `font-mono font-bold` merge into one property and stay quiet, `bg-red-500/50 bg-blue-500` warns because the solid color takes back the `/50`, and `opacity-50 opacity-75` or `divide-y divide-red-500/50 divide-blue-500` warn on the class that loses. Only classes under the same condition are compared, so `bg-red-500 hover:bg-blue-500` is never reported, while `md:hover:` and `hover:md:` count as one condition. A gradient forces `BackgroundColor3` to white, so a `bg-*` before `bg-gradient-to-r from-*` is reported with the gradient named as the cause. The only quickfix removes the class.
+
+It is an editor lint. `vela build`, `vela watch` and the rbxtsc transformer never report it, so a build stays quiet about classes it lowers correctly.
+
 ### Inlay Hints
 
 Off by default. Turned on, the editor shows what each class lowers to, after the class:
@@ -968,9 +1027,9 @@ The `source.sortVelaClasses` action rewrites every `className` in the file into 
 }
 ```
 
-Sorting never changes what an element renders. Utilities that can write the same Roblox property — `gap-*` with `space-*`, `border-*`/`ring-*`/`outline-*`, `w-*`/`h-*`/`size-*`, `opacity-*` with a `bg-*/N` modifier — sort as one group, so the one you wrote last stays last.
+Sorting does not change what an element renders, apart from the one case at the end of this paragraph. Utilities that can write the same Roblox property — `gap-*` with `space-*`, `border-*`/`ring-*`/`outline-*`, `w-*`/`h-*`/`size-*`, `opacity-*` with a `bg-*/N` modifier — sort as one group, so the one you wrote last stays last. A variant chain sorts by the conditions it names rather than by how it is spelled, so `hover:md:bg-red-500 md:hover:bg-blue-500` keeps its order and the same class wins, and a chain always sorts after a shorter chain it extends, so `dark:hover:bg-slate-700` stays behind `dark:bg-slate-800`. One case is left to you: two different variants that rank alike and can hold at once, such as `hover:` and `focus:`, still sort into their own bands, and the compiler applies such a pair in the order it is written, so where both hold the class that sorts later wins.
 
-Variant prefixes sort in a fixed order, narrow to broad: min-width breakpoints ascending, then max-width breakpoints widest-first, then orientation, input mode, your own state variants (registered ones before inline `attr-[…]`), then `hover:`/`active:`/`focus:`, then `dark:`. The order the v0.12 variants already sorted into is unchanged, because the new kinds slot into bands of their own and moving one past another would change which rule wins where both apply.
+Variant prefixes sort in a fixed order, narrow to broad: min-width breakpoints ascending, then max-width breakpoints widest-first, then orientation, input mode, your own state variants (registered ones before inline `attr-[…]`), then `hover:`/`active:`/`focus:`, then `group-*` and `peer-*`, then `dark:`. The `group` and `peer` markers sort to the front, since they write no property. The order the v0.12 variants already sorted into is unchanged, because the new kinds slot into bands of their own and moving one past another would change which rule wins where both apply.
 
 Prebuilt binaries cover darwin arm64 and x64, linux x64 gnu and musl, linux arm64 gnu, and win32 x64. Linux arm64 musl and Windows on ARM have no binary on any channel and need a build from source.
 
@@ -1045,7 +1104,20 @@ pnpm typecheck
 
 # Clean workspace
 pnpm clean
+
+# Compare the static and runtime paths (needs Lune)
+pnpm --filter parity-harness test
+
+# Benchmarks: compiler crate, rbxtsc host, end-to-end rbxtsc build
+pnpm run bench:compiler
+pnpm run bench:host
+pnpm run bench:build
+
+# Serve the Studio bench place on port 34873
+pnpm --filter rbxts-harness run bench:serve
 ```
+
+[docs/benchmarks.md](./docs/benchmarks.md) describes each benchmark and how to drive the bench place in Studio.
 
 ## Changelog
 

@@ -321,8 +321,21 @@ test("a negative zero margin closes the side rather than vanishing", () => {
 	);
 
 	expect(result.diagnostics).toEqual([]);
-	expect(result.code).toMatch(/"left": 0\.0/);
+	expect(result.code).not.toContain("__velaMargin");
 	expect(result.code).not.toContain("-0.0");
+});
+
+test("an all-zero margin stays on the static path", () => {
+	for (const className of ["m-0", "mb-0", "-ml-0", "-mt-0", "mx-0 my-0"]) {
+		const result = transform(
+			`export const A = () => <frame className="${className}" />;`,
+			null,
+		);
+
+		expect(result.diagnostics).toEqual([]);
+		expect(result.code).not.toContain("VelaRuntimeHost");
+		expect(JSON.parse(result.ir[0]).margin).toBeUndefined();
+	}
 });
 
 test("rejects inexpressible negative margins and margin auto", () => {

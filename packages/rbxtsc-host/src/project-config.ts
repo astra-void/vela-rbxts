@@ -117,6 +117,26 @@ export function resolveProjectConfigInfo(
 }
 
 /**
+ * Every file the config for a source file was read from: the config file and
+ * the stylesheet with everything it imported, wherever those sit on disk. Read
+ * off what the last resolve cached, so a stylesheet that failed to parse still
+ * names the files a fix would land in.
+ */
+export function projectConfigDependencies(sourceFileName: string): string[] {
+	const directory = path.dirname(path.resolve(sourceFileName));
+	const configFilePath = findProjectConfigFile(directory);
+	const cssFilePath = findProjectCssFile(directory);
+	const dependencies = configFilePath ? [configFilePath] : [];
+
+	if (cssFilePath) {
+		const files = cssCache.get(cssFilePath)?.files ?? [cssFilePath];
+		dependencies.push(...files.map((file) => path.resolve(file)));
+	}
+
+	return dependencies;
+}
+
+/**
  * A stylesheet only ever extends, so it folds in on top of the resolved config
  * rather than ahead of it, where the config's own theme would replace what the
  * stylesheet contributed instead of merging with it.

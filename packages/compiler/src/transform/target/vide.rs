@@ -41,6 +41,12 @@ impl EmitTarget for VideTarget {
         true
     }
 
+    /// Children are built first, so the host reads their instances and follows
+    /// every later `LayoutOrder` write.
+    fn reads_built_layout_order(&self) -> bool {
+        true
+    }
+
     /// The React target can hand the host a boolean, because a re-render brings
     /// the next one. A Vide component body runs once, so a test that arrived
     /// evaluated would pin its rule to whatever was true at creation.
@@ -151,6 +157,11 @@ impl EmitTarget for VideTarget {
                 name,
             }),
         })
+    }
+
+    /// Vide has no `Tag` prop, so the host tags the instance once it exists.
+    fn static_markers(&self, _markers: &[String], _attrs: &mut Vec<JSXAttrOrSpread>) -> bool {
+        false
     }
 
     /// Vide maps every lowercase tag through the engine's own class list.

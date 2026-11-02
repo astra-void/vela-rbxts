@@ -33,5 +33,6 @@
 			}
 		]
 	},
-	"include": ["src"]
+	"include": ["src"],
+	"exclude": ["src/bench"]
 }

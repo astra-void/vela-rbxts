@@ -90,7 +90,9 @@ test("meets a variant inside a branch with the branch's own test", () => {
 	);
 
 	expect(result.diagnostics).toEqual([]);
+	// A hover outranks the branch's unconditioned class, so it is applied last.
 	expect(ruleConditions(result)).toEqual([
+		{ kind: "test", index: 0, expected: false },
 		{
 			kind: "all",
 			conditions: [
@@ -98,7 +100,6 @@ test("meets a variant inside a branch with the branch's own test", () => {
 				{ kind: "hover" },
 			],
 		},
-		{ kind: "test", index: 0, expected: false },
 	]);
 });
 

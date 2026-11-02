@@ -2,6 +2,8 @@
 import { createRequire } from "node:module";
 
 import { DEFAULT_OUT_DIR, DEFAULT_SRC_DIR, parseCliArgs } from "./options.js";
+import { runRbxtsc } from "./rbxtsc.js";
+import { runRemap } from "./remap.js";
 import { runBuild, runWatch } from "./run.js";
 
 const HELP_TEXT = `vela — lower Tailwind-style className usage ahead of rbxtsc.
@@ -9,6 +11,10 @@ const HELP_TEXT = `vela — lower Tailwind-style className usage ahead of rbxtsc
 Usage
   vela build [options]    Transform the source tree once.
   vela watch [options]    Transform, then re-transform on change.
+  vela remap [options]    Rewrite rbxtsc output on stdin to point at --src.
+  vela [options] rbxtsc [args...]
+                          Run the project's rbxtsc with its output remapped.
+                          Everything after "rbxtsc" is passed to it.
 
 Options
   -p, --project <dir>     Project root. Default: the current directory.
@@ -54,7 +60,16 @@ async function main(): Promise<number> {
 
 	const options = parsed.options;
 
-	return options.command === "watch" ? runWatch(options) : runBuild(options);
+	switch (options.command) {
+		case "watch":
+			return runWatch(options);
+		case "remap":
+			return runRemap(options);
+		case "rbxtsc":
+			return runRbxtsc(options);
+		default:
+			return runBuild(options);
+	}
 }
 
 main().then(

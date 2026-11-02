@@ -1,10 +1,10 @@
 use crate::ir::model::{HelperEntry, PropEntry};
 use swc_core::{
-    common::DUMMY_SP,
+    common::{DUMMY_SP, Span},
     ecma::ast::{
         ArrowExpr, BlockStmtOrExpr, Expr, Ident, IdentName, JSXAttr, JSXAttrName, JSXAttrOrSpread,
         JSXAttrValue, JSXElement, JSXElementChild, JSXElementName, JSXExpr, JSXExprContainer,
-        JSXOpeningElement,
+        JSXObject, JSXOpeningElement,
     },
 };
 
@@ -30,6 +30,40 @@ pub(crate) fn create_prop_attr_with_expr(name: String, expr: Box<Expr>) -> JSXAt
             expr: JSXExpr::Expr(expr),
         })),
     })
+}
+
+/// Hands a synthesized tag and its attributes the span of the `className` they
+/// were lowered from, so a source map leads a diagnostic on one back there.
+/// Only the source map reads these spans; the emitted text is unchanged.
+pub(crate) fn inherit_span(name: &mut JSXElementName, attrs: &mut [JSXAttrOrSpread], span: Span) {
+    match name {
+        JSXElementName::Ident(ident) if ident.span.is_dummy() => ident.span = span,
+        JSXElementName::JSXMemberExpr(member) => {
+            if let JSXObject::Ident(object) = &mut member.obj
+                && object.span.is_dummy()
+            {
+                object.span = span;
+            }
+        }
+        _ => {}
+    }
+
+    for attr in attrs {
+        if let JSXAttrOrSpread::JSXAttr(JSXAttr {
+            name: JSXAttrName::Ident(attr_name),
+            ..
+        }) = attr
+            && attr_name.span.is_dummy()
+        {
+            attr_name.span = span;
+        }
+    }
+}
+
+pub(crate) fn inherit_child_span(child: &mut JSXElementChild, span: Span) {
+    if let JSXElementChild::JSXElement(element) = child {
+        inherit_span(&mut element.opening.name, &mut element.opening.attrs, span);
+    }
 }
 
 /// The tag name a helper is written with when the target can spell it as is.

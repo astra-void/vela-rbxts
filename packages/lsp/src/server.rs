@@ -11,14 +11,14 @@ use tower_lsp::lsp_types::{
     CodeActionProviderCapability, CodeActionResponse, Color, ColorInformation, ColorPresentation,
     ColorPresentationParams, ColorProviderCapability, CompletionItem, CompletionItemKind,
     CompletionList, CompletionOptions, CompletionParams, CompletionResponse, CompletionTextEdit,
-    Diagnostic, DiagnosticSeverity, DidChangeConfigurationParams, DidChangeTextDocumentParams,
-    DidChangeWatchedFilesParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    DocumentColorParams, DocumentHighlight, DocumentHighlightKind, DocumentHighlightParams, Hover,
-    HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
-    InitializedParams, InlayHint as LspInlayHint, InlayHintKind, InlayHintLabel, InlayHintParams,
-    MarkupContent, MarkupKind, NumberOrString, OneOf, Position, PositionEncodingKind, Range,
-    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit,
-    Url, WorkspaceEdit,
+    Diagnostic, DiagnosticSeverity, DiagnosticTag, DidChangeConfigurationParams,
+    DidChangeTextDocumentParams, DidChangeWatchedFilesParams, DidCloseTextDocumentParams,
+    DidOpenTextDocumentParams, DocumentColorParams, DocumentHighlight, DocumentHighlightKind,
+    DocumentHighlightParams, Hover, HoverContents, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, InitializedParams, InlayHint as LspInlayHint,
+    InlayHintKind, InlayHintLabel, InlayHintParams, MarkupContent, MarkupKind, NumberOrString,
+    OneOf, Position, PositionEncodingKind, Range, ServerCapabilities, ServerInfo,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
 };
 use tower_lsp::{Client, LanguageServer};
 use vela_rbxts_compiler::{
@@ -458,48 +458,11 @@ impl LanguageServer for RbxtsLanguageServer {
         }
 
         for diagnostic in params.context.diagnostics.iter().filter(|_| wants_quickfix) {
-            if diagnostic.source.as_deref() != Some(SOURCE_NAME) {
-                continue;
-            }
-
-            let Some(token) = diagnostic_token(diagnostic) else {
-                continue;
-            };
-
-            // Asked at the utility rather than at the token start: a position
-            // inside the variant chain completes variants alone, and a
-            // replacement needs the utilities too.
-            let (variant_prefix, _) = split_variant_prefix(&token);
-            let completions = get_completions(CompletionRequest {
-                source: document.text.clone(),
-                position: document.position_to_offset(diagnostic.range.start)
-                    + variant_prefix.encode_utf16().count() as u32,
-                options: Some(options.clone()),
-            });
-            let labels: Vec<String> = completions
-                .items
-                .into_iter()
-                .map(|item| item.label)
-                .collect();
-            let code = match &diagnostic.code {
-                Some(NumberOrString::String(code)) => Some(code.as_str()),
-                _ => None,
-            };
-            let suggestions =
-                replacement_suggestions(code, &token, &labels, MAX_REPLACEMENT_SUGGESTIONS);
-
-            for (index, suggestion) in suggestions.into_iter().enumerate() {
-                actions.push(CodeActionOrCommand::CodeAction(replace_action(
-                    &uri,
-                    diagnostic,
-                    &suggestion,
-                    index == 0,
-                )));
-            }
-
-            actions.push(CodeActionOrCommand::CodeAction(remove_action(
-                &uri, diagnostic, &token,
-            )));
+            actions.extend(
+                quickfix_actions(&uri, &document, &options, diagnostic)
+                    .into_iter()
+                    .map(CodeActionOrCommand::CodeAction),
+            );
         }
 
         if actions.is_empty() {
@@ -844,6 +807,57 @@ fn replacement_suggestions(
     suggestions
 }
 
+/// An overridden class is spelled correctly, so the only fix is to drop it.
+const OVERRIDDEN_CLASS_CODE: &str = "overridden-class";
+
+fn quickfix_actions(
+    uri: &Url,
+    document: &Document,
+    options: &EditorOptions,
+    diagnostic: &Diagnostic,
+) -> Vec<CodeAction> {
+    if diagnostic.source.as_deref() != Some(SOURCE_NAME) {
+        return Vec::new();
+    }
+
+    let Some(token) = diagnostic_token(diagnostic) else {
+        return Vec::new();
+    };
+
+    let code = match &diagnostic.code {
+        Some(NumberOrString::String(code)) => Some(code.as_str()),
+        _ => None,
+    };
+    if code == Some(OVERRIDDEN_CLASS_CODE) {
+        return vec![remove_action(uri, diagnostic, &token)];
+    }
+
+    // Asked at the utility rather than at the token start: a position inside
+    // the variant chain completes variants alone, and a replacement needs the
+    // utilities too.
+    let (variant_prefix, _) = split_variant_prefix(&token);
+    let completions = get_completions(CompletionRequest {
+        source: document.text.clone(),
+        position: document.position_to_offset(diagnostic.range.start)
+            + variant_prefix.encode_utf16().count() as u32,
+        options: Some(options.clone()),
+    });
+    let labels: Vec<String> = completions
+        .items
+        .into_iter()
+        .map(|item| item.label)
+        .collect();
+    let suggestions = replacement_suggestions(code, &token, &labels, MAX_REPLACEMENT_SUGGESTIONS);
+
+    let mut actions: Vec<CodeAction> = suggestions
+        .into_iter()
+        .enumerate()
+        .map(|(index, suggestion)| replace_action(uri, diagnostic, &suggestion, index == 0))
+        .collect();
+    actions.push(remove_action(uri, diagnostic, &token));
+    actions
+}
+
 fn diagnostic_token(diagnostic: &Diagnostic) -> Option<String> {
     diagnostic
         .data
@@ -1010,6 +1024,7 @@ fn compiler_diagnostic_to_lsp(document: &Document, diagnostic: CompilerDiagnosti
         .token
         .as_ref()
         .map(|token| serde_json::json!({ "token": token }));
+    let tags = (diagnostic.code == OVERRIDDEN_CLASS_CODE).then(|| vec![DiagnosticTag::UNNECESSARY]);
 
     Diagnostic {
         range,
@@ -1023,6 +1038,7 @@ fn compiler_diagnostic_to_lsp(document: &Document, diagnostic: CompilerDiagnosti
         source: Some(SOURCE_NAME.to_owned()),
         message: diagnostic.message,
         data,
+        tags,
         ..Default::default()
     }
 }
@@ -1201,6 +1217,49 @@ mod tests {
         let edits = &remove.edit.unwrap().changes.unwrap()[&uri];
         assert_eq!(edits[0].new_text, "");
         assert_eq!(edits[0].range, diagnostic.range);
+    }
+
+    #[test]
+    fn marks_an_overridden_class_unnecessary_and_only_offers_its_removal() {
+        let uri = Url::parse("file:///ws/App.tsx").unwrap();
+        let source = "export const App = () => <frame className=\"px-2 p-4 bg-surfac\" />;";
+        let document = Document::new(uri.clone(), source.to_owned(), Some(1));
+        let options = EditorOptions {
+            config_json: None,
+            file_name: None,
+            project_root: None,
+        };
+        let diagnostics: Vec<Diagnostic> = get_diagnostics(DiagnosticsRequest {
+            source: source.to_owned(),
+            options: Some(options.clone()),
+        })
+        .diagnostics
+        .into_iter()
+        .map(|diagnostic| compiler_diagnostic_to_lsp(&document, diagnostic))
+        .collect();
+
+        let overridden = diagnostics
+            .iter()
+            .find(|diagnostic| {
+                diagnostic.code == Some(NumberOrString::String(OVERRIDDEN_CLASS_CODE.to_owned()))
+            })
+            .expect("px-2 is overridden by p-4");
+        assert_eq!(overridden.tags, Some(vec![DiagnosticTag::UNNECESSARY]));
+        assert_eq!(diagnostic_token(overridden).as_deref(), Some("px-2"));
+
+        let actions = quickfix_actions(&uri, &document, &options, overridden);
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0].title, "Remove `px-2`");
+        let edits = &actions[0].edit.as_ref().unwrap().changes.as_ref().unwrap()[&uri];
+        assert_eq!(edits[0].new_text, "");
+        assert_eq!(edits[0].range, overridden.range);
+
+        let typo = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic_token(diagnostic).as_deref() == Some("bg-surfac"))
+            .expect("bg-surfac is an unknown theme key");
+        assert_eq!(typo.tags, None);
+        assert!(quickfix_actions(&uri, &document, &options, typo).len() > 1);
     }
 
     #[test]

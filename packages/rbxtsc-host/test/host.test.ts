@@ -9,6 +9,7 @@ import {
 	clearProjectConfigCache,
 	createRbxtscTransformerBridge,
 	isTransformableHostFile,
+	projectConfigDependencies,
 	resolveProjectConfig,
 	transformSourceForHost,
 } from "../src/index";
@@ -726,6 +727,43 @@ test("re-reads a stylesheet the entry imported after it changes on disk", () => 
 	expect(resolveProjectConfig(project.sourceFile).theme.spacing.gap).toBe(
 		"new UDim(0, 12)",
 	);
+});
+
+test("names every file the config was folded from, outside the project root too", () => {
+	const project = createProject(`export default defineConfig({});`);
+	const tokens = path.join(project.root, "design", "tokens", "colors.css");
+	fs.mkdirSync(path.dirname(tokens), { recursive: true });
+	fs.writeFileSync(
+		path.join(project.root, "vela.css"),
+		`@import "./design/tokens/colors.css";`,
+		"utf8",
+	);
+	fs.writeFileSync(tokens, `@theme { --color-brand: #ffffff; }`, "utf8");
+	clearProjectConfigCache();
+
+	resolveProjectConfig(project.sourceFile);
+
+	expect(projectConfigDependencies(project.sourceFile)).toEqual([
+		path.join(project.root, "vela.config.ts"),
+		path.join(project.root, "vela.css"),
+		tokens,
+	]);
+});
+
+test("still names an imported stylesheet whose parse failed", () => {
+	const project = createProject();
+	const tokens = path.join(project.root, "tokens", "spacing.css");
+	fs.mkdirSync(path.dirname(tokens), { recursive: true });
+	fs.writeFileSync(
+		path.join(project.root, "vela.css"),
+		`@import "./tokens/spacing.css";`,
+		"utf8",
+	);
+	fs.writeFileSync(tokens, `@theme {\n\t--shadow-md: 4px;\n}`, "utf8");
+	clearProjectConfigCache();
+
+	expect(() => resolveProjectConfig(project.sourceFile)).toThrow();
+	expect(projectConfigDependencies(project.sourceFile)).toContain(tokens);
 });
 
 test("fails the build with a located message when a stylesheet is wrong", () => {

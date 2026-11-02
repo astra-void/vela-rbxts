@@ -7,9 +7,12 @@
 		"build": "rbxtsc -p tsconfig.json",
 		"predev": "node ./scripts/materialize-rbxts-modules.cjs",
 		"dev": "rbxtsc -w -p tsconfig.json",
+		"build:bench": "node ./scripts/materialize-rbxts-modules.cjs && rbxtsc -p tsconfig.bench.json --rojo bench.project.json",
+		"bench:place": "pnpm run build:bench && rojo build bench.project.json -o out/bench.rbxl",
+		"bench:serve": "pnpm run build:bench && rojo serve bench.project.json --port 34873",
 		"test": "node ./scripts/materialize-rbxts-modules.cjs && node scripts/verify-vide-output.cjs",
 		"pretypecheck": "node ./scripts/materialize-rbxts-modules.cjs",
-		"typecheck": "tsc --noEmit -p tsconfig.json",
+		"typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.bench.json",
 		"lint": "biome check .",
 		"lint:fix": "biome check . --fix --unsafe",
 		"clean": "node -e \"const fs=require('node:fs');fs.rmSync('out',{recursive:true,force:true});\""

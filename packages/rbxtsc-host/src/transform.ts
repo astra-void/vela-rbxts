@@ -43,6 +43,8 @@ export type TransformSourceForHostOptions = {
 	filter?: HostFileFilterOptions;
 	mapDiagnostic?: HostDiagnosticMapper;
 	projectRoot?: string;
+	/** Asks the compiler for `mappings` from the output back to `sourceText`. */
+	sourceMap?: boolean;
 };
 
 export function transformSourceForHost(
@@ -69,6 +71,7 @@ export function transformSourceForHost(
 		const config = request.config ?? options.config ?? projectConfig.config;
 		const compilerOptions = {
 			configJson: configJsonFor(config),
+			...(options.sourceMap ? { sourceMap: true } : {}),
 		} as const;
 		const compilerResult = normalizeCompilerResult(
 			compiler.transform(request.sourceText, compilerOptions),
@@ -85,6 +88,7 @@ export function transformSourceForHost(
 			skipped: false,
 			eligibility,
 			compilerResult,
+			...(compilerResult.mappings ? { mappings: compilerResult.mappings } : {}),
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

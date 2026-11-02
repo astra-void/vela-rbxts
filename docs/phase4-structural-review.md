@@ -3,8 +3,8 @@
 > **Status**: 4.1 (margin, option C) is implemented. When it overlaps with
 > transitions, layout props routed to the wrapper apply immediately without a tween
 > in v1 (wrapper-ref tweens come later).
-> 4.2 (divide) is implemented too — with exactly the design and constraints from this
-> review (LayoutOrder, gap approximation).
+> 4.2 (divide) is implemented too. It now ranks children by their `LayoutOrder`
+> (section 2), so the only constraint left is the gap approximation.
 
 Phase 4 covers the utilities that do not change one element's properties but
 **have to change the render tree itself**. This review compares implementation
@@ -133,20 +133,61 @@ sep = frame(Size: (0,N,1,0) for divide-x, (1,0,0,N) for divide-y, BackgroundColo
 - Conditional children (`cond && <frame/>`) are already filtered out by
   normalizeChildren, so the separator count works out automatically.
 
-### Constraints (must be documented)
+### Ordering contract
 
-- **If children use explicit `LayoutOrder`, the separator order breaks** — under
-  UIListLayout sorting the separators (default 0) land in the wrong place. This case
-  cannot be detected, so the hover text and docs state: "do not use divide on a list
-  that uses LayoutOrder".
-- Separators are list items too, so `gap` applies on both sides of each separator —
-  unlike CSS (where divide is a border and independent of gap). Document that this is
-  an approximation.
+UIListLayout sorts by `LayoutOrder`, and a separator would otherwise carry the
+default 0 and land wherever the engine breaks ties. So the host ranks every content
+child, whether or not any of them declares an order:
+
+- `planDivideOrder` (runtime-core) stable-sorts the children by `(LayoutOrder ?? 0,
+  source index)`. The child ranked r gets `LayoutOrder = 2r`, and the separator
+  between ranks r-1 and r gets `2r-1`. Ranks are always written, so the result never
+  depends on how Roblox breaks a tie (instance creation order, which a React remount
+  can reshuffle).
+- The order a child declares is what the host can read: an explicit `LayoutOrder`
+  prop, or a static `order-*`, which the compiler lowers to that prop.
+- **React** reads `props.LayoutOrder` off each child element and clones it with its
+  rank. A Vela host child takes the rank on the host-own `__velaLayoutOrder` prop,
+  applied after its own resolution, so its runtime `order-*` cannot overwrite it.
+  Separators are keyed, so they reconcile in place. A component child has to forward
+  `LayoutOrder` to the instance it renders. An `order-*` under a variant or in a
+  dynamic class value on a child is decided after the parent reads it; the compiler
+  warns `divide-unreadable-order`, and the separators follow the static order.
+- **Vide** builds children first, so the host reads `LayoutOrder` off each built
+  GuiObject (component roots included), writes the ranks onto the instances and
+  re-plans when a `LayoutOrder` changes, telling its own writes apart by the value it
+  last wrote. A thunk child is ranked by the instances it returns; one that returns
+  nothing hides its spare separator. Rewriting a rank with exactly the value the host
+  last wrote cannot be told apart from the host's own write.
+- The host overwrites each child's `LayoutOrder` with its rank, which code reading
+  `instance.LayoutOrder` can observe.
+- A value child under a fade arrives wrapped in one `__VelaOpacity.Provider`; the
+  React host splits it into one provider per child at the same alpha, so each child
+  gets its own slot and is faded once.
+
+### Other semantics
+
+- Separators fade with the subtree: the compiler composes the static `opacity-*`
+  alpha (own and inherited) into the divide transparency, and both hosts compose the
+  ambient and runtime alpha on top. Under a `canvasgroup` the group transparency
+  already covers them.
+- `divide-x-0` / `divide-y-0` insert no separators.
+- The compiler warns `divide-without-list-layout` when nothing gives the element a
+  UIListLayout (`flex`, `flex-col`, `space-*` or a written `<uilistlayout>`), and
+  `divide-with-grid` under `grid`, where each separator would take a cell.
+
+### Constraint (documented)
+
+- Separators are list items too, so `gap` applies on both sides of each separator,
+  unlike CSS (where divide is a border and independent of gap). Item to item, Vela
+  spaces `2 * gap + thickness` against CSS's `gap + thickness`. This is kept as a
+  documented approximation; no gap compensation is applied.
 
 ### Judgment
 
 The implementation is easier than margin option C (just child-array manipulation), but
-demand is uncertain and the LayoutOrder constraint can surprise users. Recommendation:
+demand was uncertain and the LayoutOrder constraint could surprise users (the
+ordering contract above has since removed it). Recommendation at the time:
 **do it after margin settles, in the same host release cycle**. For now the `divide`
 family stays in no-roblox-equivalent.
 

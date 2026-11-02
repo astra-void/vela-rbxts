@@ -167,9 +167,18 @@ export namespace __VelaApply {
 			return;
 		}
 
+		if (name === "ChannelAlpha") {
+			if (typeIs(value, "number")) {
+				resolution.channelAlpha = value;
+			}
+			return;
+		}
+
+		// A size takes an axis back from an automatic size written before it.
 		if (name === "SizeX") {
 			if (typeIs(value, "UDim")) {
 				resolution.sizeWidth = value;
+				resolution.autoWidth = undefined;
 			}
 			return;
 		}
@@ -177,6 +186,7 @@ export namespace __VelaApply {
 		if (name === "SizeY") {
 			if (typeIs(value, "UDim")) {
 				resolution.sizeHeight = value;
+				resolution.autoHeight = undefined;
 			}
 			return;
 		}
@@ -308,13 +318,17 @@ export namespace __VelaApply {
 			name === "GradientVia" ||
 			name === "GradientTo"
 		) {
+			// A stop arrives with its `/N` after it, so an earlier one's goes here.
 			if (typeIs(value, "Color3")) {
 				if (name === "GradientFrom") {
 					resolution.gradientFrom = value;
+					resolution.gradientFromTransparency = undefined;
 				} else if (name === "GradientVia") {
 					resolution.gradientVia = value;
+					resolution.gradientViaTransparency = undefined;
 				} else {
 					resolution.gradientTo = value;
+					resolution.gradientToTransparency = undefined;
 				}
 			}
 			return;
@@ -425,26 +439,37 @@ export namespace __VelaApply {
 		const anchorY =
 			translateAnchorY ?? (resolution.centerY === true ? 0.5 : undefined);
 		if (anchorX !== undefined || anchorY !== undefined) {
-			hostProps.AnchorPoint = new Vector2(anchorX ?? 0, anchorY ?? 0);
+			const anchor = hostProps.AnchorPoint;
+			const declaredAnchor = typeIs(anchor, "Vector2")
+				? anchor
+				: new Vector2(0, 0);
+			hostProps.AnchorPoint = new Vector2(
+				anchorX ?? declaredAnchor.X,
+				anchorY ?? declaredAnchor.Y,
+			);
 		}
 
 		// The translate half already met rem on its way into the resolution; a
 		// negative margin token wrote its offset straight to the shift.
 		const remRatio = resolution.remRatio ?? 1;
+		const declared = hostProps.Position;
+		const base = typeIs(declared, "UDim2") ? declared : new UDim2(0, 0, 0, 0);
+		// A shift with no position of its own moves the one the element already
+		// has, as `top-*` beside it would have on the static path.
 		const positionX = shiftPositionAxis(
 			resolution.positionX,
 			shiftX + (resolution.marginShiftX ?? 0) * remRatio,
+			base.X,
 		);
 		const positionY = shiftPositionAxis(
 			resolution.positionY,
 			shiftY + (resolution.marginShiftY ?? 0) * remRatio,
+			base.Y,
 		);
 		if (positionX === undefined && positionY === undefined) {
 			return;
 		}
 
-		const declared = hostProps.Position;
-		const base = typeIs(declared, "UDim2") ? declared : new UDim2(0, 0, 0, 0);
 		const resolvedX = positionX ?? base.X;
 		const resolvedY = positionY ?? base.Y;
 
@@ -472,12 +497,13 @@ export namespace __VelaApply {
 	function shiftPositionAxis(
 		axis: UDim | undefined,
 		shift: number,
+		declared: UDim,
 	): UDim | undefined {
 		if (__VelaLua.mathAbs(shift) < 1e-9) {
 			return axis;
 		}
 
-		const base = axis ?? new UDim(0, 0);
+		const base = axis ?? declared;
 		return new UDim(base.Scale, base.Offset + shift);
 	}
 
@@ -558,6 +584,33 @@ export namespace __VelaApply {
 		}
 	}
 
+	/// A grid takes its gap as `CellPadding`, so the UIListLayout a gap writes
+	/// beside the UIGridLayout would only fight it for the children. The static
+	/// path leaves the same layout out.
+	export function dropGridListPadding(resolution: RuntimeResolution) {
+		if (
+			resolution.gapOffset === undefined ||
+			resolution.helpers.find((helper) => helper.tag === "uigridlayout") ===
+				undefined
+		) {
+			return;
+		}
+
+		const list = resolution.helpers.find(
+			(helper) => helper.tag === "uilistlayout",
+		);
+		if (list === undefined) {
+			return;
+		}
+
+		list.props = list.props.filter((prop) => prop.name !== "Padding");
+		if (list.props.find((prop) => prop.name !== "SortOrder") === undefined) {
+			resolution.helpers = resolution.helpers.filter(
+				(helper) => helper.tag !== "uilistlayout",
+			);
+		}
+	}
+
 	export function applyComposedGradient(
 		hostProps: Record<string, unknown>,
 		resolution: RuntimeResolution,
@@ -604,9 +657,10 @@ export namespace __VelaApply {
 		}
 
 		// UIGradient modulates BackgroundColor3, so force a white base for true stop
-		// colors — and take back the transparency preflight left behind.
+		// colors — and take back the transparency preflight left behind, unless
+		// something here faded the background on purpose.
 		hostProps.BackgroundColor3 = Color3.fromRGB(255, 255, 255);
-		if (preflight) {
+		if (preflight && resolution.props.BackgroundTransparency === undefined) {
 			hostProps.BackgroundTransparency = 0;
 		}
 	}
@@ -861,6 +915,11 @@ export namespace __VelaApply {
 		const numeric = __VelaLua.toNumber(trimmed);
 		if (numeric !== undefined && __VelaLua.stringLength(trimmed) > 0) {
 			return numeric;
+		}
+
+		const text = __VelaLua.unquote(trimmed);
+		if (text !== undefined) {
+			return text;
 		}
 
 		return value;

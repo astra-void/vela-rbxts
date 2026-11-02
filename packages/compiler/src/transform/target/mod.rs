@@ -37,6 +37,11 @@ pub(crate) trait EmitTarget {
     /// above one that is already parented.
     fn needs_margin_box_hint(&self) -> bool;
 
+    /// Whether a divided host ranks its children by the `LayoutOrder` their
+    /// built instances carry, which a variant `order-*` can still move. React
+    /// reads it off the element, before the child has resolved anything.
+    fn reads_built_layout_order(&self) -> bool;
+
     /// The expressions the emitted branch rules decide on, as one attribute the
     /// host reads by index.
     fn tests_attr(&self, tests: Vec<Expr>) -> JSXAttrOrSpread;
@@ -60,6 +65,11 @@ pub(crate) trait EmitTarget {
     /// something the transformer could compose into the emit: an inherited
     /// fade, and the pin a container opened above the file this pass compiled.
     fn boundary_element(&self, child: Expr) -> Box<JSXElement>;
+
+    /// Writes the CollectionService tags `group`/`peer` markers lower to onto a
+    /// statically lowered element. False when only the runtime host can place
+    /// them, which then carries them as `__velaMarkers`.
+    fn static_markers(&self, markers: &[String], attrs: &mut Vec<JSXAttrOrSpread>) -> bool;
 
     /// The name a helper child is written with when its lowercase tag would not
     /// reach the right Roblox class, or `None` to write the tag as is.

@@ -8,11 +8,12 @@ use crate::transform::runtime_host::{
 };
 use crate::transform::target::EmitTarget;
 use swc_core::{
-    common::DUMMY_SP,
+    common::{DUMMY_SP, Span},
     ecma::ast::{
-        ArrayLit, Bool, CondExpr, Expr, ExprOrSpread, Ident, IdentName, JSXAttrOrSpread,
-        JSXClosingElement, JSXElement, JSXElementChild, JSXElementName, JSXExpr, JSXExprContainer,
-        JSXMemberExpr, JSXObject, JSXOpeningElement, Lit, ModuleItem,
+        ArrayLit, Bool, CondExpr, Expr, ExprOrSpread, Ident, IdentName, JSXAttr, JSXAttrName,
+        JSXAttrOrSpread, JSXAttrValue, JSXClosingElement, JSXElement, JSXElementChild,
+        JSXElementName, JSXExpr, JSXExprContainer, JSXMemberExpr, JSXObject, JSXOpeningElement,
+        Lit, ModuleItem, Str,
     },
 };
 
@@ -42,6 +43,10 @@ impl EmitTarget for ReactTarget {
 
     /// A render that resolves a margin also renders the wrapper around it.
     fn needs_margin_box_hint(&self) -> bool {
+        false
+    }
+
+    fn reads_built_layout_order(&self) -> bool {
         false
     }
 
@@ -159,11 +164,70 @@ impl EmitTarget for ReactTarget {
         })
     }
 
+    /// `@rbxts/react` applies a `Tag` prop as space-separated CollectionService
+    /// tags, so a marker merges into a literal one. An expression, or a spread
+    /// that may carry one, is only known at render time.
+    fn static_markers(&self, markers: &[String], attrs: &mut Vec<JSXAttrOrSpread>) -> bool {
+        if attrs
+            .iter()
+            .any(|attr| matches!(attr, JSXAttrOrSpread::SpreadElement(_)))
+        {
+            return false;
+        }
+
+        let existing = attrs.iter_mut().find_map(|attr| match attr {
+            JSXAttrOrSpread::JSXAttr(attr)
+                if matches!(&attr.name, JSXAttrName::Ident(ident) if ident.sym == "Tag") =>
+            {
+                Some(attr)
+            }
+            _ => None,
+        });
+
+        let Some(attr) = existing else {
+            attrs.push(JSXAttrOrSpread::JSXAttr(JSXAttr {
+                span: DUMMY_SP,
+                name: JSXAttrName::Ident(IdentName::new("Tag".into(), DUMMY_SP)),
+                value: Some(tag_value(DUMMY_SP, markers.join(" "))),
+            }));
+            return true;
+        };
+
+        let (span, written) = match &attr.value {
+            Some(JSXAttrValue::Str(value)) => (value.span, value.value.to_string_lossy()),
+            Some(JSXAttrValue::JSXExprContainer(JSXExprContainer {
+                span,
+                expr: JSXExpr::Expr(expr),
+            })) => match expr.as_ref() {
+                Expr::Lit(Lit::Str(value)) => (*span, value.value.to_string_lossy()),
+                _ => return false,
+            },
+            _ => return false,
+        };
+
+        let mut tags: Vec<String> = written.split_whitespace().map(str::to_owned).collect();
+        for marker in markers {
+            if !tags.contains(marker) {
+                tags.push(marker.clone());
+            }
+        }
+        attr.value = Some(tag_value(span, tags.join(" ")));
+        true
+    }
+
     fn helper_element_name(&self, tag: &'static str) -> Option<JSXElementName> {
         UNLISTED_HELPER_TAGS
             .contains(&tag)
             .then(|| namespace_member(HELPER_NAMESPACE, tag))
     }
+}
+
+fn tag_value(span: Span, tags: String) -> JSXAttrValue {
+    JSXAttrValue::Str(Str {
+        span,
+        value: tags.into(),
+        raw: None,
+    })
 }
 
 fn opacity_member(prop: &str) -> JSXElementName {

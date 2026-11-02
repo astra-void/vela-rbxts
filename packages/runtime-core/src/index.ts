@@ -9,6 +9,7 @@ export { __VelaMotion } from "./motion";
 export { __VelaOpacity } from "./opacity";
 export { __VelaRem } from "./rem";
 export { __VelaResolution } from "./resolution";
+export { __VelaScope } from "./scope";
 export { __VelaText } from "./text";
 export { __VelaToken } from "./token";
 export type {
@@ -19,6 +20,7 @@ export type {
 	RuntimeColorScale,
 	RuntimeCondition,
 	RuntimeDivide,
+	RuntimeDividePlan,
 	RuntimeDivideState,
 	RuntimeEffectBundle,
 	RuntimeEnvironment,
@@ -37,6 +39,9 @@ export type {
 	RuntimeRule,
 	RuntimeRuleHelperEntry,
 	RuntimeRulePropEntry,
+	RuntimeScopeNeeds,
+	RuntimeScopeState,
+	RuntimeScopes,
 	RuntimeSizeAxisValue,
 	RuntimeTextSpec,
 	RuntimeTheme,

@@ -63,12 +63,15 @@ test("the runtime host re-reads the viewport so breakpoints stay live", () => {
 	// ViewportSize is 1x1 until the first frame renders, so a mount-time read
 	// alone pins every breakpoint to a width no rule can match. The read is
 	// debounced, so what the signal reaches is the settling call rather than
-	// the environment update itself.
+	// the environment update itself, and the host hears it through the store.
 	expect(runtimeSource).toMatch(
-		/const viewport = __VelaEnvCore\.debounceViewport\(updateEnvironment\)/,
+		/watchViewport\(debounceViewport\(refreshEnvironment\)\.call\)/,
 	);
 	expect(runtimeSource).toMatch(
-		/camera\s*\.GetPropertyChangedSignal\("ViewportSize"\)[\s\S]*?viewport\.call/,
+		/camera\s*\.GetPropertyChangedSignal\("ViewportSize"\)\s*\.Connect\(onChange\)/,
+	);
+	expect(runtimeSource).toMatch(
+		/__VelaEnvCore\.subscribeEnvironment\(setEnvironment\)/,
 	);
 });
 

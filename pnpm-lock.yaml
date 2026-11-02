@@ -76,6 +76,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/lsp
 
+  apps/parity-harness:
+    devDependencies:
+      '@rbxts/vela-runtime-core':
+        specifier: workspace:*
+        version: link:../../packages/runtime-core
+      '@vela-rbxts/compiler':
+        specifier: workspace:*
+        version: link:../../packages/compiler
+      '@vela-rbxts/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+
   apps/playground:
     dependencies:
       '@rbxts/react':

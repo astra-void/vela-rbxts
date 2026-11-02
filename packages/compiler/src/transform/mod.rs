@@ -14,7 +14,7 @@ use crate::api::{Diagnostic, EditorRange, TransformOptions, TransformResult};
 use crate::config::resolve::parse_config_with_diagnostic;
 use crate::transform::context::VelaTransformer;
 use swc_core::{
-    common::{BytePos, FileName, SourceMap, Spanned, sync::Lrc},
+    common::{BytePos, FileName, LineCol, SourceFile, SourceMap, Spanned, sync::Lrc},
     ecma::{
         parser::{Syntax, TsSyntax, error::Error as ParseError, parse_file_as_module},
         visit::VisitMutWith,
@@ -42,12 +42,63 @@ fn parse_error_diagnostic(cm: &SourceMap, file_start: BytePos, error: &ParseErro
     }
 }
 
+// Columns count UTF-16 units on both sides, which is how TypeScript reports a character.
+fn mapping_quads(fm: &SourceFile, raw: &[(BytePos, LineCol)]) -> Vec<u32> {
+    let original: &str = &fm.src;
+    let content_start = if original.starts_with('\u{feff}') {
+        '\u{feff}'.len_utf8()
+    } else {
+        0
+    };
+    let mut line_starts = vec![content_start];
+    let mut chars = original.char_indices().peekable();
+    while let Some((offset, ch)) = chars.next() {
+        match ch {
+            '\r' => {
+                if let Some(&(_, '\n')) = chars.peek() {
+                    chars.next();
+                    line_starts.push(offset + 2);
+                } else {
+                    line_starts.push(offset + 1);
+                }
+            }
+            '\n' | '\u{2028}' | '\u{2029}' => line_starts.push(offset + ch.len_utf8()),
+            _ => {}
+        }
+    }
+
+    let mut quads: Vec<[u32; 4]> = raw
+        .iter()
+        .filter_map(|(pos, generated)| {
+            if pos.is_dummy() || *pos < fm.start_pos || *pos > fm.end_pos {
+                return None;
+            }
+            let offset = (pos.0 - fm.start_pos.0) as usize;
+            if offset < content_start || !original.is_char_boundary(offset) {
+                return None;
+            }
+            let line = line_starts.partition_point(|start| *start <= offset) - 1;
+            let column = original[line_starts[line]..offset].encode_utf16().count();
+
+            Some([generated.line, generated.col, line as u32, column as u32])
+        })
+        .collect();
+    quads.sort_unstable();
+    quads.dedup();
+
+    quads.into_iter().flatten().collect()
+}
+
 pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) -> TransformResult {
     let (config, config_diagnostics) = parse_config_with_diagnostic(
         options
             .as_ref()
             .and_then(|value| value.config_json.as_deref()),
     );
+    let wants_mappings = options
+        .as_ref()
+        .and_then(|value| value.source_map)
+        .unwrap_or(false);
     let cm: Lrc<SourceMap> = Default::default();
     let fm = cm.new_source_file(FileName::Custom("input.tsx".into()).into(), source.clone());
     let mut recovered_errors = Vec::new();
@@ -75,6 +126,7 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
                 changed: false,
                 ir: Vec::new(),
                 needs_runtime_host: false,
+                mappings: None,
             };
         }
     };
@@ -91,6 +143,7 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
             changed: false,
             ir: Vec::new(),
             needs_runtime_host: false,
+            mappings: None,
         };
     }
 
@@ -113,7 +166,13 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
     };
     module.visit_mut_with(&mut transformer);
 
-    let emitted_code = emit::emit_module(&cm, &module).unwrap_or_else(|error| {
+    let mut raw_mappings = Vec::new();
+    let emitted = emit::emit_module(&cm, &module, wants_mappings.then_some(&mut raw_mappings));
+    let mappings = match &emitted {
+        Ok(_) if wants_mappings => Some(mapping_quads(&fm, &raw_mappings)),
+        _ => None,
+    };
+    let emitted_code = emitted.unwrap_or_else(|error| {
         transformer.diagnostics.push(Diagnostic {
             level: "error".to_owned(),
             code: "tsx-emit-failed".to_owned(),
@@ -134,6 +193,7 @@ pub(crate) fn transform_impl(source: String, options: Option<TransformOptions>) 
             .map(|style| serde_json::to_string(&style).expect("style IR must serialize to JSON"))
             .collect(),
         needs_runtime_host: transformer.runtime_host_needed,
+        mappings,
     }
 }
 
@@ -149,6 +209,7 @@ mod tests {
             source,
             Some(TransformOptions {
                 config_json: Some("{ not json".to_owned()),
+                source_map: None,
             }),
         );
 
@@ -209,6 +270,7 @@ mod tests {
                 config_json: Some(
                     serde_json::to_string(&config).expect("config must serialize to JSON"),
                 ),
+                source_map: None,
             }),
         );
         result
@@ -375,6 +437,7 @@ mod tests {
             source,
             Some(TransformOptions {
                 config_json: Some(vide_config_json()),
+                source_map: None,
             }),
         );
 
@@ -405,6 +468,7 @@ mod tests {
             source,
             Some(TransformOptions {
                 config_json: Some(vide_config_json()),
+                source_map: None,
             }),
         );
         let flat = result.code.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -435,6 +499,7 @@ mod tests {
             source,
             Some(TransformOptions {
                 config_json: Some(vide_config_json()),
+                source_map: None,
             }),
         );
 
@@ -459,6 +524,7 @@ mod tests {
             source,
             Some(TransformOptions {
                 config_json: Some(vide_config_json()),
+                source_map: None,
             }),
         );
 
@@ -484,6 +550,7 @@ mod tests {
             "const ui = <frame className=\"m-4 p-2\" />;".to_owned(),
             Some(TransformOptions {
                 config_json: Some(vide_config_json()),
+                source_map: None,
             }),
         );
 
@@ -526,6 +593,7 @@ mod tests {
             source,
             Some(TransformOptions {
                 config_json: Some(vide_config_json()),
+                source_map: None,
             }),
         );
 
@@ -541,6 +609,253 @@ mod tests {
         assert!(
             !ir.contains("BackgroundTransparency"),
             "nothing set a transparency, so none should be emitted: {ir}"
+        );
+    }
+
+    fn with_mappings(source: &str) -> crate::api::TransformResult {
+        transform_impl(
+            source.to_owned(),
+            Some(TransformOptions {
+                config_json: None,
+                source_map: Some(true),
+            }),
+        )
+    }
+
+    fn generated_position(code: &str, needle: &str) -> (u32, u32) {
+        code.lines()
+            .enumerate()
+            .find_map(|(line, text)| {
+                text.find(needle)
+                    .map(|byte| (line as u32, text[..byte].encode_utf16().count() as u32))
+            })
+            .unwrap_or_else(|| panic!("`{needle}` must be in the output: {code}"))
+    }
+
+    /// What a reader of the map does: the last mapping at or before a position.
+    fn original_position(mappings: &[u32], (line, column): (u32, u32)) -> (u32, u32) {
+        mappings
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .take_while(|quad| (quad[0], quad[1]) <= (line, column))
+            .last()
+            .map(|quad| (quad[2], quad[3]))
+            .expect("a mapping must precede the position")
+    }
+
+    #[test]
+    fn mappings_lead_a_literal_back_past_the_preamble() {
+        let source = "import React from \"@rbxts/react\";\n\nexport function Panel() {\n\treturn <frame className=\"hover:bg-red-500\" />;\n}\nconst greeting = \"안녕하세요\"; const n: number = \"nope\";\n";
+        let result = with_mappings(source);
+        let mappings = result.mappings.expect("mappings were asked for");
+        let generated = generated_position(&result.code, "\"nope\"");
+        let original_line = source.lines().nth(5).expect("line 6 exists");
+        let original_column = original_line[..original_line.find("\"nope\"").unwrap()]
+            .encode_utf16()
+            .count() as u32;
+
+        assert!(
+            generated.0 > 5,
+            "the preamble must have moved the literal down: {}",
+            result.code
+        );
+        assert_eq!(
+            original_position(&mappings, generated),
+            (5, original_column)
+        );
+    }
+
+    #[test]
+    fn mappings_are_only_produced_on_request() {
+        let source = "const ui = <frame className=\"p-2\" />;".to_owned();
+
+        assert!(transform_impl(source.clone(), None).mappings.is_none());
+        assert!(
+            transform_impl(
+                source.clone(),
+                Some(TransformOptions {
+                    config_json: None,
+                    source_map: Some(false),
+                }),
+            )
+            .mappings
+            .is_none()
+        );
+        assert_eq!(
+            transform_impl(source.clone(), None).code,
+            with_mappings(&source).code,
+            "recording mappings must not change the emit"
+        );
+    }
+
+    #[test]
+    fn mappings_skip_a_byte_order_mark() {
+        let result = with_mappings("\u{feff}const ui = <frame className=\"p-2\" />;\n");
+        let mappings = result.mappings.expect("mappings were asked for");
+        let generated = generated_position(&result.code, "const ui");
+
+        assert_eq!(original_position(&mappings, generated), (0, 0));
+    }
+
+    #[test]
+    fn lowered_props_map_to_the_class_name_they_came_from() {
+        let source = "const ui = (\n\t<frame\n\t\tclassName=\"bg-red-500\"\n\t/>\n);\n";
+        let result = with_mappings(source);
+        let mappings = result.mappings.expect("mappings were asked for");
+        let generated = generated_position(&result.code, "BackgroundColor3");
+
+        assert_eq!(original_position(&mappings, generated), (2, 2));
+    }
+
+    fn vide_transform(source: &str) -> crate::api::TransformResult {
+        transform_impl(
+            source.to_owned(),
+            Some(TransformOptions {
+                config_json: Some(vide_config_json()),
+                source_map: None,
+            }),
+        )
+    }
+
+    #[test]
+    fn a_marker_lowers_to_a_tag_on_the_static_react_path() {
+        let result = transform_impl(
+            "const ui = <frame className=\"group/card bg-red-500 peer\" />;".to_owned(),
+            None,
+        );
+
+        assert!(
+            result.code.contains("Tag=\"VelaGroup/card VelaPeer\""),
+            "{}",
+            result.code
+        );
+        assert!(!result.code.contains("VelaRuntimeHost"), "{}", result.code);
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+    }
+
+    #[test]
+    fn a_marker_merges_into_a_literal_tag_and_promotes_an_expression() {
+        let literal = transform_impl(
+            "const ui = <frame Tag=\"Card VelaGroup\" className=\"group\" />;".to_owned(),
+            None,
+        );
+        assert!(
+            literal.code.contains("Tag=\"Card VelaGroup\""),
+            "{}",
+            literal.code
+        );
+        assert!(
+            !literal.code.contains("VelaRuntimeHost"),
+            "{}",
+            literal.code
+        );
+
+        let expression = transform_impl(
+            "const ui = <frame Tag={tags} className=\"group\" />;".to_owned(),
+            None,
+        );
+        let code: String = expression.code.split_whitespace().collect();
+        assert!(
+            code.contains("__velaMarkers={[\"VelaGroup\"]}") && code.contains("Tag={tags}"),
+            "{}",
+            expression.code
+        );
+    }
+
+    #[test]
+    fn a_relational_variant_sends_the_element_to_the_runtime_host() {
+        let ir = element_ir("group-hover/card:bg-red-500 peer-focus:bg-blue-500");
+
+        assert!(
+            ir.contains(
+                r#""condition":{"kind":"group","name":"card","condition":{"kind":"hover"}}"#
+            ),
+            "{ir}"
+        );
+        assert!(
+            ir.contains(r#""condition":{"kind":"peer","condition":{"kind":"focus"}}"#),
+            "{ir}"
+        );
+
+        let result = transform_impl(
+            "const ui = <textlabel className=\"group-hover:text-blue-400\" />;".to_owned(),
+            None,
+        );
+        assert!(result.code.contains("VelaRuntimeHost"), "{}", result.code);
+    }
+
+    #[test]
+    fn the_vide_host_places_markers_itself() {
+        let result = vide_transform("const ui = <frame className=\"group\" />;");
+        let code: String = result.code.split_whitespace().collect();
+
+        assert!(
+            code.contains("<VelaRuntimeHost")
+                && code.contains("__velaMarkers={[\"VelaGroup\"]}")
+                && !result.code.contains(" Tag="),
+            "{}",
+            result.code
+        );
+    }
+
+    #[test]
+    fn a_marker_that_cannot_tag_anything_is_reported() {
+        let conditional = transform_impl(
+            "const ui = <frame className=\"hover:group\" />;".to_owned(),
+            None,
+        );
+        assert!(
+            conditional
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "conditional-marker"),
+            "{:?}",
+            conditional.diagnostics
+        );
+        assert!(
+            !conditional.code.contains("VelaGroup"),
+            "{}",
+            conditional.code
+        );
+
+        let component =
+            transform_impl("const ui = <Card className=\"peer/x\" />;".to_owned(), None);
+        assert!(
+            component
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "marker-on-component"),
+            "{:?}",
+            component.diagnostics
+        );
+
+        let unsupported = transform_impl(
+            "const ui = <frame className=\"group-md:bg-red-500\" />;".to_owned(),
+            None,
+        );
+        assert!(
+            unsupported
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "unsupported-relational-variant"),
+            "{:?}",
+            unsupported.diagnostics
+        );
+    }
+
+    #[test]
+    fn a_marker_in_a_branch_leaves_the_class_value_to_the_runtime() {
+        let result = transform_impl(
+            "const ui = <frame className={open ? \"group bg-red-500\" : \"bg-red-500\"} />;"
+                .to_owned(),
+            None,
+        );
+
+        assert!(
+            result.code.contains("VelaRuntimeHost") && result.code.contains("className={open"),
+            "{}",
+            result.code
         );
     }
 }

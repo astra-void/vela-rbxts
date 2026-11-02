@@ -1,22 +1,24 @@
 use crate::api::Diagnostic;
 use crate::config::model::TailwindConfig;
 use crate::diagnostics::compiler::{
-    invalid_breakpoint_range_diagnostic, malformed_attribute_variant_diagnostic,
-    negative_z_index_diagnostic, no_roblox_equivalent_diagnostic, unknown_breakpoint_diagnostic,
-    unknown_theme_key_diagnostic, unknown_variant_diagnostic,
-    unsupported_alignment_value_diagnostic, unsupported_anchor_value_diagnostic,
-    unsupported_animation_value_diagnostic, unsupported_arbitrary_value_diagnostic,
-    unsupported_arbitrary_z_index_diagnostic, unsupported_aspect_value_diagnostic,
-    unsupported_backdrop_blur_value_diagnostic, unsupported_border_value_diagnostic,
-    unsupported_canvas_size_diagnostic, unsupported_color_keyword_diagnostic,
-    unsupported_divide_value_diagnostic, unsupported_flex_direction_diagnostic,
-    unsupported_font_weight_diagnostic, unsupported_gradient_direction_diagnostic,
-    unsupported_grid_value_diagnostic, unsupported_layout_order_value_diagnostic,
-    unsupported_line_height_value_diagnostic, unsupported_margin_value_diagnostic,
-    unsupported_negative_margin_diagnostic, unsupported_object_fit_value_diagnostic,
-    unsupported_opacity_modifier_diagnostic, unsupported_opacity_value_diagnostic,
-    unsupported_overflow_diagnostic, unsupported_overscroll_value_diagnostic,
-    unsupported_pointer_events_value_diagnostic, unsupported_rotation_value_diagnostic,
+    conditional_marker_diagnostic, invalid_breakpoint_range_diagnostic,
+    isolate_not_static_diagnostic, malformed_attribute_variant_diagnostic,
+    marker_on_component_diagnostic, motion_on_component_diagnostic, negative_z_index_diagnostic,
+    no_roblox_equivalent_diagnostic, unknown_breakpoint_diagnostic, unknown_theme_key_diagnostic,
+    unknown_variant_diagnostic, unsupported_alignment_value_diagnostic,
+    unsupported_anchor_value_diagnostic, unsupported_animation_value_diagnostic,
+    unsupported_arbitrary_value_diagnostic, unsupported_arbitrary_z_index_diagnostic,
+    unsupported_aspect_value_diagnostic, unsupported_backdrop_blur_value_diagnostic,
+    unsupported_border_value_diagnostic, unsupported_canvas_size_diagnostic,
+    unsupported_color_keyword_diagnostic, unsupported_divide_value_diagnostic,
+    unsupported_flex_direction_diagnostic, unsupported_font_weight_diagnostic,
+    unsupported_gradient_direction_diagnostic, unsupported_grid_value_diagnostic,
+    unsupported_layout_order_value_diagnostic, unsupported_line_height_value_diagnostic,
+    unsupported_margin_value_diagnostic, unsupported_negative_margin_diagnostic,
+    unsupported_object_fit_value_diagnostic, unsupported_opacity_modifier_diagnostic,
+    unsupported_opacity_value_diagnostic, unsupported_overflow_diagnostic,
+    unsupported_overscroll_value_diagnostic, unsupported_pointer_events_value_diagnostic,
+    unsupported_relational_variant_diagnostic, unsupported_rotation_value_diagnostic,
     unsupported_scale_diagnostic, unsupported_scroll_value_diagnostic,
     unsupported_scrollbar_thickness_diagnostic, unsupported_space_value_diagnostic,
     unsupported_stroke_value_diagnostic, unsupported_text_alignment_diagnostic,
@@ -26,7 +28,7 @@ use crate::diagnostics::compiler::{
 };
 use crate::ir::model::{
     DivideSpec, MarginSpec, PropEntry, RuntimeRule, SizeAxisValue, StyleEffectBundle, StyleIr,
-    TextSpec, TransitionSpec,
+    TextSpec, TransformInputs, TransitionSpec, sort_rules_by_precedence,
 };
 use crate::semantic::{
     analyze::analyze_class_token,
@@ -60,7 +62,10 @@ use crate::semantic::{
     },
     variant::{ParsedVariant, VariantRegistry, utility_of},
 };
-use crate::transform::opacity::compose_inherited_opacity;
+use crate::transform::opacity::{
+    compose_inherited_opacity, composed_transparency, defer_variant_opacity, opacity_alpha_entry,
+    opacity_transparency_props,
+};
 
 /// `element_tag` is `None` for a component, whose Roblox host element is not
 /// known here, so host-specific lowering keeps its generic form.
@@ -77,6 +82,11 @@ where
     let mut style = StyleIr::default();
     let mut pending = PendingAxes::default();
     let variants = VariantRegistry::new(config);
+    let mut variant_opacity = Vec::new();
+    // A base class is only listed here to go along with a variant of its
+    // family, so the runtime composes the family whole as a class value would.
+    let mut runtime_classes: Vec<(Option<RuntimeFamily>, String)> = Vec::new();
+    let mut forwarded_families: Vec<RuntimeFamily> = Vec::new();
 
     for token in tokens {
         for expanded in expand_class_token(token.as_ref(), config) {
@@ -109,14 +119,55 @@ where
                 continue;
             }
 
-            if analysis.runtime_aware {
+            if let Some(tag) = marker_tag_of(&analysis) {
+                if analysis.runtime_aware {
+                    diagnostics.push(conditional_marker_diagnostic(&token));
+                } else if element_tag.is_none() {
+                    diagnostics.push(marker_on_component_diagnostic(&token));
+                } else if !style.markers.contains(&tag) {
+                    style.markers.push(tag);
+                }
+            } else if analysis.runtime_aware && matches!(analysis.utility, UtilityKind::Isolate) {
+                diagnostics.push(isolate_not_static_diagnostic(&token));
+            } else if analysis.runtime_aware
+                && let Some(family) = RuntimeFamily::of(&analysis.utility)
+            {
+                if element_tag.is_none() && family.is_motion() {
+                    let mut diagnostic = motion_on_component_diagnostic();
+                    diagnostic.token = Some(token.clone());
+                    diagnostics.push(diagnostic);
+                } else {
+                    resolve_single_analyzed_token(&analysis, config, element_tag, diagnostics);
+                    if diagnostics.len() == diagnostics_before {
+                        if !forwarded_families.contains(&family) {
+                            forwarded_families.push(family);
+                        }
+                        runtime_classes.push((None, token.clone()));
+                    }
+                }
+            } else if analysis.runtime_aware {
                 let condition = analysis
                     .runtime_condition
                     .clone()
                     .expect("runtime-aware analysis must carry a runtime condition");
                 let runtime_style =
                     resolve_single_analyzed_token(&analysis, config, element_tag, diagnostics);
-                if !runtime_style.base.props.is_empty() || !runtime_style.base.helpers.is_empty() {
+                if element_tag.is_none()
+                    && let Some(alpha) = runtime_style.opacity_alpha
+                {
+                    style.runtime_rules.push(RuntimeRule {
+                        condition,
+                        effects: StyleEffectBundle {
+                            props: vec![opacity_alpha_entry(alpha)],
+                            helpers: Vec::new(),
+                        },
+                    });
+                } else if !runtime_style.base.props.is_empty()
+                    || !runtime_style.base.helpers.is_empty()
+                {
+                    if let Some(alpha) = opacity_alpha(&analysis) {
+                        variant_opacity.push((style.runtime_rules.len(), alpha));
+                    }
                     style.runtime_rules.push(RuntimeRule {
                         condition,
                         effects: runtime_style.base,
@@ -124,6 +175,11 @@ where
                 }
             } else {
                 apply_analyzed_token(&analysis, config, diagnostics, &mut style, &mut pending);
+                if let Some(family) = RuntimeFamily::of(&analysis.utility)
+                    && diagnostics.len() == diagnostics_before
+                {
+                    runtime_classes.push((Some(family), token.clone()));
+                }
             }
 
             if let Some(origin) = origin {
@@ -132,9 +188,38 @@ where
         }
     }
 
+    // A variant position replaces the axis a negative margin shifted, so the
+    // runtime composes the margin onto whichever position applies.
+    let rules_name_position = style.runtime_rules.iter().any(|rule| {
+        rule.effects
+            .props
+            .iter()
+            .any(|prop| prop.name == "PositionX" || prop.name == "PositionY")
+    });
+    if rules_name_position
+        && (margin_shift(pending.margin_left) != 0.0 || margin_shift(pending.margin_top) != 0.0)
+        && !forwarded_families.contains(&RuntimeFamily::Margin)
+    {
+        forwarded_families.push(RuntimeFamily::Margin);
+    }
+    for family in &forwarded_families {
+        family.clear(&mut pending);
+    }
+    style.runtime_classes = runtime_classes
+        .into_iter()
+        .filter(|(family, _)| family.is_none_or(|family| forwarded_families.contains(&family)))
+        .map(|(_, token)| token)
+        .collect();
+    style.runtime_class_value = !style.runtime_classes.is_empty();
+
     let own_opacity = pending.opacity.take();
     pending.flush(&mut style, SizeEmission::Combined);
     default_list_layout_sort_order(&mut style);
+    // Read off the base before its own alpha reaches it: a variant's opacity
+    // replaces the element's rather than multiplying it.
+    if !variant_opacity.is_empty() {
+        defer_variant_opacity(&mut style, element_tag, own_opacity, &variant_opacity);
+    }
     reset_variant_color_opacity(&mut style);
     if let Some(alpha) = own_opacity {
         // A component element hides which instance it will render, so there is no
@@ -143,10 +228,271 @@ where
         if element_tag.is_none() {
             style.opacity_alpha = Some(alpha);
         } else {
-            compose_inherited_opacity(&mut style, element_tag, alpha, &[], true);
+            let neutralized = neutralized_background(&style, config);
+            if !neutralized.is_empty() {
+                reopen_variant_backgrounds(&mut style);
+            }
+            compose_inherited_opacity(
+                &mut style,
+                element_tag,
+                alpha,
+                &neutralized,
+                variant_opacity.is_empty(),
+            );
         }
     }
+    sort_rules_by_precedence(&mut style.runtime_rules);
     style
+}
+
+/// The props `UIGridLayout.CellSize` is composed from, which the runtime reads
+/// off a rule rather than writing them to the instance.
+const GRID_INPUT_PROPS: [&str; 4] = [
+    "GapOffset",
+    "GridCells",
+    "GridCellsHorizontal",
+    "GridCrossExtent",
+];
+
+/// The runtime composes a grid's cells from every gap and track that applies,
+/// so once a rule or a class value only it reads can move one, the base hands
+/// over its own grid and gap as well. `dynamic` says the element has such a
+/// class value, which matters once the base has a grid for it to gap. Where
+/// nothing can bring a grid, a rule's inputs are dropped.
+pub(crate) fn share_grid_inputs(style: &mut StyleIr, dynamic: bool) {
+    let base_inputs = std::mem::take(&mut style.grid_inputs);
+    let names_grid = |bundle: &StyleEffectBundle| {
+        bundle
+            .helpers
+            .iter()
+            .any(|helper| helper.tag == "uigridlayout")
+    };
+    let dynamic = dynamic && names_grid(&style.base);
+    let is_input = |prop: &PropEntry| GRID_INPUT_PROPS.contains(&prop.name.as_ref());
+
+    let rules_name_grid = style
+        .runtime_rules
+        .iter()
+        .any(|rule| names_grid(&rule.effects));
+    if !dynamic && !rules_name_grid && !names_grid(&style.base) {
+        for rule in &mut style.runtime_rules {
+            rule.effects.props.retain(|prop| !is_input(prop));
+        }
+        style
+            .runtime_rules
+            .retain(|rule| !rule.effects.props.is_empty() || !rule.effects.helpers.is_empty());
+        return;
+    }
+
+    // A gap CellPadding cannot carry still writes the list padding the runtime
+    // drops beside a grid, once it knows the base's grid and gap.
+    let writes_list = |bundle: &StyleEffectBundle| {
+        bundle
+            .helpers
+            .iter()
+            .any(|helper| helper.tag == "uilistlayout")
+    };
+    let rules_move_grid = rules_name_grid
+        || style.runtime_rules.iter().any(|rule| {
+            rule.effects.props.iter().any(is_input)
+                || (names_grid(&style.base) && writes_list(&rule.effects))
+        });
+    if !dynamic && !rules_move_grid {
+        return;
+    }
+
+    let gap_list = base_inputs.iter().any(|prop| prop.name == "GapOffset");
+    let (helpers, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut style.base.helpers)
+        .into_iter()
+        .partition(|helper| {
+            helper.tag == "uigridlayout" || (gap_list && helper.tag == "uilistlayout")
+        });
+    style.base.helpers = kept;
+    if base_inputs.is_empty() && helpers.is_empty() {
+        return;
+    }
+
+    let effects = style.always_on_effects();
+    effects.props.extend(base_inputs);
+    effects.helpers.extend(helpers);
+}
+
+/// A variant that moves an axis between a size and Roblox's automatic size has
+/// to see what the base gave that axis, and a static `Size` or `AutomaticSize`
+/// cannot be taken back by a rule. So the base's size goes to the runtime as
+/// the per-axis props a class value would have resolved to.
+pub(crate) fn share_size_inputs(style: &mut StyleIr) {
+    let base_inputs = std::mem::take(&mut style.size_inputs);
+    if base_inputs.is_empty() {
+        return;
+    }
+
+    let names = |names: &[&str]| {
+        style.runtime_rules.iter().any(|rule| {
+            rule.effects
+                .props
+                .iter()
+                .any(|prop| names.contains(&prop.name.as_ref()))
+        })
+    };
+    let base_auto = base_inputs
+        .iter()
+        .any(|prop| prop.name == "AutoX" || prop.name == "AutoY");
+    if !names(&["AutoX", "AutoY"]) && !(base_auto && names(&["SizeX", "SizeY"])) {
+        return;
+    }
+
+    style.remove_prop("Size");
+    style.remove_prop("AutomaticSize");
+    style.always_on_effects().props.extend(base_inputs);
+}
+
+/// A rule's translate or position composes at runtime with the base's
+/// translate, which a static AnchorPoint and Position would have baked in. So
+/// the base's translate goes to the runtime, and the static props keep only the
+/// rest.
+pub(crate) fn share_transform_inputs(style: &mut StyleIr) {
+    let Some(inputs) = style.transform_inputs.take() else {
+        return;
+    };
+    let moves = style.runtime_rules.iter().any(|rule| {
+        rule.effects.props.iter().any(|prop| {
+            matches!(
+                prop.name.as_ref(),
+                "PositionX" | "PositionY" | "TranslateX" | "TranslateY"
+            )
+        })
+    });
+    if !moves {
+        return;
+    }
+
+    for (name, value) in [
+        ("AnchorPoint", inputs.anchor),
+        ("Position", inputs.position),
+    ] {
+        match value {
+            Some(value) => style.set_prop(name, value),
+            None => style.remove_prop(name),
+        }
+    }
+    style.always_on_effects().props.extend(inputs.translate);
+}
+
+/// The families a rule bundle has no field for. Under a variant they reach the
+/// runtime host as class names, and the base classes of the same family go with
+/// them so the runtime composes the family from every class that names it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RuntimeFamily {
+    Margin,
+    Divide,
+    TextTransform,
+    TextDecoration,
+    Transition,
+    Animation,
+}
+
+impl RuntimeFamily {
+    fn of(utility: &UtilityKind) -> Option<Self> {
+        Some(match utility {
+            UtilityKind::Margin(_) => Self::Margin,
+            UtilityKind::DivideX | UtilityKind::DivideY | UtilityKind::DivideColor => Self::Divide,
+            UtilityKind::TextTransform => Self::TextTransform,
+            UtilityKind::TextDecoration => Self::TextDecoration,
+            UtilityKind::Transition
+            | UtilityKind::TransitionDuration
+            | UtilityKind::TransitionEase
+            | UtilityKind::TransitionDelay => Self::Transition,
+            UtilityKind::Animation => Self::Animation,
+            _ => return None,
+        })
+    }
+
+    fn is_motion(self) -> bool {
+        matches!(self, Self::Transition | Self::Animation)
+    }
+
+    fn clear(self, pending: &mut PendingAxes) {
+        match self {
+            Self::Margin => {
+                pending.margin_top = None;
+                pending.margin_right = None;
+                pending.margin_bottom = None;
+                pending.margin_left = None;
+            }
+            Self::Divide => {
+                pending.divide_axis = None;
+                pending.divide_thickness = None;
+                pending.divide_color = None;
+                pending.divide_transparency = None;
+            }
+            Self::TextTransform => pending.text_transform = None,
+            Self::TextDecoration => pending.text_decoration = None,
+            Self::Transition => {
+                pending.transition_enabled = None;
+                pending.transition_property = None;
+                pending.transition_time = None;
+                pending.transition_ease = None;
+                pending.transition_delay = None;
+            }
+            Self::Animation => pending.animation = None,
+        }
+    }
+}
+
+/// Preflight leaves a background nothing painted transparent, and no alpha
+/// makes it less so; composed from opaque it would turn into a gray box.
+fn neutralized_background(style: &StyleIr, config: &TailwindConfig) -> Vec<String> {
+    let painted = style
+        .base
+        .props
+        .iter()
+        .any(|prop| prop.name == "BackgroundColor3" || prop.name == "BackgroundTransparency");
+
+    if config.preflight && !painted {
+        vec!["BackgroundTransparency".to_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
+/// What preflight's own reset would add later, added before the alpha so a
+/// variant background fades with the element rather than reopening opaque.
+fn reopen_variant_backgrounds(style: &mut StyleIr) {
+    for rule in &mut style.runtime_rules {
+        let props = &mut rule.effects.props;
+        if props.iter().any(|prop| prop.name == "BackgroundColor3")
+            && !props
+                .iter()
+                .any(|prop| prop.name == "BackgroundTransparency")
+        {
+            props.push(PropEntry {
+                name: "BackgroundTransparency".into(),
+                value: "0".to_owned(),
+            });
+        }
+    }
+}
+
+fn marker_tag_of(analysis: &AnalyzedClassToken) -> Option<String> {
+    use crate::semantic::variant::{GROUP_TAG, PEER_TAG, marker_tag};
+
+    let base = match analysis.utility {
+        UtilityKind::GroupMarker => GROUP_TAG,
+        UtilityKind::PeerMarker => PEER_TAG,
+        _ => return None,
+    };
+
+    Some(marker_tag(base, analysis.payload()))
+}
+
+fn opacity_alpha(analysis: &AnalyzedClassToken) -> Option<f64> {
+    if !matches!(analysis.utility, UtilityKind::Opacity) {
+        return None;
+    }
+
+    let transparency = resolve_opacity_value(analysis.payload()?)?;
+    transparency.parse::<f64>().ok().map(|value| 1.0 - value)
 }
 
 /// `UICorner.CornerRadius` writes all four directional properties. React does
@@ -249,6 +595,19 @@ fn repoint_plugin_diagnostics(diagnostics: &mut [Diagnostic], origin: &str, expa
     }
 }
 
+/// Takes the gap's `Padding` off the base UIListLayout, and the layout with it
+/// when nothing else of its own is left.
+fn drop_gap_list_padding(style: &mut StyleIr) {
+    for helper in &mut style.base.helpers {
+        if helper.tag == "uilistlayout" {
+            helper.props.retain(|prop| prop.name != "Padding");
+        }
+    }
+    style.base.helpers.retain(|helper| {
+        helper.tag != "uilistlayout" || helper.props.iter().any(|prop| prop.name != "SortOrder")
+    });
+}
+
 /// `UIListLayout.SortOrder` defaults to `Name`, which would sort children by
 /// their instance name and silently ignore every `order-*`.
 fn default_list_layout_sort_order(style: &mut StyleIr) {
@@ -286,7 +645,15 @@ const COLOR_OPACITY_FAMILIES: [ColorFamilySpec; 3] = [
 /// something says otherwise, and a utility framework that only adds properties
 /// can never take that back. Preflight neutralizes it on the elements vela
 /// already owns, so only an explicit `bg-*` paints.
-pub(crate) fn apply_preflight(style: &mut StyleIr, declared_props: &[String]) {
+///
+/// `own_alpha` is the element's own `opacity-*`, which left the background to
+/// this step: only here is it known whether the author painted one.
+pub(crate) fn apply_preflight(
+    style: &mut StyleIr,
+    declared_props: &[String],
+    element_tag: Option<&str>,
+    own_alpha: Option<f64>,
+) {
     let declared = |name: &str| declared_props.iter().any(|prop| prop == name);
     let styled =
         |style: &StyleIr, name: &str| style.base.props.iter().any(|prop| prop.name == name);
@@ -299,10 +666,15 @@ pub(crate) fn apply_preflight(style: &mut StyleIr, declared_props: &[String]) {
     // that paints over a neutralized base is carried by the opacity reset.
     if !styled(style, "BackgroundColor3")
         && !styled(style, "BackgroundTransparency")
-        && !declared("BackgroundColor3")
         && !declared("BackgroundTransparency")
     {
-        style.set_prop("BackgroundTransparency", "1".to_owned());
+        if !declared("BackgroundColor3") {
+            style.set_prop("BackgroundTransparency", "1".to_owned());
+        } else if let Some(alpha) = own_alpha
+            && opacity_transparency_props(element_tag).contains(&"BackgroundTransparency")
+        {
+            style.set_prop("BackgroundTransparency", composed_transparency(0.0, alpha));
+        }
     }
 
     reset_variant_color_opacity(style);
@@ -418,9 +790,66 @@ struct GradientStop {
 }
 
 impl PendingAxes {
+    fn transform_inputs(&self, style: &StyleIr) -> TransformInputs {
+        let translate = [
+            ("TranslateX", &self.translate_x),
+            ("TranslateY", &self.translate_y),
+        ]
+        .into_iter()
+        .filter_map(|(name, axis)| {
+            axis.clone().map(|axis| PropEntry {
+                name: name.into(),
+                value: format_udim_axis(axis),
+            })
+        })
+        .collect();
+        let anchor = if self.center_x || self.center_y {
+            Some(format!(
+                "new Vector2({}, {})",
+                if self.center_x { "0.5" } else { "0" },
+                if self.center_y { "0.5" } else { "0" }
+            ))
+        } else {
+            style
+                .base
+                .props
+                .iter()
+                .find(|prop| prop.name == "AnchorPoint")
+                .map(|prop| prop.value.clone())
+        };
+        let position_x =
+            shift_position_axis(self.position_x.clone(), margin_shift(self.margin_left));
+        let position_y =
+            shift_position_axis(self.position_y.clone(), margin_shift(self.margin_top));
+        let position = (position_x.is_some() || position_y.is_some())
+            .then(|| format_udim2_prop(position_x, position_y));
+        TransformInputs {
+            translate,
+            anchor,
+            position,
+        }
+    }
+
     fn flush(self, style: &mut StyleIr, size_emission: SizeEmission) {
+        let transform_inputs = (matches!(size_emission, SizeEmission::Combined)
+            && (self.translate_x.is_some() || self.translate_y.is_some()))
+        .then(|| self.transform_inputs(style));
         match size_emission {
             SizeEmission::Combined => {
+                style.size_inputs = [
+                    ("SizeX", self.size_width.clone().map(format_udim_axis)),
+                    ("SizeY", self.size_height.clone().map(format_udim_axis)),
+                    ("AutoX", self.auto_x.then(|| "true".to_owned())),
+                    ("AutoY", self.auto_y.then(|| "true".to_owned())),
+                ]
+                .into_iter()
+                .filter_map(|(name, value)| {
+                    value.map(|value| PropEntry {
+                        name: name.into(),
+                        value,
+                    })
+                })
+                .collect();
                 if self.size_width.is_some() || self.size_height.is_some() {
                     style.set_prop("Size", format_udim2_prop(self.size_width, self.size_height));
                 }
@@ -435,10 +864,28 @@ impl PendingAxes {
             }
         }
 
+        // A variant's translate travels as itself, so the runtime shifts the
+        // position and anchor the element already has rather than replacing them.
+        let (translate_x, translate_y) = match size_emission {
+            SizeEmission::Combined => {
+                style.transform_inputs = transform_inputs;
+                (self.translate_x, self.translate_y)
+            }
+            SizeEmission::PerAxis => {
+                if let Some(axis) = self.translate_x {
+                    style.set_prop("TranslateX", format_udim_axis(axis));
+                }
+                if let Some(axis) = self.translate_y {
+                    style.set_prop("TranslateY", format_udim_axis(axis));
+                }
+                (None, None)
+            }
+        };
+
         // A fractional translate is a shift by the element's own size, which is
         // exactly what AnchorPoint expresses; pixel translates shift Position.
-        let (anchor_x, shift_x) = split_translate_axis(self.translate_x);
-        let (anchor_y, shift_y) = split_translate_axis(self.translate_y);
+        let (anchor_x, shift_x) = split_translate_axis(translate_x);
+        let (anchor_y, shift_y) = split_translate_axis(translate_y);
         let anchor_x = anchor_x.or_else(|| self.center_x.then(|| "0.5".to_owned()));
         let anchor_y = anchor_y.or_else(|| self.center_y.then(|| "0.5".to_owned()));
         if anchor_x.is_some() || anchor_y.is_some() {
@@ -458,12 +905,39 @@ impl PendingAxes {
             shift_position_axis(self.position_x, shift_x + margin_shift(self.margin_left));
         let position_y =
             shift_position_axis(self.position_y, shift_y + margin_shift(self.margin_top));
-        if position_x.is_some() || position_y.is_some() {
-            style.set_prop("Position", format_udim2_prop(position_x, position_y));
+        match size_emission {
+            SizeEmission::Combined => {
+                if position_x.is_some() || position_y.is_some() {
+                    style.set_prop("Position", format_udim2_prop(position_x, position_y));
+                }
+            }
+            // A whole `Position` would reset the axis the variant never named.
+            SizeEmission::PerAxis => {
+                if let Some(axis) = position_x {
+                    style.set_prop("PositionX", format_udim_axis(axis));
+                }
+                if let Some(axis) = position_y {
+                    style.set_prop("PositionY", format_udim_axis(axis));
+                }
+            }
         }
 
-        if let Some(axis) = automatic_size_axis(self.auto_x, self.auto_y) {
-            style.set_prop("AutomaticSize", format!("Enum.AutomaticSize.{axis}"));
+        match size_emission {
+            SizeEmission::Combined => {
+                if let Some(axis) = automatic_size_axis(self.auto_x, self.auto_y) {
+                    style.set_prop("AutomaticSize", format!("Enum.AutomaticSize.{axis}"));
+                }
+            }
+            // Per axis, so a variant that hands one axis to Roblox keeps the
+            // other and takes back the size the base gave this one.
+            SizeEmission::PerAxis => {
+                if self.auto_x {
+                    style.set_prop("AutoX", "true".to_owned());
+                }
+                if self.auto_y {
+                    style.set_prop("AutoY", "true".to_owned());
+                }
+            }
         }
 
         if self.min_width.is_some() || self.min_height.is_some() {
@@ -486,15 +960,34 @@ impl PendingAxes {
             );
         }
 
-        if self.font_family.is_some() || self.font_weight.is_some() || self.font_style.is_some() {
-            style.set_prop(
-                "FontFace",
-                font_face_expression(
-                    self.font_family.as_deref(),
-                    self.font_weight,
-                    self.font_style,
-                ),
-            );
+        match size_emission {
+            SizeEmission::Combined => {
+                if self.font_family.is_some()
+                    || self.font_weight.is_some()
+                    || self.font_style.is_some()
+                {
+                    style.set_prop(
+                        "FontFace",
+                        font_face_expression(
+                            self.font_family.as_deref(),
+                            self.font_weight,
+                            self.font_style,
+                        ),
+                    );
+                }
+            }
+            // A whole `FontFace` would reset the family and weight the base set.
+            SizeEmission::PerAxis => {
+                if let Some(family) = &self.font_family {
+                    style.set_prop("FontFamily", format!("\"{family}\""));
+                }
+                if let Some(weight) = self.font_weight {
+                    style.set_prop("FontWeight", format!("Enum.FontWeight.{weight}"));
+                }
+                if let Some(font_style) = self.font_style {
+                    style.set_prop("FontStyle", format!("Enum.FontStyle.{font_style}"));
+                }
+            }
         }
 
         // `UIGridLayout` stamps `CellSize` onto every child and ignores whatever
@@ -534,18 +1027,47 @@ impl PendingAxes {
             style.set_helper_prop("uigridlayout", "CellSize", cell_size);
         }
 
-        if let Some(gap) = self.gap_offset
-            && style
-                .base
-                .helpers
-                .iter()
-                .any(|helper| helper.tag == "uigridlayout")
+        let has_grid = style
+            .base
+            .helpers
+            .iter()
+            .any(|helper| helper.tag == "uigridlayout");
+        // A grid takes its gap as CellPadding, and a UIListLayout beside the
+        // UIGridLayout would fight it for the children.
+        if let Some(gap) = &self.gap_offset
+            && has_grid
         {
             style.set_helper_prop(
                 "uigridlayout",
                 "CellPadding",
                 format!("UDim2.fromOffset({gap}, {gap})"),
             );
+            drop_gap_list_padding(style);
+        }
+
+        let mut grid_inputs = Vec::new();
+        if let Some(gap) = &self.gap_offset {
+            grid_inputs.push(("GapOffset", gap.clone()));
+        }
+        if let Some((count, horizontal)) = self.grid_cells {
+            grid_inputs.push(("GridCells", count.to_string()));
+            grid_inputs.push(("GridCellsHorizontal", horizontal.to_string()));
+        }
+        if let Some(extent) = &self.grid_cross_extent {
+            grid_inputs.push(("GridCrossExtent", extent.clone()));
+        }
+        let grid_inputs = grid_inputs
+            .into_iter()
+            .map(|(name, value)| PropEntry {
+                name: name.into(),
+                value,
+            })
+            .collect();
+        // A rule's grid inputs travel with it, since the runtime composes the cell
+        // from whichever rules apply; the base's wait to see whether a rule needs them.
+        match size_emission {
+            SizeEmission::Combined => style.grid_inputs = grid_inputs,
+            SizeEmission::PerAxis => style.base.props.extend(grid_inputs),
         }
 
         // `duration`/`ease`/`delay` enable the transition on their own so a
@@ -575,7 +1097,12 @@ impl PendingAxes {
         let right = margin_padding(self.margin_right);
         let bottom = margin_padding(self.margin_bottom);
         let left = margin_padding(self.margin_left);
-        if top.is_some() || right.is_some() || bottom.is_some() || left.is_some() {
+        // An all-zero margin has nothing for a wrapper to hold, and the runtime
+        // resolves one to no margin at all.
+        if [top, right, bottom, left]
+            .iter()
+            .any(|side| side.is_some_and(|offset| offset != 0.0))
+        {
             style.margin = Some(MarginSpec {
                 top: top.unwrap_or(0.0),
                 right: right.unwrap_or(0.0),
@@ -584,8 +1111,11 @@ impl PendingAxes {
             });
         }
 
-        // A divide color without an axis has no separators to paint.
-        if let Some(axis) = self.divide_axis {
+        // A divide color without an axis has no separators to paint, and a zero
+        // thickness removes them.
+        if let Some(axis) = self.divide_axis
+            && self.divide_thickness != Some(0.0)
+        {
             style.divide = Some(DivideSpec {
                 axis: axis.to_owned(),
                 thickness: self.divide_thickness.unwrap_or(1.0),
@@ -744,6 +1274,12 @@ fn push_variant_diagnostics(
                     variant, detail, token,
                 ));
             }
+            SemanticIssue::UnsupportedRelationalVariant { variant, reason } => {
+                unreadable = true;
+                diagnostics.push(unsupported_relational_variant_diagnostic(
+                    variant, reason, token,
+                ));
+            }
             SemanticIssue::InvalidBreakpointRange {
                 min_width,
                 max_width,
@@ -764,6 +1300,7 @@ fn is_variant_issue(issue: &SemanticIssue) -> bool {
         SemanticIssue::UnknownVariant { .. }
             | SemanticIssue::UnknownBreakpoint { .. }
             | SemanticIssue::MalformedAttributeVariant { .. }
+            | SemanticIssue::UnsupportedRelationalVariant { .. }
             | SemanticIssue::InvalidBreakpointRange { .. }
     )
 }
@@ -812,6 +1349,7 @@ fn apply_analyzed_token(
             SemanticIssue::UnknownVariant { .. }
             | SemanticIssue::UnknownBreakpoint { .. }
             | SemanticIssue::MalformedAttributeVariant { .. }
+            | SemanticIssue::UnsupportedRelationalVariant { .. }
             | SemanticIssue::InvalidBreakpointRange { .. } => unreachable!(
                 "variant issues are filtered out before the first unsupported issue is read"
             ),
@@ -920,6 +1458,8 @@ fn apply_analyzed_token(
         | UtilityKind::TransitionDelay => {
             apply_motion_token(analysis, config, diagnostics, style, pending)
         }
+        // Read off the element before it is lowered: the tag swap happens there.
+        UtilityKind::Isolate | UtilityKind::GroupMarker | UtilityKind::PeerMarker => {}
         UtilityKind::Unknown => {
             diagnostics.push(unsupported_utility_family_diagnostic(&analysis.parsed.raw));
         }
@@ -1135,9 +1675,14 @@ fn apply_spacing_token(
                     spacing_key,
                     &analysis.parsed.raw,
                 );
-                pending.gap_offset = resolve_spacing_value(config, spacing_key)
+                // A gap CellPadding cannot carry leaves the last one it could, as
+                // the runtime's `gapOffset` does.
+                if let Some(offset) = resolve_spacing_value(config, spacing_key)
                     .as_deref()
-                    .and_then(spacing_value_to_offset);
+                    .and_then(spacing_value_to_offset)
+                {
+                    pending.gap_offset = Some(offset);
+                }
             }
         }
         UtilityKind::SpaceX | UtilityKind::SpaceY => {
@@ -1237,6 +1782,7 @@ fn apply_size_token(
         UtilityKind::Width => {
             if let Some(size_key) = analysis.payload() {
                 if is_automatic_size_key(size_key) {
+                    pending.size_width = None;
                     pending.auto_x = true;
                 } else {
                     pending.size_width = resolve_size_axis_value(
@@ -1245,12 +1791,14 @@ fn apply_size_token(
                         size_key,
                         &analysis.parsed.raw,
                     );
+                    pending.auto_x &= pending.size_width.is_none();
                 }
             }
         }
         UtilityKind::Height => {
             if let Some(size_key) = analysis.payload() {
                 if is_automatic_size_key(size_key) {
+                    pending.size_height = None;
                     pending.auto_y = true;
                 } else {
                     pending.size_height = resolve_size_axis_value(
@@ -1259,12 +1807,15 @@ fn apply_size_token(
                         size_key,
                         &analysis.parsed.raw,
                     );
+                    pending.auto_y &= pending.size_height.is_none();
                 }
             }
         }
         UtilityKind::Size => {
             if let Some(size_key) = analysis.payload() {
                 if is_automatic_size_key(size_key) {
+                    pending.size_width = None;
+                    pending.size_height = None;
                     pending.auto_x = true;
                     pending.auto_y = true;
                 } else {
@@ -1274,6 +1825,8 @@ fn apply_size_token(
                         size_key,
                         &analysis.parsed.raw,
                     );
+                    pending.auto_x &= value.is_none();
+                    pending.auto_y &= value.is_none();
                     pending.size_width = value.clone();
                     pending.size_height = value;
                 }
@@ -1296,6 +1849,7 @@ fn apply_size_token(
             // width axis exactly like `w-*`.
             if let Some(size_key) = analysis.payload() {
                 if is_automatic_size_key(size_key) {
+                    pending.size_width = None;
                     pending.auto_x = true;
                 } else {
                     pending.size_width = resolve_size_axis_value(
@@ -1304,6 +1858,7 @@ fn apply_size_token(
                         size_key,
                         &analysis.parsed.raw,
                     );
+                    pending.auto_x &= pending.size_width.is_none();
                 }
             }
         }
@@ -2081,9 +2636,18 @@ fn apply_color_utility(
     match resolution {
         ColorResolution::Expression(value) => {
             if let Some(transparency_prop) = spec.transparency_prop {
+                // A solid color takes back an earlier `/N` by saying so, which is
+                // what a rule overlaying it has to do as well.
+                let faded = style
+                    .base
+                    .props
+                    .iter()
+                    .any(|prop| prop.name == transparency_prop);
                 style.remove_prop(transparency_prop);
                 if let Some(percent) = opacity {
                     style.set_prop(transparency_prop, opacity_to_transparency(percent));
+                } else if faded {
+                    style.set_prop(transparency_prop, "0".to_owned());
                 }
             }
 

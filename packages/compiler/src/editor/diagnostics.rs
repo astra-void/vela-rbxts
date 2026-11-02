@@ -1,6 +1,7 @@
-use crate::api::{DiagnosticsRequest, DiagnosticsResponse};
+use crate::api::{DiagnosticsRequest, DiagnosticsResponse, EditorDiagnostic};
 use crate::config::model::TailwindConfig;
 use crate::diagnostics::editor::{compiler_to_editor_diagnostic, host_utility_diagnostic};
+use crate::editor::conflicts::overridden_classes;
 use crate::editor::{collect_class_name_contexts, tokenize_class_name_with_ranges};
 use crate::semantic::analyze::analyze_class_token;
 use crate::semantic::utility::{
@@ -16,12 +17,15 @@ pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsRe
     let mut diagnostics = Vec::new();
 
     for context in contexts {
-        for token in tokenize_class_name_with_ranges(&context.value, context.value_range.start) {
+        let tokens = tokenize_class_name_with_ranges(&context.value, context.value_range.start);
+        let mut written = Vec::new();
+
+        for token in &tokens {
             if token.text.ends_with('-') || token.text.ends_with(':') {
                 continue;
             }
 
-            if context.splices_into(&token) {
+            if context.splices_into(token) {
                 continue;
             }
 
@@ -39,6 +43,7 @@ pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsRe
                 continue;
             }
 
+            written.push(token);
             let mut compiler_diagnostics = Vec::new();
             crate::transform::runtime::resolve_class_tokens(
                 vec![token.text.as_str()],
@@ -58,6 +63,18 @@ pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsRe
                         compiler_to_editor_diagnostic(diagnostic, Some(token.range.clone()))
                     }),
             );
+        }
+
+        let texts: Vec<&str> = written.iter().map(|token| token.text.as_str()).collect();
+        for overridden in overridden_classes(&texts, &config, context.element_tag.as_deref()) {
+            let token = written[overridden.index];
+            diagnostics.push(EditorDiagnostic {
+                level: "warning".to_owned(),
+                code: "overridden-class".to_owned(),
+                message: overridden.message,
+                token: Some(token.text.clone()),
+                range: Some(token.range.clone()),
+            });
         }
     }
 

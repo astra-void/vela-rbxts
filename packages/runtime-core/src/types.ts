@@ -133,6 +133,19 @@ export type RuntimeCondition =
 	| {
 			kind: "focus";
 	  }
+	/// A state of the nearest ancestor carrying the group marker, the named one
+	/// when `name` is set, starting at the parent.
+	| {
+			kind: "group";
+			name?: string;
+			condition: RuntimeCondition;
+	  }
+	/// The same over any same-parent sibling carrying the peer marker.
+	| {
+			kind: "peer";
+			name?: string;
+			condition: RuntimeCondition;
+	  }
 	/// A Roblox attribute on the styled instance. The host subscribes to the
 	/// attribute only where a rule reads it, and to nothing otherwise.
 	| {
@@ -192,6 +205,29 @@ export type RuntimeEnvironment = {
 	/// What the element's own `__velaTests` came to this render, which only the
 	/// host that was handed them can answer.
 	tests?: readonly boolean[];
+	/// The group and peer states this element's rules read, keyed by marker
+	/// name, `""` for the unnamed one. A missing entry reads as idle.
+	groups?: Readonly<Record<string, RuntimeScopeState>>;
+	peers?: Readonly<Record<string, RuntimeScopeState>>;
+};
+
+/// What a `group` or `peer` instance reports to the elements reading it.
+export type RuntimeScopeState = {
+	hovered: boolean;
+	pressed: boolean;
+	focused: boolean;
+};
+
+/// The marker names an element's `group-*` and `peer-*` variants read, `""`
+/// for the unnamed marker. Sorted, so two readings compare as written.
+export type RuntimeScopeNeeds = {
+	groups: string[];
+	peers: string[];
+};
+
+export type RuntimeScopes = {
+	groups: Record<string, RuntimeScopeState>;
+	peers: Record<string, RuntimeScopeState>;
 };
 
 export type RuntimeCamera = {
@@ -304,6 +340,13 @@ export type RuntimeDivide = {
 	transparency?: number;
 };
 
+/// `child[i]` is the `LayoutOrder` of the i-th content child; `separator[k]`
+/// sits between the children ranked k and k + 1.
+export type RuntimeDividePlan = {
+	child: number[];
+	separator: number[];
+};
+
 export type RuntimeDivideState = {
 	axis?: string;
 	thickness?: number;
@@ -331,6 +374,9 @@ export type RuntimeResolution = {
 	/// What an `opacity-*` resolved to on a component element, where there is no
 	/// tag to name a transparency channel against.
 	opacityAlpha?: number;
+	/// What a rule fades this element's own channels and drawing helpers by. It
+	/// stops at the element, whose subtree the transformer already faded.
+	channelAlpha?: number;
 	transition?: RuntimeTransitionState;
 	animation?: string;
 	textTransform?: string;
@@ -370,6 +416,9 @@ export type RuntimeResolution = {
 	usesHover?: boolean;
 	usesActive?: boolean;
 	usesFocus?: boolean;
+	/// The CollectionService tags a class value's `group`/`peer` markers lower
+	/// to, which the host puts on the instance.
+	markers?: string[];
 	/// What a pixel offset resolved at runtime multiplies by, applied as each
 	/// value lands rather than at the end so composition never sees a raw offset.
 	remRatio?: number;

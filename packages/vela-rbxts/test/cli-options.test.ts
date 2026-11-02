@@ -75,6 +75,41 @@ test("rejects arguments it cannot act on", () => {
 	});
 });
 
+test("remap takes the same tree options as build", () => {
+	expect(parseCliArgs(["remap", "--out", "gen"], CWD)).toMatchObject({
+		kind: "run",
+		options: {
+			command: "remap",
+			projectRoot: CWD,
+			outDir: path.join(CWD, "gen"),
+		},
+	});
+});
+
+test("rbxtsc hands everything after it to rbxtsc untouched", () => {
+	const parsed = parseCliArgs(
+		["--project", "app", "rbxtsc", "-w", "-p", "tsconfig.json", "--verbose"],
+		CWD,
+	);
+
+	expect(parsed).toMatchObject({
+		kind: "run",
+		options: {
+			command: "rbxtsc",
+			projectRoot: path.join(CWD, "app"),
+			forwardedArgs: ["-w", "-p", "tsconfig.json", "--verbose"],
+		},
+	});
+	expect(parseCliArgs(["rbxtsc", "--help"], CWD)).toMatchObject({
+		kind: "run",
+		options: { command: "rbxtsc", forwardedArgs: ["--help"] },
+	});
+	expect(parseCliArgs(["rbxtsc"], CWD)).toMatchObject({
+		kind: "run",
+		options: { forwardedArgs: [] },
+	});
+});
+
 test("refuses an output tree that would collide with the sources", () => {
 	expect(parseCliArgs(["build", "--out", "src"], CWD)).toMatchObject({
 		kind: "error",

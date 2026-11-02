@@ -228,6 +228,12 @@ for (const fragment of [
 	"function parseVariantPrefix(",
 	'if property == "shadow" then',
 	'return helper == "uishadow"',
+	"function watchScopes(",
+	"function applyMarkers(",
+	"function findGroup(",
+	"GetInstanceAddedSignal",
+	"element:AddTag(marker)",
+	"element:RemoveTag(marker)",
 ]) {
 	expect(
 		`the vide runtime carries ${fragment}`,
@@ -256,6 +262,20 @@ expect(
 		runtimeModules,
 	),
 );
+
+// Vide has no Tag prop, so a marker reaches the host and the host tags the
+// instance; the relational rules travel like any other.
+expect(
+	"markers travel to the Vide host",
+	source.includes('__velaMarkers = { "VelaGroup" }') &&
+		source.includes('__velaMarkers = { "VelaGroup/outer" }') &&
+		source.includes('__velaMarkers = { "VelaPeer/field" }'),
+);
+expect(
+	"relational variants lower to group and peer rules",
+	source.includes('kind = "group"') && source.includes('kind = "peer"'),
+);
+expect("the emit never writes a Tag prop on Vide", !/\bTag = /.test(source));
 
 if (failures.length > 0) {
 	for (const failure of failures) {

@@ -1,0 +1,14 @@
+{
+	"name": "parity-harness",
+	"version": "0.2.0",
+	"private": true,
+	"scripts": {
+		"test": "node scripts/run-parity.cjs",
+		"clean": "node -e \"\""
+	},
+	"devDependencies": {
+		"@rbxts/vela-runtime-core": "workspace:*",
+		"@vela-rbxts/compiler": "workspace:*",
+		"@vela-rbxts/config": "workspace:*"
+	}
+}

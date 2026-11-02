@@ -56,6 +56,18 @@ export type RuntimeCondition =
 	| {
 			kind: "focus";
 	  }
+	/** A state of the nearest ancestor marked `group`, or `group/name`. */
+	| {
+			kind: "group";
+			name?: string;
+			condition: RuntimeCondition;
+	  }
+	/** A state of any same-parent sibling marked `peer`, or `peer/name`. */
+	| {
+			kind: "peer";
+			name?: string;
+			condition: RuntimeCondition;
+	  }
 	/** A Roblox attribute on the styled instance. */
 	| {
 			kind: "attribute";
@@ -78,6 +90,8 @@ export type StyleIR = {
 	base: StyleEffectBundle;
 	runtimeRules: RuntimeRule[];
 	runtimeClassValue: boolean;
+	/** The CollectionService tags `group` and `peer` markers lower to. */
+	markers?: string[];
 	diagnostics: Diagnostic[];
 };
 

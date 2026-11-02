@@ -1,0 +1,18 @@
+[
+	{
+		"match": {
+			"lane": "^static$",
+			"path": "^transition$",
+			"className": "^(transition(-[a-z]+)?|duration-\\d+|ease-[a-z-]+|delay-\\d+)$"
+		},
+		"reason": "A transition, duration, easing or delay on an element nothing else sends to the runtime host has no state to tween between, so the static path drops it and reports transition-without-runtime. The runtime records the spec, which a host only reads when a variant or a class value moves a prop."
+	},
+	{
+		"match": {
+			"lane": "^static$",
+			"path": "^animation$",
+			"className": "^animate-none$"
+		},
+		"reason": "animate-none clears an animation. The static path omits the spec; the runtime records \"none\" because a class value resolved at render time has to override a static __velaAnimation, and both hosts treat \"none\" as no animation."
+	}
+]

@@ -1,6 +1,11 @@
 import { transform } from "@vela-rbxts/compiler";
 import { expect, test } from "vitest";
+import { defineConfig } from "../../../config/src/index";
 import { emitted, runtimeSource } from "./helpers";
+
+const withVide = {
+	configJson: JSON.stringify(defineConfig({ framework: "vide" })),
+};
 
 test("lowers flex and alignment utilities onto a shared UIListLayout helper", () => {
 	const result = transform(
@@ -341,5 +346,243 @@ test("rejects out-of-range grid cell counts", () => {
 	expect(result.diagnostics).toEqual([
 		expect.objectContaining({ code: "unsupported-grid-value" }),
 		expect.objectContaining({ code: "unsupported-grid-value" }),
+	]);
+});
+
+test("ranks divided children by the LayoutOrder each one declares", () => {
+	const result = transform(
+		`export const A = () => (
+			<frame className="flex-col divide-y">
+				<frame LayoutOrder={3} />
+				<frame className="order-first" />
+				<frame className="order-last" />
+			</frame>
+		);`,
+		null,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	// The parent ranks what it can read off each element, so a static order-*
+	// has to arrive as a plain prop.
+	expect(result.code).toMatch(/LayoutOrder=\{3\}/);
+	expect(result.code).toMatch(/LayoutOrder=\{-9999\}/);
+	expect(result.code).toMatch(/LayoutOrder=\{9999\}/);
+	expect(runtimeSource).toMatch(/export function planDivideOrder/);
+	expect(runtimeSource).toMatch(/__velaLayoutOrder: order/);
+	expect(runtimeSource).toMatch(
+		/hostProps\.LayoutOrder = props\.__velaLayoutOrder/,
+	);
+});
+
+test("divide-x-0 and divide-y-0 insert no separators", () => {
+	for (const token of ["divide-x-0", "divide-y-0", "divide-y divide-y-0"]) {
+		const result = transform(
+			`export const A = () => <frame className="flex-col ${token}"><frame /><frame /></frame>;`,
+			null,
+		);
+
+		expect(result.diagnostics).toEqual([]);
+		expect(result.code).not.toContain("__velaDivide");
+		expect(result.needsRuntimeHost).toBe(false);
+	}
+	expect(runtimeSource).toMatch(
+		/if \(thickness === 0\) \{\s*return undefined;/,
+	);
+});
+
+test("fades divide separators with the subtree they sit in", () => {
+	const own = transform(
+		`export const A = () => <frame className="flex-col divide-y divide-slate-500/50 opacity-50"><frame /><frame /></frame>;`,
+		null,
+	);
+	expect(own.diagnostics).toEqual([]);
+	expect(own.code).toMatch(/"transparency": 0\.75/);
+
+	const inherited = transform(
+		`export const A = () => (
+			<frame className="opacity-50">
+				<frame className="flex-col divide-y"><frame /><frame /></frame>
+			</frame>
+		);`,
+		null,
+	);
+	expect(inherited.diagnostics).toEqual([]);
+	expect(inherited.code).toMatch(/"transparency": 0\.5/);
+
+	// GroupTransparency already composites the separators with everything else.
+	const group = transform(
+		`export const A = () => <canvasgroup className="flex-col divide-y opacity-50"><frame /><frame /></canvasgroup>;`,
+		null,
+	);
+	expect(group.diagnostics).toEqual([]);
+	expect(group.code).not.toMatch(/"transparency"/);
+});
+
+test("keeps value children under a fade divisible", () => {
+	const result = transform(
+		`export function A(props: { children?: unknown }) {
+			return <frame className="flex-col divide-y opacity-50">{props.children}</frame>;
+		}`,
+		null,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toMatch(
+		/<__VelaOpacity\.Provider value=\{0\.5\}>\{props\.children\}<\/__VelaOpacity\.Provider>/,
+	);
+	// One provider would read as one child; the host splits it per child.
+	expect(runtimeSource).toMatch(
+		/element\.type === \(__VelaOpacity\.Provider as unknown\)/,
+	);
+});
+
+test("warns when divide has no list layout to place its separators", () => {
+	const bare = transform(
+		`export const A = () => <frame className="divide-y"><frame /><frame /></frame>;`,
+		null,
+	);
+	expect(bare.diagnostics).toEqual([
+		expect.objectContaining({
+			code: "divide-without-list-layout",
+			token: "divide-y",
+		}),
+	]);
+
+	const grid = transform(
+		`export const A = () => <frame className="grid grid-cols-2 divide-x"><frame /><frame /></frame>;`,
+		null,
+	);
+	expect(grid.diagnostics).toEqual([
+		expect.objectContaining({ code: "divide-with-grid", token: "divide-x" }),
+	]);
+
+	for (const layout of ["flex", "space-y-2"]) {
+		const listed = transform(
+			`export const A = () => <frame className="${layout} divide-y"><frame /><frame /></frame>;`,
+			null,
+		);
+		expect(listed.diagnostics).toEqual([]);
+	}
+
+	const written = transform(
+		`export const A = () => <frame className="divide-y"><uilistlayout /><frame /><frame /></frame>;`,
+		null,
+	);
+	expect(written.diagnostics).toEqual([]);
+});
+
+test("warns when a divided child's order is only decided at render time", () => {
+	const source = `export const A = (props: { late: boolean }) => (
+		<frame className="flex-col divide-y">
+			<frame className="md:order-2" />
+			<frame className={props.late ? "order-last" : "order-1"} />
+			<frame className="order-3" />
+		</frame>
+	);`;
+	const result = transform(source, null);
+
+	expect(result.diagnostics).toEqual([
+		expect.objectContaining({
+			code: "divide-unreadable-order",
+			token: "md:order-2",
+		}),
+		expect.objectContaining({
+			code: "divide-unreadable-order",
+			token: "order-last",
+		}),
+	]);
+
+	// Vide reads the built instances and follows every later write.
+	const vide = transform(source, withVide);
+	expect(
+		vide.diagnostics.filter(
+			(diagnostic) => diagnostic.code === "divide-unreadable-order",
+		),
+	).toEqual([]);
+});
+
+test("warns when a divided child's order stays inside a runtime class value", () => {
+	const source = `export const A = (props: { x: string }) => (
+		<frame className="flex flex-col divide-y">
+			<frame className={\`order-2 \${props.x}\`} />
+			<frame className={clsx("order-first", props.x)} />
+			<frame className={\`p-2 \${props.x}\`} />
+		</frame>
+	);`;
+	const result = transform(source, null);
+
+	expect(result.diagnostics).toEqual([
+		expect.objectContaining({
+			code: "divide-unreadable-order",
+			token: "order-2",
+		}),
+		expect.objectContaining({
+			code: "divide-unreadable-order",
+			token: "order-first",
+		}),
+	]);
+});
+
+test("isolate renders a frame as a CanvasGroup so opacity fades it as one layer", () => {
+	const result = transform(
+		`export const A = () => (
+			<frame className="isolate opacity-50 size-10">
+				<frame className="bg-red-500 size-6" />
+				<frame className="bg-blue-500 size-6" />
+			</frame>
+		);`,
+		null,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toMatch(/<canvasgroup\b[^>]*GroupTransparency=\{0\.5\}/);
+	expect(result.code).toMatch(/<\/canvasgroup>/);
+	// The children are composited with the group rather than faded one by one.
+	expect(result.code).not.toMatch(/<frame\b[^>]*Transparency=\{0\.5\}/);
+
+	const runtime = transform(
+		`export const A = () => <frame className="isolate opacity-50 hover:bg-red-500" />;`,
+		null,
+	);
+	expect(runtime.code).toContain('__velaTag={"canvasgroup"}');
+});
+
+test("isolate has to be static, unconditional and on a frame", () => {
+	const conditional = transform(
+		`export const A = (props: { on: boolean }) => <frame className={props.on ? "isolate" : ""} />;`,
+		null,
+	);
+	expect(conditional.diagnostics).toEqual([
+		expect.objectContaining({ code: "isolate-not-static", token: "isolate" }),
+	]);
+	expect(conditional.code).not.toContain("canvasgroup");
+
+	const runtime = transform(
+		"export const A = (props: { x: string }) => <frame className={`isolate ${props.x}`} />;",
+		null,
+	);
+	expect(runtime.diagnostics).toEqual([
+		expect.objectContaining({ code: "isolate-not-static", token: "isolate" }),
+	]);
+	expect(runtime.code).not.toContain("canvasgroup");
+
+	const variant = transform(
+		`export const A = () => <frame className="hover:isolate" />;`,
+		null,
+	);
+	expect(variant.diagnostics).toEqual([
+		expect.objectContaining({
+			code: "isolate-not-static",
+			token: "hover:isolate",
+		}),
+	]);
+	expect(variant.code).not.toContain("canvasgroup");
+
+	const text = transform(
+		`export const A = () => <textlabel className="isolate" />;`,
+		null,
+	);
+	expect(text.diagnostics).toEqual([
+		expect.objectContaining({ code: "isolate-needs-frame" }),
 	]);
 });

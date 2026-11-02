@@ -70,6 +70,7 @@
   "scripts": {
     "build": "pnpm run build:native",
     "build:native": "napi build --platform",
+    "build:native:release": "napi build --platform --release",
     "build:native:target": "node ./scripts/build-target-artifact.mjs",
     "dev": "pnpm run build:native",
     "lint": "biome check .",

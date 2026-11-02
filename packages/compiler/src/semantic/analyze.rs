@@ -148,6 +148,12 @@ fn variant_issues(variants: &[super::variant::ParsedVariant]) -> Vec<SemanticIss
                     detail: detail.clone(),
                 })
             }
+            Some(VariantError::UnsupportedRelational { reason }) => {
+                issues.push(SemanticIssue::UnsupportedRelationalVariant {
+                    variant: variant.raw.clone(),
+                    reason: reason.clone(),
+                })
+            }
             None => {}
         }
     }
@@ -346,7 +352,6 @@ fn is_known_tailwind_family(family: &str) -> bool {
             | "stroke"
             | "object"
             | "overscroll"
-            | "isolate"
             | "box"
             | "container"
             | "sr"

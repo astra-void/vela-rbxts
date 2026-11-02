@@ -244,8 +244,11 @@ test("keeps negative positions negative behind a variant prefix", () => {
 		null,
 	);
 
+	// One axis at a time, so the rule leaves the axis it never named alone.
 	expect(left.diagnostics).toEqual([]);
-	expect(left.code).toMatch(/UDim2\.fromOffset\(-16, 0\)/);
+	expect(ruleProps(left)).toEqual([
+		{ name: "PositionX", value: "new UDim(0, -16)" },
+	]);
 
 	const top = transform(
 		`export const B = () => <frame className="md:-top-4" />;`,
@@ -253,7 +256,9 @@ test("keeps negative positions negative behind a variant prefix", () => {
 	);
 
 	expect(top.diagnostics).toEqual([]);
-	expect(top.code).toMatch(/UDim2\.fromOffset\(0, -16\)/);
+	expect(ruleProps(top)).toEqual([
+		{ name: "PositionY", value: "new UDim(0, -16)" },
+	]);
 
 	const inset = transform(
 		`export const C = () => <frame className="md:-inset-4" />;`,
@@ -261,5 +266,11 @@ test("keeps negative positions negative behind a variant prefix", () => {
 	);
 
 	expect(inset.diagnostics).toEqual([]);
-	expect(inset.code).toMatch(/UDim2\.fromOffset\(-16, -16\)/);
+	expect(ruleProps(inset)).toEqual([
+		{ name: "PositionX", value: "new UDim(0, -16)" },
+		{ name: "PositionY", value: "new UDim(0, -16)" },
+	]);
 });
+
+const ruleProps = (result: { ir: string[] }) =>
+	JSON.parse(result.ir[0]).runtimeRules[0].effects.props;

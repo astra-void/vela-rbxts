@@ -444,6 +444,86 @@ async function main() {
 		"sort edits should stay inside the class name string",
 	);
 
+	const conflictsFixture = openFixture("Conflicts.tsx");
+	const conflictDiagnostics = await waitForDiagnostics(conflictsFixture.uri);
+	const overridden = conflictDiagnostics.filter(
+		(entry) => entry.code === "overridden-class",
+	);
+	const overriddenTokens = overridden.map((entry) => entry.data?.token);
+	check(
+		JSON.stringify(overriddenTokens) ===
+			JSON.stringify([
+				"px-2",
+				"bg-red-500",
+				"hover:bg-red-500",
+				"hover:md:bg-red-500",
+			]),
+		`overridden classes should be px-2, bg-red-500, hover:bg-red-500 and hover:md:bg-red-500, got ${JSON.stringify(overriddenTokens)}`,
+	);
+	for (const entry of overridden) {
+		const token = entry.data?.token;
+		check(entry.severity === 2, `overridden ${token} should be a warning`);
+		check(
+			JSON.stringify(entry.tags) === JSON.stringify([1]),
+			`overridden ${token} should be tagged unnecessary, got ${JSON.stringify(entry.tags)}`,
+		);
+		const anchored = sliceRange(conflictsFixture.text, entry.range);
+		check(
+			anchored === token,
+			`overridden ${token} range anchors to ${JSON.stringify(anchored)}`,
+		);
+	}
+	check(
+		!conflictDiagnostics.some((entry) =>
+			["p-4", "bg-blue-500", "w-4", "h-8", "hover:bg-blue-500"].includes(
+				entry.data?.token,
+			),
+		),
+		"the classes that win, and classes that only overlap, should stay quiet",
+	);
+	const overriddenPadding = diagnosticFor(overridden, "px-2");
+	check(
+		(overriddenPadding?.message ?? "").includes('"p-4"'),
+		"an overridden-class message should name the class that overrides it",
+	);
+	if (overriddenPadding) {
+		const actions = await request("textDocument/codeAction", {
+			textDocument: { uri: conflictsFixture.uri },
+			range: overriddenPadding.range,
+			context: { diagnostics: [overriddenPadding], only: ["quickfix"] },
+		});
+		const texts = (actions ?? []).map(
+			(action) => action.edit?.changes?.[conflictsFixture.uri]?.[0]?.newText,
+		);
+		check(
+			JSON.stringify(texts) === JSON.stringify([""]),
+			`an overridden class should only offer its removal, got ${JSON.stringify(texts)}`,
+		);
+	}
+	const conflictSortActions = await request("textDocument/codeAction", {
+		textDocument: { uri: conflictsFixture.uri },
+		range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+		context: { diagnostics: [], only: ["source.sortVelaClasses"] },
+	});
+	const conflictSortEdits =
+		(conflictSortActions ?? []).find(
+			(action) => action.kind === "source.sortVelaClasses",
+		)?.edit?.changes?.[conflictsFixture.uri] ?? [];
+	check(
+		conflictSortEdits.some(
+			(edit) =>
+				edit.newText === "p-4 hover:md:bg-red-500 md:hover:bg-blue-500",
+		),
+		"sorting should keep two classes under one condition in the order that decides the winner",
+	);
+	check(
+		conflictSortEdits.some(
+			(edit) =>
+				edit.newText === "rounded-md dark:bg-slate-800 dark:hover:bg-slate-700",
+		),
+		"sorting should keep a variant chain after the shorter chain it extends",
+	);
+
 	const completionsFixture = openFixture("Completions.tsx");
 	await waitForDiagnostics(completionsFixture.uri);
 	const typed = "md:bg-sl";
@@ -651,6 +731,8 @@ async function main() {
 		"max-md:px-3",
 		"md:max-lg:px-4",
 		"tablet:px-8",
+		"group-hover:bg-blue-500",
+		"peer-focus/field:ring-2",
 	]) {
 		check(
 			!diagnosticFor(stateDiagnostics, token),
@@ -662,6 +744,7 @@ async function main() {
 		["max-mdd:px-2", "unknown-breakpoint"],
 		["attr-[State]:px-2", "malformed-attribute-variant"],
 		["md:max-sm:px-2", "invalid-breakpoint-range"],
+		["group-md:px-2", "unsupported-relational-variant"],
 	]) {
 		const diagnostic = diagnosticFor(stateDiagnostics, token);
 		check(diagnostic, `missing ${code} diagnostic for ${token}`);
@@ -723,6 +806,20 @@ async function main() {
 		"hover over a max-width variant should describe its bound",
 	);
 
+	const groupHover = await request("textDocument/hover", {
+		textDocument: { uri: stateFixture.uri },
+		position: positionAt(
+			stateFixture.text,
+			stateFixture.text.indexOf("group-hover:bg-blue-500") + 2,
+		),
+	});
+	check(
+		(groupHover?.contents?.value ?? "").includes(
+			"the nearest ancestor marked `group` is hovered",
+		),
+		"hover over a group variant should name the ancestor it reads",
+	);
+
 	const stateCompletion = await request("textDocument/completion", {
 		textDocument: { uri: stateFixture.uri },
 		// At the very start of the variant, so nothing is typed to filter by and
@@ -747,6 +844,11 @@ async function main() {
 	check(
 		variantLabels.some((label) => label.startsWith("attr-[")),
 		"the inline attribute variant should be offered",
+	);
+	check(
+		variantLabels.includes("group-hover:") &&
+			variantLabels.includes("peer-focus:"),
+		"the group and peer variants should be offered",
 	);
 
     // Off unless the client asked for them.

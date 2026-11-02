@@ -5,13 +5,16 @@ import { __VelaMargin } from "./margin";
 import { __VelaMotion } from "./motion";
 import { __VelaOpacity } from "./opacity";
 import { __VelaRem } from "./rem";
+import { __VelaScope } from "./scope";
 import { __VelaToken } from "./token";
 import type {
 	ClassValue,
 	RuntimeEnvironment,
 	RuntimeResolution,
 	RuntimeResolvedEffectBundle,
+	RuntimeResolvedPropEntry,
 	RuntimeRule,
+	RuntimeScopeNeeds,
 	RuntimeTheme,
 } from "./types";
 import { __VelaVariant } from "./variant";
@@ -31,6 +34,19 @@ export namespace __VelaResolution {
 			remRatio: __VelaRem.ratio(environment.rem),
 		};
 
+		// Rules and class tokens apply by rank, then in the order they came, so a
+		// matching variant beats the base and a wider breakpoint a narrower one
+		// wherever either was written.
+		const ranked: RankedEntry[] = [];
+		let sorted = true;
+		const rank = (entry: RankedEntry) => {
+			const previous = ranked[ranked.size() - 1];
+			if (previous !== undefined && previous.rank > entry.rank) {
+				sorted = false;
+			}
+			ranked.push(entry);
+		};
+
 		for (const rule of runtimeRules) {
 			if (__VelaVariant.conditionUsesState(rule.condition, "hover")) {
 				resolution.usesHover = true;
@@ -42,12 +58,45 @@ export namespace __VelaResolution {
 				resolution.usesFocus = true;
 			}
 			if (__VelaVariant.matchesRuntimeCondition(rule.condition, environment)) {
-				__VelaApply.applyEffectBundle(resolution, rule.effects);
+				rank({
+					rank: __VelaVariant.conditionPrecedence(rule.condition),
+					order: ranked.size(),
+					rule,
+				});
 			}
 		}
 
-		for (const token of __VelaApply.normalizeClassValue(className)) {
-			applyToken(theme, environment, tag, token, resolution, preflight, 0);
+		for (const token of expandClassValue(theme, className)) {
+			const segments = __VelaVariant.splitVariantSegments(token);
+			segments.pop();
+			rank({
+				rank: __VelaVariant.segmentsPrecedence(segments, theme),
+				order: ranked.size(),
+				token,
+			});
+		}
+
+		if (!sorted) {
+			table.sort(
+				ranked,
+				(left, right) =>
+					left.rank < right.rank ||
+					(left.rank === right.rank && left.order < right.order),
+			);
+		}
+		for (const entry of ranked) {
+			if (entry.rule !== undefined) {
+				__VelaApply.applyEffectBundle(resolution, entry.rule.effects);
+			} else if (entry.token !== undefined) {
+				applyToken(theme, environment, tag, entry.token, resolution, preflight);
+			}
+		}
+		__VelaApply.dropGridListPadding(resolution);
+
+		// A component hands its alpha to whatever it renders instead.
+		const ownAlpha = resolution.opacityAlpha ?? resolution.channelAlpha;
+		if (tag !== undefined && ownAlpha !== undefined) {
+			composeOwnOpacity(resolution, tag, ownAlpha, preflight);
 		}
 
 		return resolution;
@@ -70,7 +119,7 @@ export namespace __VelaResolution {
 
 		if (className !== undefined) {
 			__VelaVariant.collectClassValueAttributes(
-				__VelaApply.normalizeClassValue(className),
+				expandClassValue(theme, className),
 				theme,
 				names,
 			);
@@ -87,9 +136,95 @@ export namespace __VelaResolution {
 		return sorted;
 	}
 
+	/// The group and peer markers this element's `group-*`/`peer-*` read, the
+	/// twin of `attributeNames`: an element that names none watches nothing.
+	export function scopeNeeds(
+		theme: RuntimeTheme,
+		runtimeRules: readonly RuntimeRule[],
+		className: ClassValue | undefined,
+	): RuntimeScopeNeeds {
+		const groups = new Set<string>();
+		const peers = new Set<string>();
+
+		for (const rule of runtimeRules) {
+			__VelaVariant.collectConditionScopes(rule.condition, groups, peers);
+		}
+
+		if (className !== undefined) {
+			__VelaVariant.collectClassValueScopes(
+				expandClassValue(theme, className),
+				theme,
+				groups,
+				peers,
+			);
+		}
+
+		return { groups: sortedNames(groups), peers: sortedNames(peers) };
+	}
+
+	function sortedNames(names: Set<string>): string[] {
+		const sorted: string[] = [];
+		for (const name of names) {
+			sorted.push(name);
+		}
+		table.sort(sorted);
+
+		return sorted;
+	}
+
+	interface RankedEntry {
+		rank: number;
+		order: number;
+		rule?: RuntimeRule;
+		token?: string;
+	}
+
 	/// A plugin utility that reaches itself would expand forever; the class is
 	/// dropped instead, matching what the static path does.
 	export const MAX_PLUGIN_EXPANSION_DEPTH = 8;
+
+	/// A plugin body can carry variants, so anything that scans prefixes reads it spelled out.
+	function expandClassValue(
+		theme: RuntimeTheme,
+		className: ClassValue | undefined,
+	): string[] {
+		const tokens: string[] = [];
+		for (const token of __VelaApply.normalizeClassValue(className)) {
+			expandToken(theme, token, tokens, 0);
+		}
+
+		return tokens;
+	}
+
+	/// Spells a plugin utility out into the classes it stands for, each under
+	/// the prefixes it was written with, so every one of them is ranked as itself.
+	function expandToken(
+		theme: RuntimeTheme,
+		token: string,
+		into: string[],
+		depth: number,
+	) {
+		const segments = __VelaVariant.splitVariantSegments(token);
+		const utility = segments.pop();
+		const pluginUtility =
+			utility === undefined ? undefined : theme.pluginUtilities[utility];
+		if (utility === undefined || !typeIs(pluginUtility, "string")) {
+			into.push(token);
+			return;
+		}
+		if (depth >= MAX_PLUGIN_EXPANSION_DEPTH) {
+			return;
+		}
+
+		const prefix = __VelaLua.substring(
+			token,
+			0,
+			__VelaLua.stringLength(token) - __VelaLua.stringLength(utility),
+		);
+		for (const part of __VelaLua.splitWhitespace(pluginUtility)) {
+			expandToken(theme, `${prefix}${part}`, into, depth + 1);
+		}
+	}
 
 	export function applyToken(
 		theme: RuntimeTheme,
@@ -98,7 +233,6 @@ export namespace __VelaResolution {
 		token: string,
 		resolution: RuntimeResolution,
 		preflight: boolean,
-		depth: number,
 	) {
 		if (!token) {
 			return;
@@ -109,6 +243,20 @@ export namespace __VelaResolution {
 		const segments = __VelaVariant.splitVariantSegments(token);
 		const utility = segments.pop();
 		if (!utility) {
+			return;
+		}
+
+		// A marker is an unconditional tag; under a variant it is dropped, as the
+		// compiler drops it.
+		const marker = __VelaScope.markerTag(utility);
+		if (marker !== undefined) {
+			if (segments.size() === 0 && tag !== undefined) {
+				const markers = resolution.markers ?? [];
+				if (!markers.includes(marker)) {
+					markers.push(marker);
+				}
+				resolution.markers = markers;
+			}
 			return;
 		}
 
@@ -131,31 +279,7 @@ export namespace __VelaResolution {
 		}
 
 		const pluginUtility = theme.pluginUtilities[utility];
-		if (pluginUtility !== undefined) {
-			if (depth >= MAX_PLUGIN_EXPANSION_DEPTH) {
-				return;
-			}
-
-			if (typeIs(pluginUtility, "string")) {
-				const prefix = __VelaLua.substring(
-					token,
-					0,
-					__VelaLua.stringLength(token) - __VelaLua.stringLength(utility),
-				);
-				for (const part of __VelaLua.splitWhitespace(pluginUtility)) {
-					applyToken(
-						theme,
-						environment,
-						tag,
-						`${prefix}${part}`,
-						resolution,
-						preflight,
-						depth + 1,
-					);
-				}
-				return;
-			}
-
+		if (pluginUtility !== undefined && !typeIs(pluginUtility, "string")) {
 			for (const [name, value] of pairs(pluginUtility)) {
 				__VelaApply.setProp(
 					resolution.props,
@@ -234,7 +358,10 @@ export namespace __VelaResolution {
 
 		__VelaApply.applyResolvedEffectBundle(
 			resolution,
-			withPreflightBackground(effect, preflight),
+			withPreflightBackground(
+				withColorOpacityReset(effect, resolution),
+				preflight,
+			),
 		);
 	}
 
@@ -305,6 +432,41 @@ export namespace __VelaResolution {
 		}
 	}
 
+	/// Mirrors `compose_inherited_opacity` over the element's own `opacity-*`: a
+	/// channel nothing set still paints, so it fades from opaque. A background
+	/// preflight neutralized stays transparent, which no alpha changes.
+	function composeOwnOpacity(
+		resolution: RuntimeResolution,
+		tag: string,
+		alpha: number,
+		preflight: boolean,
+	) {
+		for (const name of __VelaOpacity.transparencyProps(tag)) {
+			if (resolution.props[name] !== undefined) {
+				continue;
+			}
+			if (
+				preflight &&
+				name === "BackgroundTransparency" &&
+				!paintsBackground(resolution)
+			) {
+				continue;
+			}
+			resolution.props[name] = 0;
+		}
+
+		composeInheritedOpacity(resolution, tag, alpha);
+	}
+
+	function paintsBackground(resolution: RuntimeResolution): boolean {
+		return (
+			resolution.props.BackgroundColor3 !== undefined ||
+			resolution.gradientFrom !== undefined ||
+			resolution.gradientVia !== undefined ||
+			resolution.gradientTo !== undefined
+		);
+	}
+
 	/// Mirrors `is_utility_allowed_on_host`. A component element hides its host tag,
 	/// so nothing is filtered there — same as the static path's `None`.
 	export function isPropAllowedOnTag(
@@ -361,5 +523,36 @@ export namespace __VelaResolution {
 		const props = [...effect.props];
 		props.push({ name: "BackgroundTransparency", value: 0 });
 		return { props, helpers: effect.helpers };
+	}
+
+	const COLOR_TRANSPARENCY_PROPS: Record<string, string> = {
+		BackgroundColor3: "BackgroundTransparency",
+		TextColor3: "TextTransparency",
+		ImageColor3: "ImageTransparency",
+		ScrollBarImageColor3: "ScrollBarImageTransparency",
+	};
+
+	/// Mirrors `apply_color_utility`: a solid color takes back the `/N` an earlier
+	/// token left on its channel.
+	function withColorOpacityReset(
+		effect: RuntimeResolvedEffectBundle,
+		resolution: RuntimeResolution,
+	): RuntimeResolvedEffectBundle {
+		let props: RuntimeResolvedPropEntry[] | undefined;
+		for (const prop of effect.props) {
+			const transparency = COLOR_TRANSPARENCY_PROPS[prop.name];
+			if (
+				transparency === undefined ||
+				resolution.props[transparency] === undefined ||
+				effect.props.some((entry) => entry.name === transparency)
+			) {
+				continue;
+			}
+
+			props = props ?? [...effect.props];
+			props.push({ name: transparency, value: 0 });
+		}
+
+		return props === undefined ? effect : { props, helpers: effect.helpers };
 	}
 }

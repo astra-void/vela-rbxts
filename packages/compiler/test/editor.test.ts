@@ -4,6 +4,7 @@ import {
 	getDocumentColors,
 	getHover,
 	sortClassNames,
+	transform,
 } from "@vela-rbxts/compiler";
 import { expect, test } from "vitest";
 import { defineConfig, plugin } from "../../config/src/index";
@@ -1657,6 +1658,146 @@ test("completes and hovers divide utilities", () => {
 	expect(color.contents?.documentation).toContain("Color3.fromRGB");
 });
 
+test("describes the divide ordering contract and divide-0", () => {
+	const source = '<frame className="flex-col divide-y divide-x-0" />';
+	const axis = getHover({
+		source,
+		position: positionAfter(source, "divide-y"),
+	});
+	expect(axis.contents?.documentation).toContain(
+		"ranked by their `LayoutOrder`",
+	);
+	expect(axis.contents?.documentation).toContain("forward `LayoutOrder`");
+	expect(axis.contents?.documentation).not.toContain("Not compatible");
+
+	const none = getHover({
+		source,
+		position: positionAfter(source, "divide-x-"),
+	});
+	expect(none.contents?.documentation).toContain(
+		"Removes the vertical separators",
+	);
+});
+
+test("completes and hovers isolate on frames only", () => {
+	const labels = (tag: string) => {
+		const source = `<${tag} className="" />`;
+		return getCompletions({
+			source,
+			position: positionAfter(source, 'className="'),
+		}).items.map((item: { label: string }) => item.label);
+	};
+	expect(labels("frame")).toContain("isolate");
+	expect(labels("canvasgroup")).toContain("isolate");
+	expect(labels("textlabel")).not.toContain("isolate");
+
+	const source = '<frame className="isolate opacity-50" />';
+	const isolate = getHover({
+		source,
+		position: positionAfter(source, "isol"),
+	});
+	expect(isolate.contents?.display).toContain("CanvasGroup");
+	expect(isolate.contents?.documentation).toContain("clips its descendants");
+
+	const opacity = getHover({
+		source,
+		position: positionAfter(source, "opacity-"),
+	});
+	expect(opacity.contents?.display).toBe("`opacity-50` -> GroupTransparency");
+	expect(opacity.contents?.documentation).not.toContain("Overlapping");
+
+	const plain = '<frame className="opacity-50" />';
+	const plainOpacity = getHover({
+		source: plain,
+		position: positionAfter(plain, "opacity-"),
+	});
+	expect(plainOpacity.contents?.display).toContain("BackgroundTransparency");
+	expect(plainOpacity.contents?.documentation).toContain("add `isolate`");
+
+	const conditional =
+		'<frame className={`opacity-50 ${on ? "isolate" : ""}`} />';
+	expect(
+		getHover({
+			source: conditional,
+			position: positionAfter(conditional, "opacity-"),
+		}).contents?.display,
+	).toContain("BackgroundTransparency");
+
+	const diagnostics = getDiagnostics({
+		source: '<textlabel className="isolate" />',
+	}).diagnostics;
+	expect(diagnostics).toEqual([
+		expect.objectContaining({ code: "unsupported-host-utility" }),
+	]);
+	expect(
+		getDiagnostics({ source: '<frame className="hover:isolate" />' })
+			.diagnostics,
+	).toEqual([expect.objectContaining({ code: "isolate-not-static" })]);
+});
+
+test("completes, hovers and sorts group and peer", () => {
+	const items = (tag: string, typed = "") => {
+		const source = `<${tag} className="${typed}" />`;
+		return getCompletions({
+			source,
+			position: positionAfter(source, `className="${typed}`),
+		}).items;
+	};
+	const labels = (tag: string, typed?: string) =>
+		items(tag, typed).map((item: { label: string }) => item.label);
+	for (const label of ["group", "group/", "peer", "peer/"]) {
+		expect(labels("frame")).toContain(label);
+		expect(labels("Card")).not.toContain(label);
+	}
+	const variants = items("frame", "g");
+	const groupHover = variants.find(
+		(item: { label: string }) => item.label === "group-hover:",
+	);
+	expect(groupHover?.documentation).toContain(
+		"the nearest ancestor marked `group` is hovered",
+	);
+	expect(labels("frame", "p")).toEqual(
+		expect.arrayContaining(["peer-hover:", "peer-active:", "peer-focus:"]),
+	);
+
+	const source = '<frame className="group/card" />';
+	const marker = getHover({ source, position: positionAfter(source, "gro") });
+	expect(marker.contents?.display).toContain("`VelaGroup/card`");
+	expect(marker.contents?.documentation).toContain("group-hover/card");
+
+	const variantSource =
+		'<textlabel className="group-hover/card:text-blue-400" />';
+	const variant = getHover({
+		source: variantSource,
+		position: positionAfter(variantSource, "text-blue"),
+	});
+	expect(variant.contents?.documentation).toContain(
+		"applies when the nearest ancestor marked `group/card` is hovered",
+	);
+
+	const unsupportedSource = '<frame className="group-md:bg-red-500" />';
+	expect(
+		getHover({
+			source: unsupportedSource,
+			position: positionAfter(unsupportedSource, "bg-red"),
+		}).contents?.documentation,
+	).toContain("reads hover, active or focus, not `md`");
+	const unsupported = getDiagnostics({
+		source: '<frame className="group-md:bg-red-500" />',
+	}).diagnostics;
+	expect(unsupported).toEqual([
+		expect.objectContaining({ code: "unsupported-relational-variant" }),
+	]);
+
+	const sorted = sortClassNames({
+		source:
+			'<frame className="dark:bg-black peer-hover:bg-red-500 group-hover:bg-blue-500 hover:bg-white bg-slate-700 group" />',
+	});
+	expect(sorted.edits[0].text).toBe(
+		"group bg-slate-700 hover:bg-white group-hover:bg-blue-500 peer-hover:bg-red-500 dark:bg-black",
+	);
+});
+
 test("sorts class names into a canonical order", () => {
 	const source =
 		'<frame className="p-4 bg-slate-700 hover:bg-blue-600 w-40 flex-col rounded-md" />';
@@ -2019,4 +2160,224 @@ test("sorting leaves the v0.12 variant order where it was", () => {
 	expect(result.edits[0].text).toBe(
 		"sm:bg-slate-500 lg:bg-slate-700 landscape:bg-green-500 gamepad:bg-red-500 hover:bg-blue-600 active:bg-slate-900 focus:bg-white dark:bg-black",
 	);
+});
+
+test("sorting keeps one condition's classes in the order they were written", () => {
+	const result = sortClassNames({
+		source:
+			'<frame className="hover:md:bg-red-500 md:hover:bg-blue-500 p-4" />',
+	});
+
+	expect(result.edits[0].text).toBe(
+		"p-4 hover:md:bg-red-500 md:hover:bg-blue-500",
+	);
+});
+
+test("sorting keeps a variant chain after the shorter chain it extends", () => {
+	const rules = (classes: string) =>
+		JSON.parse(
+			/__velaRules=\{(\[[\s\S]*?\n\])\}/.exec(
+				transform(`<frame className="${classes}" />`, {}).code,
+			)?.[1] ?? "null",
+		);
+
+	for (const [classes, expected] of [
+		[
+			"dark:bg-slate-800 rounded-md dark:hover:bg-slate-700",
+			"rounded-md dark:bg-slate-800 dark:hover:bg-slate-700",
+		],
+		[
+			"dark:bg-slate-900 rounded-md dark:md:bg-slate-800",
+			"rounded-md dark:bg-slate-900 dark:md:bg-slate-800",
+		],
+		[
+			"landscape:p-2 rounded-md landscape:md:p-4",
+			"rounded-md landscape:p-2 landscape:md:p-4",
+		],
+		[
+			"group-hover:bg-red-500 rounded-md group-hover:hover:bg-blue-500",
+			"rounded-md group-hover:bg-red-500 group-hover:hover:bg-blue-500",
+		],
+		[
+			"dark:bg-slate-800 rounded-md hover:dark:bg-slate-700",
+			"rounded-md dark:bg-slate-800 hover:dark:bg-slate-700",
+		],
+	]) {
+		const sorted = sortClassNames({
+			source: `<frame className="${classes}" />`,
+		}).edits[0]?.text;
+
+		expect(sorted, classes).toBe(expected);
+		expect(rules(expected), classes).toEqual(rules(classes));
+	}
+});
+
+function overriddenDiagnostics(source: string) {
+	return getDiagnostics({ source }).diagnostics.filter(
+		(diagnostic) => diagnostic.code === "overridden-class",
+	);
+}
+
+test("warns on a class that later classes under the same condition override", () => {
+	for (const [classes, overridden] of [
+		["bg-red-500 bg-blue-500", ["bg-red-500"]],
+		["px-2 p-4", ["px-2"]],
+		["p-4 px-2 py-2", ["p-4"]],
+		["w-4 w-8", ["w-4"]],
+		["bg-red-500/50 bg-blue-500", ["bg-red-500/50"]],
+		["hover:bg-red-500/50 hover:bg-blue-500", ["hover:bg-red-500/50"]],
+		["hover:bg-red-500 hover:bg-blue-500", ["hover:bg-red-500"]],
+		["md:hover:px-2 hover:md:px-4", ["md:hover:px-2"]],
+		["hover:md:bg-red-500 md:hover:bg-blue-500", ["hover:md:bg-red-500"]],
+		["p-4 p-4", ["p-4"]],
+		["transition transition-colors", ["transition"]],
+		[
+			"group-hover:bg-red-500 group-hover:bg-blue-500",
+			["group-hover:bg-red-500"],
+		],
+		[
+			"peer-focus/x:bg-red-500 peer-focus/x:bg-blue-500",
+			["peer-focus/x:bg-red-500"],
+		],
+		["hover:mt-4 hover:mt-2", ["hover:mt-4"]],
+		["md:divide-y md:divide-x", ["md:divide-y"]],
+		["hover:duration-300 hover:duration-150", ["hover:duration-300"]],
+		["-mt-2 -mt-4 hover:mt-8", ["-mt-2"]],
+		["opacity-50 opacity-75", ["opacity-50"]],
+		["hover:opacity-50 hover:opacity-75", ["hover:opacity-50"]],
+		["divide-y divide-red-500/50 divide-blue-500", ["divide-red-500/50"]],
+		["md:divide-y md:divide-red-500 md:divide-blue-500", ["md:divide-red-500"]],
+	]) {
+		const source = `<frame className="${classes}" />`;
+		expect(
+			overriddenDiagnostics(source).map((diagnostic) => diagnostic.token),
+			classes as string,
+		).toEqual(overridden);
+	}
+});
+
+test("a solid color overrides a faded one on every transparency channel", () => {
+	for (const [tag, classes] of [
+		["textlabel", "text-red-500/50 text-blue-500"],
+		["imagelabel", "image-red-500/50 image-blue-500"],
+		["scrollingframe", "scrollbar-red-500/50 scrollbar-blue-500"],
+	]) {
+		const source = `<${tag} className="${classes}" />`;
+		expect(
+			overriddenDiagnostics(source).map((diagnostic) => diagnostic.token),
+			source,
+		).toEqual([classes.split(" ")[0]]);
+	}
+});
+
+test("stays quiet on partial overlaps and on different conditions", () => {
+	for (const source of [
+		'<frame className="p-4 px-2" />',
+		'<frame className="w-4 h-8" />',
+		'<textlabel className="font-mono font-bold" />',
+		'<frame className="bg-red-500 hover:bg-blue-500" />',
+		'<frame className="hover:bg-red-500 bg-blue-500" />',
+		'<frame className="bg-red-500/50 hover:bg-blue-500" />',
+		'<frame className="md:px-6 max-md:px-3 md:max-lg:px-4" />',
+		'<frame className="bg-slate-500 bg-sla" />',
+		'<frame className={cond ? "bg-red-500" : "bg-blue-500"} />',
+		'<frame className="transition duration-300 ease-out" />',
+		'<frame className="transition ease-in-out" />',
+		'<frame className="group-hover:bg-red-500 group-hover/card:bg-blue-500" />',
+		'<frame className="group-hover:bg-red-500 group-active:bg-blue-500" />',
+		'<frame className="group-hover:bg-red-500 peer-hover:bg-blue-500" />',
+		'<frame className="hover:bg-red-500 group-hover:bg-blue-500" />',
+		'<frame className="group group/card peer bg-red-500" />',
+		'<frame className="mt-2 hover:mt-4" />',
+		'<frame className="hover:mt-4 mt-2" />',
+		'<frame className="hover:mt-4 hover:mb-2" />',
+		'<frame className="hover:mt-4 md:mt-2" />',
+		'<frame className="lg:bg-red-500 md:bg-blue-500" />',
+		'<frame className="-mt-2 top-4 hover:mt-8" />',
+		'<frame className="-ml-2 left-4 hover:ml-8" />',
+		'<frame className="-ml-2 left-4 hover:left-8" />',
+		'<frame className="opacity-50 hover:opacity-75" />',
+		'<frame className="divide-y md:divide-red-500 divide-blue-500" />',
+	]) {
+		expect(overriddenDiagnostics(source), source).toEqual([]);
+	}
+});
+
+test("anchors an overridden class and names what overrides it", () => {
+	const source = '<frame className="px-2 bg-red-500 p-4 bg-blue-500" />';
+	const start = source.indexOf("px-2");
+
+	expect(overriddenDiagnostics(source)).toEqual([
+		{
+			level: "warning",
+			code: "overridden-class",
+			message:
+				'"px-2" has no effect: "p-4" overrides every property it sets under the same conditions.',
+			token: "px-2",
+			range: { start, end: start + "px-2".length },
+		},
+		expect.objectContaining({
+			token: "bg-red-500",
+			message:
+				'"bg-red-500" has no effect: "bg-blue-500" overrides every property it sets under the same conditions.',
+		}),
+	]);
+
+	expect(
+		overriddenDiagnostics('<frame className="p-4 px-2 py-2" />')[0]?.message,
+	).toBe(
+		'"p-4" has no effect: "px-2" and "py-2" override every property it sets under the same conditions.',
+	);
+	expect(
+		overriddenDiagnostics('<frame className="p-4 p-4" />')[0]?.message,
+	).toBe('"p-4" is repeated later, so this one has no effect.');
+});
+
+test("blames the gradient for the white background it forces", () => {
+	const diagnostics = getDiagnostics({
+		source:
+			'<frame className="bg-blue-500 bg-gradient-to-r from-red-500 to-blue-500" />',
+	}).diagnostics;
+
+	expect(diagnostics).toEqual([
+		expect.objectContaining({ code: "overridden-class", token: "bg-blue-500" }),
+	]);
+	expect(diagnostics[0]?.message).toContain('the gradient "bg-gradient-to-r"');
+	expect(diagnostics[0]?.message).toContain("BackgroundColor3");
+});
+
+test("sorting a class list never changes which classes are overridden", () => {
+	const summarize = (source: string) =>
+		getDiagnostics({ source })
+			.diagnostics.map(
+				(diagnostic) =>
+					`${diagnostic.code} ${diagnostic.token} ${diagnostic.message}`,
+			)
+			.sort();
+
+	for (const classes of [
+		"bg-red-500 px-2 rounded-md p-4 bg-blue-500",
+		"hover:bg-red-500 w-4 hover:bg-blue-500 h-8 w-8",
+		"text-white p-4 z-10 px-2 py-2 p-4",
+		"transition duration-300 opacity-50 transition-colors",
+		"bg-slate-700 md:hover:px-2 rounded-lg hover:md:px-4 rounded-md",
+		"hover:md:bg-red-500 md:hover:bg-blue-500 p-4",
+		"md:hover:bg-blue-500 hover:md:bg-red-500 rounded-md",
+		"dark:bg-slate-800 rounded-md dark:hover:bg-slate-700 dark:bg-black",
+		"text-lg font-mono text-sm font-bold font-sans",
+	]) {
+		const source = `<textlabel className="${classes}" />`;
+		let sorted = source;
+		for (const edit of [...sortClassNames({ source }).edits].sort(
+			(left, right) => right.range.start - left.range.start,
+		)) {
+			sorted =
+				sorted.slice(0, edit.range.start) +
+				edit.text +
+				sorted.slice(edit.range.end);
+		}
+
+		expect(sorted, classes).not.toBe(source);
+		expect(summarize(sorted), classes).toEqual(summarize(source));
+	}
 });

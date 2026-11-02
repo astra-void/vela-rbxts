@@ -38,6 +38,31 @@ pub(crate) struct StyleIr {
     /// and handed to whatever the component renders.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) opacity_alpha: Option<f64>,
+    /// The CollectionService tags `group` and `peer` markers lower to, which
+    /// `group-*` and `peer-*` find this instance by.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) markers: Vec<String>,
+    /// Classes no rule bundle can carry, such as a margin or a transition under a
+    /// variant, forwarded to the runtime host as a class value of their own.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) runtime_classes: Vec<String>,
+    /// What the base's grid tokens fed into `CellSize`, kept for the runtime in
+    /// case a rule or a class value it resolves moves the grid or its gap.
+    #[serde(skip)]
+    pub(crate) grid_inputs: Vec<PropEntry>,
+    /// The same for the base's size axes and the automatic size between them.
+    #[serde(skip)]
+    pub(crate) size_inputs: Vec<PropEntry>,
+    #[serde(skip)]
+    pub(crate) transform_inputs: Option<TransformInputs>,
+}
+
+/// The base's translate axes, and the AnchorPoint and Position it has without them.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct TransformInputs {
+    pub(crate) translate: Vec<PropEntry>,
+    pub(crate) anchor: Option<String>,
+    pub(crate) position: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -108,6 +133,19 @@ pub(crate) enum RuntimeCondition {
     Hover,
     Active,
     Focus,
+    /// A state of the nearest ancestor tagged with the group marker, the named
+    /// one when `name` is set. The inner condition is what is read off it.
+    Group {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        condition: Box<RuntimeCondition>,
+    },
+    /// The same over any same-parent sibling tagged with the peer marker.
+    Peer {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        condition: Box<RuntimeCondition>,
+    },
     /// A Roblox attribute on the styled instance, named either by a registered
     /// variant or by an inline `attr-[…]`. The runtime subscribes to the
     /// attribute only where a rule reads it.
@@ -122,6 +160,33 @@ pub(crate) enum RuntimeCondition {
         index: usize,
         expected: bool,
     },
+}
+
+/// Above every breakpoint rank, where Tailwind registers orientation, `dark`
+/// and the pointer variants.
+const AFTER_SCREENS: u64 = 1 << 33;
+
+impl RuntimeCondition {
+    /// Where a rule ranks when several write one property, the order Tailwind's
+    /// stylesheet gives them: unconditional first, then a state such as `hover:`,
+    /// then breakpoints by their minimum width, then orientation, `dark:` and the
+    /// input variants. Equal ranks keep source order.
+    pub(crate) fn precedence(&self) -> u64 {
+        match self {
+            Self::All { conditions } => conditions.iter().map(Self::precedence).max().unwrap_or(0),
+            Self::Test { .. } => 0,
+            Self::Width { min_width, .. } => 2 + u64::from(*min_width),
+            Self::Orientation { .. } => AFTER_SCREENS,
+            Self::ColorScheme { .. } => AFTER_SCREENS + 1,
+            Self::Input { .. } => AFTER_SCREENS + 2,
+            _ => 1,
+        }
+    }
+}
+
+/// Stable, so rules of one rank keep the order they were written in.
+pub(crate) fn sort_rules_by_precedence(rules: &mut [RuntimeRule]) {
+    rules.sort_by_key(|rule| rule.condition.precedence());
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
@@ -161,6 +226,30 @@ impl StyleIr {
         let name = name.into();
         self.base.props.retain(|prop| prop.name != name);
         self.base.props.push(PropEntry { name, value });
+    }
+
+    /// The bundle of the rule that always applies, first so every other rule
+    /// overwrites it, made when there is none yet.
+    pub(crate) fn always_on_effects(&mut self) -> &mut StyleEffectBundle {
+        let always_on = matches!(
+            self.runtime_rules.first(),
+            Some(RuntimeRule {
+                condition: RuntimeCondition::All { conditions },
+                ..
+            }) if conditions.is_empty()
+        );
+        if !always_on {
+            self.runtime_rules.insert(
+                0,
+                RuntimeRule {
+                    condition: RuntimeCondition::All {
+                        conditions: Vec::new(),
+                    },
+                    effects: StyleEffectBundle::default(),
+                },
+            );
+        }
+        &mut self.runtime_rules[0].effects
     }
 
     pub(crate) fn remove_prop(&mut self, name: &str) {

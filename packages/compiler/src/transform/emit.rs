@@ -1,19 +1,23 @@
 use swc_core::{
-    common::{SourceMap, sync::Lrc},
+    common::{BytePos, LineCol, SourceMap, sync::Lrc},
     ecma::{
         ast::Module,
         codegen::{Config as CodegenConfig, Emitter, text_writer::JsWriter},
     },
 };
 
-pub(crate) fn emit_module(cm: &Lrc<SourceMap>, module: &Module) -> Result<String, String> {
+pub(crate) fn emit_module(
+    cm: &Lrc<SourceMap>,
+    module: &Module,
+    srcmap: Option<&mut Vec<(BytePos, LineCol)>>,
+) -> Result<String, String> {
     let mut output = Vec::new();
     {
         let mut emitter = Emitter {
             cfg: CodegenConfig::default(),
             cm: cm.clone(),
             comments: None,
-            wr: JsWriter::new(cm.clone(), "\n", &mut output, None),
+            wr: JsWriter::new(cm.clone(), "\n", &mut output, srcmap),
         };
 
         emitter

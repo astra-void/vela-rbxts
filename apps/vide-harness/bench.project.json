@@ -1,0 +1,30 @@
+{
+	"name": "vide-harness-bench",
+	"tree": {
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"node_modules": {
+				"$className": "Folder",
+				"@rbxts": {
+					"$path": "node_modules/@rbxts"
+				},
+				"@rbxts-js": {
+					"$path": "../../node_modules/@rbxts-js"
+				}
+			},
+			"TS": {
+				"$path": "include"
+			}
+		},
+		"StarterPlayer": {
+			"$className": "StarterPlayer",
+			"StarterPlayerScripts": {
+				"$className": "StarterPlayerScripts",
+				"Bench": {
+					"$path": "out/bench"
+				}
+			}
+		}
+	}
+}

@@ -200,7 +200,7 @@ test("applies color opacity modifiers as transparency", () => {
 	expect(gradient.code).toContain("Transparency={new NumberSequence(0.5, 0)}");
 
 	const divide = transform(
-		`export const D = () => <frame className="divide-y divide-slate-500/10"><frame /><frame /></frame>;`,
+		`export const D = () => <frame className="flex-col divide-y divide-slate-500/10"><frame /><frame /></frame>;`,
 		null,
 	);
 	expect(divide.diagnostics).toEqual([]);

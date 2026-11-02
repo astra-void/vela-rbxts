@@ -20,6 +20,8 @@ pub struct Diagnostic {
 #[serde(rename_all = "camelCase")]
 pub struct TransformOptions {
     pub config_json: Option<String>,
+    /// Asks for `mappings`, which only a caller that writes the output to disk needs.
+    pub source_map: Option<bool>,
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), napi(object))]
@@ -31,6 +33,8 @@ pub struct TransformResult {
     pub changed: bool,
     pub ir: Vec<String>,
     pub needs_runtime_host: bool,
+    /// Sorted `[genLine, genCol, origLine, origCol]` quads, 0-based with UTF-16 columns.
+    pub mappings: Option<Vec<u32>>,
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), napi(object))]

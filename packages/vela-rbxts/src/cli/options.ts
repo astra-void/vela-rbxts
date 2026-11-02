@@ -4,8 +4,10 @@ export const VELA_DIR = ".vela";
 export const DEFAULT_SRC_DIR = "src";
 export const DEFAULT_OUT_DIR = path.join(VELA_DIR, "src");
 export const MANIFEST_FILE = path.join(VELA_DIR, "build-manifest.json");
+// Outside the generated tree, which rbxtsc copies into out/ file by file.
+export const MAPS_DIR = path.join(VELA_DIR, "maps");
 
-export type CliCommand = "build" | "watch";
+export type CliCommand = "build" | "watch" | "remap" | "rbxtsc";
 
 export type CliOptions = {
 	command: CliCommand;
@@ -14,6 +16,8 @@ export type CliOptions = {
 	outDir: string;
 	clean: boolean;
 	quiet: boolean;
+	/** What `vela rbxtsc` hands to rbxtsc untouched. */
+	forwardedArgs?: string[];
 };
 
 export type ParsedCliArgs =
@@ -34,6 +38,7 @@ export function parseCliArgs(
 	let outArgument: string | undefined;
 	let clean = false;
 	let quiet = false;
+	let forwardedArgs: string[] | undefined;
 
 	for (let index = 0; index < argv.length; index += 1) {
 		const argument = argv[index];
@@ -91,7 +96,14 @@ export function parseCliArgs(
 			return { kind: "error", message: `Unexpected argument "${argument}".` };
 		}
 
-		if (argument !== "build" && argument !== "watch") {
+		// rbxtsc has a `-p` of its own, so nothing after the command is vela's.
+		if (argument === "rbxtsc") {
+			command = argument;
+			forwardedArgs = argv.slice(index + 1);
+			break;
+		}
+
+		if (argument !== "build" && argument !== "watch" && argument !== "remap") {
 			return { kind: "error", message: `Unknown command "${argument}".` };
 		}
 
@@ -113,7 +125,15 @@ export function parseCliArgs(
 
 	return {
 		kind: "run",
-		options: { command, projectRoot, srcDir, outDir, clean, quiet },
+		options: {
+			command,
+			projectRoot,
+			srcDir,
+			outDir,
+			clean,
+			quiet,
+			...(forwardedArgs === undefined ? {} : { forwardedArgs }),
+		},
 	};
 }
 

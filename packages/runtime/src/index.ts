@@ -1,9 +1,5 @@
 import __VelaReact from "@rbxts/react";
-import {
-	Players as __VelaPlayers,
-	UserInputService as __VelaUserInputService,
-	Workspace as __VelaWorkspace,
-} from "@rbxts/services";
+import { Workspace as __VelaWorkspace } from "@rbxts/services";
 import type {
 	ClassValue,
 	RuntimeCamera,
@@ -14,6 +10,7 @@ import type {
 	RuntimePropValue,
 	RuntimeRemConfig,
 	RuntimeRule,
+	RuntimeScopes,
 	RuntimeTextSpec,
 	RuntimeTransition,
 	SupportedHostElements,
@@ -32,6 +29,7 @@ import {
 	__VelaOpacity as __VelaOpacityCore,
 	__VelaRem as __VelaRemCore,
 	__VelaResolution,
+	__VelaScope,
 	__VelaText,
 	__VelaVariant,
 } from "@rbxts/vela-runtime-core";
@@ -422,6 +420,27 @@ export namespace __VelaHelper {
 }
 
 namespace __VelaDivide {
+	type ContentSlot = { child: defined; alpha: number };
+
+	// Every GuiObject class a JSX tag can name; anything else has no slot in a
+	// list and no `LayoutOrder` to write.
+	const LAYOUT_TAGS = new Set<string>([
+		"frame",
+		"scrollingframe",
+		"canvasgroup",
+		"textlabel",
+		"textbutton",
+		"textbox",
+		"imagelabel",
+		"imagebutton",
+		"videoframe",
+		"viewportframe",
+	]);
+
+	/// Separators sort by `LayoutOrder` like everything else in the list, so
+	/// every content child is handed its rank and each separator the slot
+	/// between two ranks. A component child has to forward `LayoutOrder` to the
+	/// instance it renders for its rank to land.
 	export function interleaveDivideSeparators(
 		divide: RuntimeDivide,
 		children: defined[],
@@ -430,36 +449,110 @@ namespace __VelaDivide {
 		const size = __VelaDivideCore.separatorSize(divide);
 
 		const result: defined[] = [];
-		let seenContentChild = false;
+		const content: ContentSlot[] = [];
 		for (const child of children) {
 			if (isModifierChild(child)) {
 				result.push(child);
 				continue;
 			}
-			if (seenContentChild) {
-				result.push(
-					__VelaReact.createElement("frame", {
-						BackgroundColor3: color,
-						BackgroundTransparency: divide.transparency ?? 0,
-						BorderSizePixel: 0,
-						Size: size,
-					} as never),
-				);
-			}
-			seenContentChild = true;
-			result.push(child);
+			collectContent(child, 1, content);
 		}
+
+		const plan = __VelaDivideCore.planDivideOrder(
+			content.map((slot) => declaredOrder(slot.child)),
+		);
+		content.forEach((slot, index) => {
+			const ordered = withLayoutOrder(slot.child, plan.child[index] ?? 0);
+			if (slot.alpha >= 1) {
+				result.push(ordered);
+				return;
+			}
+			// Keyed like the child it wraps, so a keyed list still reconciles by key.
+			result.push(
+				__VelaReact.createElement(
+					__VelaOpacity.Provider,
+					{
+						key: (slot.child as { key?: string | number }).key,
+						value: slot.alpha,
+					} as never,
+					ordered,
+				) as unknown as defined,
+			);
+		});
+		// The fade this host hands its children reaches these through the
+		// provider around them, so they start from the divide's own value.
+		plan.separator.forEach((order, index) => {
+			result.push(
+				__VelaReact.createElement("frame", {
+					key: `__velaDivide${index}`,
+					BackgroundColor3: color,
+					BackgroundTransparency: divide.transparency ?? 0,
+					BorderSizePixel: 0,
+					LayoutOrder: order,
+					Size: size,
+				} as never),
+			);
+		});
 		return result;
 	}
 
+	/// A provider the transformer wrapped around value children would read as
+	/// one child, so it is split into one per child at the same alpha. An
+	/// unkeyed fragment renders its children in place and is opened the same way.
+	function collectContent(child: defined, alpha: number, into: ContentSlot[]) {
+		if (__VelaReact.isValidElement(child as object)) {
+			const element = child as __VelaReact.Element;
+			const props = element.props as { value?: number; children?: unknown };
+			const isProvider = element.type === (__VelaOpacity.Provider as unknown);
+			if (
+				isProvider ||
+				(element.type === (__VelaReact.Fragment as unknown) &&
+					element.key === undefined)
+			) {
+				const inner = isProvider ? alpha * (props.value ?? 1) : alpha;
+				for (const nested of __VelaApply.normalizeChildren(props.children)) {
+					collectContent(nested, inner, into);
+				}
+				return;
+			}
+		}
+		into.push({ child, alpha });
+	}
+
+	function declaredOrder(child: defined): number {
+		if (!__VelaReact.isValidElement(child as object)) {
+			return 0;
+		}
+		const order = (
+			(child as __VelaReact.Element).props as Record<string, unknown>
+		).LayoutOrder;
+		return typeIs(order, "number") ? order : 0;
+	}
+
+	/// A Vela host resolves its own `order-*` and would write it over a plain
+	/// `LayoutOrder`, so it takes the rank on a prop it applies last.
+	function withLayoutOrder(child: defined, order: number): defined {
+		if (!__VelaReact.isValidElement(child as object)) {
+			return child;
+		}
+		const element = child as __VelaReact.Element;
+		const isHost =
+			(element.props as Record<string, unknown>).__velaTag !== undefined;
+		return __VelaReact.cloneElement(
+			element as never,
+			(isHost ? { __velaLayoutOrder: order } : { LayoutOrder: order }) as never,
+		) as unknown as defined;
+	}
+
 	/// UICorner, UIListLayout and the rest of the UI* family modify their parent
-	/// instead of taking a slot in it, so dividers have to step over them.
+	/// instead of taking a slot in it, so dividers have to step over them, and
+	/// so does any other instance that is not a GuiObject.
 	export function isModifierChild(child: defined): boolean {
 		const elementType = (child as { type?: unknown }).type;
 		if (!typeIs(elementType, "string")) {
 			return false;
 		}
-		return __VelaLua.startsWith(elementType.lower(), "ui");
+		return !LAYOUT_TAGS.has(elementType.lower());
 	}
 }
 
@@ -478,7 +571,7 @@ namespace __VelaMargin {
 
 		return __VelaReact.createElement(
 			"frame",
-			wrapperProps as never,
+			{ ...wrapperProps, Tag: __VelaScope.MARGIN_BOX_TAG } as never,
 			padding,
 			element,
 		);
@@ -508,95 +601,17 @@ function sameAttributes(
 
 namespace __VelaEnv {
 	export function useRuntimeEnvironment(): RuntimeEnvironment {
-		const [camera, setCamera] = __VelaReact.useState(
-			() => __VelaWorkspace.CurrentCamera as RuntimeCamera | undefined,
-		);
-		const [player, setPlayer] = __VelaReact.useState(
-			() => __VelaPlayers.LocalPlayer,
-		);
 		const [environment, setEnvironment] = __VelaReact.useState(() =>
-			__VelaEnvCore.readRuntimeEnvironment(camera),
+			__VelaEnvCore.currentEnvironment(),
 		);
 
-		// The local player arrives after the first render on some load paths, and
-		// its attribute is where the color scheme lives.
 		__VelaReact.useEffect(() => {
-			const connection = __VelaPlayers
-				.GetPropertyChangedSignal("LocalPlayer")
-				.Connect(() => setPlayer(__VelaPlayers.LocalPlayer));
+			const unsubscribe = __VelaEnvCore.subscribeEnvironment(setEnvironment);
+			// A change between this render and the subscription went to no one.
+			setEnvironment(__VelaEnvCore.currentEnvironment());
 
-			return () => {
-				connection.Disconnect();
-			};
+			return unsubscribe;
 		}, []);
-
-		__VelaReact.useEffect(() => {
-			const updateCamera = () =>
-				setCamera(__VelaWorkspace.CurrentCamera as RuntimeCamera | undefined);
-			const connection = __VelaWorkspace
-				.GetPropertyChangedSignal("CurrentCamera")
-				.Connect(updateCamera);
-
-			return () => {
-				connection.Disconnect();
-			};
-		}, []);
-
-		__VelaReact.useEffect(() => {
-			const updateEnvironment = () =>
-				setEnvironment((previous) => {
-					const latest = __VelaEnvCore.readRuntimeEnvironment(camera);
-					return previous.width === latest.width &&
-						previous.rem === latest.rem &&
-						previous.orientation === latest.orientation &&
-						previous.input === latest.input &&
-						previous.colorScheme === latest.colorScheme
-						? previous
-						: latest;
-				});
-
-			updateEnvironment();
-
-			const connections = [
-				__VelaUserInputService
-					.GetPropertyChangedSignal("TouchEnabled")
-					.Connect(updateEnvironment),
-				__VelaUserInputService
-					.GetPropertyChangedSignal("MouseEnabled")
-					.Connect(updateEnvironment),
-				__VelaUserInputService
-					.GetPropertyChangedSignal("GamepadEnabled")
-					.Connect(updateEnvironment),
-			];
-
-			if (player !== undefined) {
-				connections.push(
-					player
-						.GetAttributeChangedSignal(
-							__VelaEnvCore.VELA_COLOR_SCHEME_ATTRIBUTE,
-						)
-						.Connect(updateEnvironment),
-				);
-			}
-
-			// ViewportSize stays 1x1 until the first frame renders, so breakpoints have
-			// to follow the signal instead of the mount-time read.
-			const viewport = __VelaEnvCore.debounceViewport(updateEnvironment);
-			if (camera !== undefined) {
-				connections.push(
-					camera
-						.GetPropertyChangedSignal("ViewportSize")
-						.Connect(viewport.call),
-				);
-			}
-
-			return () => {
-				viewport.cancel();
-				for (const connection of connections) {
-					connection.Disconnect();
-				}
-			};
-		}, [camera, player]);
 
 		return environment;
 	}
@@ -623,8 +638,14 @@ type VelaRuntimeHostProps = {
 	__velaText?: RuntimeTextSpec;
 	__velaMargin?: RuntimeMargin;
 	__velaDivide?: RuntimeDivide;
+	/// The rank a divided parent gave this element, over whatever `order-*`
+	/// it resolved.
+	__velaLayoutOrder?: number;
 	/// The alpha an enclosing `opacity-*` has left for this element.
 	__velaOpacity?: number;
+	/// The CollectionService tags this element's `group`/`peer` markers lower
+	/// to, merged into `Tag` here when the emit could not merge them itself.
+	__velaMarkers?: readonly string[];
 	className?: ClassValue;
 	children?: defined | readonly defined[];
 } & Record<string, unknown>;
@@ -643,7 +664,9 @@ const HOST_OWN_PROPS = new Set<string>([
 	"__velaText",
 	"__velaMargin",
 	"__velaDivide",
+	"__velaLayoutOrder",
 	"__velaOpacity",
+	"__velaMarkers",
 	"className",
 	"children",
 ]);
@@ -700,12 +723,29 @@ export function createVelaRuntimeHost(
 			const [attributes, setAttributes] = __VelaReact.useState<
 				Record<string, unknown>
 			>({});
-			// Held as state rather than read off the ref, so the subscription
-			// follows an instance React replaced instead of staying on the one
+			// What `group-*` and `peer-*` read, found through the instance tree
+			// the way attributes are read off the instance itself.
+			const scopeNeeds = __VelaReact.useMemo(
+				() =>
+					__VelaResolution.scopeNeeds(
+						theme,
+						(props.__velaRules ?? []) as RuntimeRule[],
+						props.className,
+					),
+				[props.className],
+			);
+			const scopeKey = __VelaScope.needsKey(scopeNeeds);
+			const watchesScopes = __VelaScope.hasNeeds(scopeNeeds);
+			const [scopes, setScopes] = __VelaReact.useState<
+				RuntimeScopes | undefined
+			>(undefined);
+			// Held as state rather than read off the ref, so the subscriptions
+			// follow an instance React replaced instead of staying on the one
 			// that was current when the effect first ran.
-			const [attributeHost, setAttributeHost] = __VelaReact.useState<
+			const [observedHost, setObservedHost] = __VelaReact.useState<
 				Instance | undefined
 			>(undefined);
+			const observesHost = attributeNames.size() > 0 || watchesScopes;
 			const environment: RuntimeEnvironment = {
 				width: globalEnvironment.width,
 				// A pinned subtree resolves at the base, which is the rem a ratio
@@ -719,6 +759,8 @@ export function createVelaRuntimeHost(
 				focused,
 				attributes,
 				tests: props.__velaTests,
+				groups: scopes?.groups,
+				peers: scopes?.peers,
 			};
 			const __velaTag = props.__velaTag;
 			const __velaRules = props.__velaRules ?? [];
@@ -770,6 +812,7 @@ export function createVelaRuntimeHost(
 				props.__velaDivide,
 				resolution.divide,
 				resolution.remRatio ?? 1,
+				hostTag === "canvasgroup" ? 1 : explicitAlpha,
 			);
 
 			const instanceRef = __VelaReact.useRef<Instance | undefined>(undefined);
@@ -811,6 +854,9 @@ export function createVelaRuntimeHost(
 			}
 			for (const [name, value] of pairs(resolution.props)) {
 				hostProps[name] = value;
+			}
+			if (props.__velaLayoutOrder !== undefined) {
+				hostProps.LayoutOrder = props.__velaLayoutOrder;
 			}
 			const textSize = hostProps.TextSize;
 			if (
@@ -857,7 +903,7 @@ export function createVelaRuntimeHost(
 			// read; the effect below fills them in and every later change comes
 			// through the attribute's own signal.
 			__VelaReact.useEffect(() => {
-				const instance = attributeHost;
+				const instance = observedHost;
 				if (instance === undefined || attributeNames.size() === 0) {
 					return undefined;
 				}
@@ -889,7 +935,39 @@ export function createVelaRuntimeHost(
 						connection.Disconnect();
 					}
 				};
-			}, [attributeHost, attributeKey]);
+			}, [observedHost, attributeKey]);
+
+			__VelaReact.useEffect(() => {
+				const instance = observedHost;
+				if (instance === undefined || !watchesScopes) {
+					setScopes(undefined);
+					return undefined;
+				}
+
+				return __VelaScope.watch(instance, scopeNeeds, setScopes);
+			}, [observedHost, scopeKey]);
+
+			// `@rbxts/react` applies `Tag` as space-separated CollectionService
+			// tags, so markers join whatever the consumer wrote there.
+			const markers = props.__velaMarkers ?? [];
+			const resolvedMarkers = resolution.markers ?? [];
+			if (
+				hostTag !== undefined &&
+				(markers.size() > 0 || resolvedMarkers.size() > 0)
+			) {
+				const written = hostProps.Tag;
+				const tags = typeIs(written, "string")
+					? __VelaLua.splitWhitespace(written)
+					: [];
+				for (const list of [markers, resolvedMarkers]) {
+					for (const marker of list) {
+						if (!tags.includes(marker)) {
+							tags.push(marker);
+						}
+					}
+				}
+				hostProps.Tag = __VelaLua.join(tags, " ");
+			}
 
 			__VelaText.applyTextConfig(hostProps, props.__velaText, resolution);
 
@@ -935,11 +1013,7 @@ export function createVelaRuntimeHost(
 					hostProps[name as string] = held[name as string];
 				}
 			}
-			if (
-				transition !== undefined ||
-				animationActive ||
-				attributeNames.size() > 0
-			) {
+			if (transition !== undefined || animationActive || observesHost) {
 				hostProps.ref = (instance: Instance | undefined) => {
 					instanceRef.current = instance;
 					// React re-attaches a fresh callback on every render, which
@@ -947,8 +1021,8 @@ export function createVelaRuntimeHost(
 					// take the subscription down and put it straight back. Only
 					// an instance is reported, and the effect's own cleanup is
 					// what covers the unmount.
-					if (attributeNames.size() > 0 && instance !== undefined) {
-						setAttributeHost(instance);
+					if (observesHost && instance !== undefined) {
+						setObservedHost(instance);
 					}
 					__VelaText.assignForwardedRef(forwardedRef, instance);
 				};

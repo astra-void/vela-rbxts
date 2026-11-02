@@ -159,6 +159,8 @@ fn diff_effects(base: &StyleIr, branch: &StyleIr) -> Option<StyleEffectBundle> {
         || branch.transition != base.transition
         || branch.animation != base.animation
         || branch.opacity_alpha != base.opacity_alpha
+        || branch.markers != base.markers
+        || branch.runtime_classes != base.runtime_classes
     {
         return None;
     }

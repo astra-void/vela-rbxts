@@ -1,5 +1,6 @@
 pub(crate) mod colors;
 pub(crate) mod completions;
+pub(crate) mod conflicts;
 pub(crate) mod diagnostics;
 pub(crate) mod hover;
 pub(crate) mod inlay;
@@ -7,6 +8,8 @@ pub(crate) mod sort;
 
 use crate::api::EditorRange;
 pub(crate) use crate::class_token::{ClassToken, tokenize_class_name_with_ranges, utf16_len};
+use crate::class_value::collapse::collapse_class_value_expr;
+use crate::class_value::scope::ClassValueScopeStack;
 pub(crate) use crate::config::resolve::parse_editor_config;
 use crate::transform::jsx::is_component_element;
 use crate::transform::module::{
@@ -239,7 +242,12 @@ impl Visit for ReturnCollector<'_, '_> {
 
 impl Visit for ClassNameCollector<'_> {
     fn visit_jsx_element(&mut self, element: &JSXElement) {
-        if let Some(element_tag) = lowered_element_tag(&element.opening.name) {
+        if let Some(mut element_tag) = lowered_element_tag(&element.opening.name) {
+            if element_tag.as_deref() == Some("frame")
+                && names_static_isolate(&element.opening.attrs)
+            {
+                element_tag = Some("canvasgroup".to_owned());
+            }
             for attr in &element.opening.attrs {
                 let JSXAttrOrSpread::JSXAttr(attr) = attr else {
                     continue;
@@ -265,6 +273,35 @@ impl Visit for ClassNameCollector<'_> {
 
         element.visit_children_with(self);
     }
+}
+
+/// A static, unconditional `isolate` builds the frame as a CanvasGroup, so the
+/// rest of its classes read against that, as the transform does.
+fn names_static_isolate(attrs: &[JSXAttrOrSpread]) -> bool {
+    attrs.iter().any(|attr| {
+        let JSXAttrOrSpread::JSXAttr(attr) = attr else {
+            return false;
+        };
+        if !is_class_name_attr(&attr.name) {
+            return false;
+        }
+        match &attr.value {
+            Some(JSXAttrValue::Str(value)) => value
+                .value
+                .to_string_lossy()
+                .split_whitespace()
+                .any(|token| token == "isolate"),
+            Some(JSXAttrValue::JSXExprContainer(container)) => match &container.expr {
+                JSXExpr::Expr(expr) => {
+                    collapse_class_value_expr(expr, &ClassValueScopeStack::default())
+                        .static_tokens()
+                        .contains(&"isolate")
+                }
+                JSXExpr::JSXEmptyExpr(_) => false,
+            },
+            _ => false,
+        }
+    })
 }
 
 /// With rem scaling active an emitted offset is only what renders at

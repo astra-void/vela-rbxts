@@ -5,13 +5,19 @@ use crate::class_value::collapse::{
 };
 use crate::class_value::scope::ClassValueScopeStack;
 use crate::diagnostics::compiler::transition_without_runtime_diagnostic;
-use crate::ir::model::{StyleEffectBundle, StyleIr};
+use crate::ir::model::{StyleIr, sort_rules_by_precedence};
+use crate::semantic::analyze::analyze_class_token;
+use crate::semantic::utility::UtilityKind;
+use crate::semantic::variant::VariantRegistry;
 use crate::transform::branch::lower_branches;
 use crate::transform::module::is_class_name_attr;
-use crate::transform::runtime::resolve_class_tokens;
+use crate::transform::runtime::{
+    resolve_class_tokens, share_grid_inputs, share_size_inputs, share_transform_inputs,
+};
+use swc_core::common::{DUMMY_SP, Span};
 use swc_core::ecma::ast::{
-    Expr, JSXAttr, JSXAttrOrSpread, JSXAttrValue, JSXElementName, JSXExpr, JSXExprContainer,
-    JSXObject,
+    ArrayLit, Expr, ExprOrSpread, JSXAttr, JSXAttrOrSpread, JSXAttrValue, JSXElementName, JSXExpr,
+    JSXExprContainer, JSXObject,
 };
 
 pub(crate) struct LoweredClassName {
@@ -26,6 +32,8 @@ pub(crate) struct LoweredClassName {
     /// resolve. The box one needs is an instance above the element, so a target
     /// that builds its tree bottom-up has to be told before the element exists.
     pub(crate) runtime_margin: bool,
+    /// Where the `className` was written, for what is synthesized in its place.
+    pub(crate) class_name_span: Span,
 }
 
 pub(crate) fn lower_class_name(
@@ -60,12 +68,15 @@ pub(crate) fn lower_class_name(
             let value_offset = value.span.lo.0;
             let spans = tokenize_class_name_with_ranges(&class_name, value_offset);
             let diagnostics_before = diagnostics.len();
-            let style = resolve_class_tokens(
+            let mut style = resolve_class_tokens(
                 spans.iter().map(|token| token.text.as_str()),
                 config,
                 element_tag,
                 diagnostics,
             );
+            share_grid_inputs(&mut style, false);
+            share_size_inputs(&mut style);
+            share_transform_inputs(&mut style);
             attach_token_ranges(&mut diagnostics[diagnostics_before..], &spans);
             // A preset animation loops on its own, so it promotes an otherwise
             // static element to the runtime host.
@@ -74,42 +85,40 @@ pub(crate) fn lower_class_name(
                 || style.animation.is_some()
                 || style.margin.is_some()
                 || style.divide.is_some();
-            let mut style = style;
             if style.transition.is_some() && !needs_runtime_host {
                 diagnostics.push(transition_without_runtime_diagnostic());
                 style.transition = None;
             }
 
+            let runtime_class_name = (!style.runtime_classes.is_empty())
+                .then(|| runtime_class_attr(class_name_attr, forwarded_classes(&style), None));
+            // A margin the literal resolved is handed over whole; one forwarded
+            // with a variant is only known to be coming.
+            let runtime_margin = forwards_margin(&style, config);
+
             Some(LoweredClassName {
                 style_ir: style,
                 preserved_attrs,
-                runtime_class_name: None,
+                runtime_class_name,
                 needs_runtime_host,
                 tests: Vec::new(),
-                // A literal names its margin here, so the host is handed the
-                // margin itself rather than told to expect one.
-                runtime_margin: false,
+                runtime_margin,
+                class_name_span: class_name_attr.span,
             })
         }
         Some(JSXAttrValue::JSXExprContainer(container)) => {
             let JSXExpr::Expr(expr) = &container.expr else {
                 return Some(LoweredClassName {
                     style_ir: StyleIr {
-                        base: StyleEffectBundle::default(),
-                        runtime_rules: Vec::new(),
                         runtime_class_value: true,
-                        transition: None,
-                        animation: None,
-                        text: None,
-                        margin: None,
-                        divide: None,
-                        opacity_alpha: None,
+                        ..StyleIr::default()
                     },
                     preserved_attrs,
                     runtime_class_name: Some(class_name_attr.clone()),
                     needs_runtime_host: true,
                     tests: Vec::new(),
                     runtime_margin: false,
+                    class_name_span: class_name_attr.span,
                 });
             };
 
@@ -159,13 +168,36 @@ pub(crate) fn lower_class_name(
                 }
             }
 
-            let runtime_class_value = collapse.dynamic_expr.is_some() || !tests.is_empty();
+            sort_rules_by_precedence(&mut style.runtime_rules);
+            share_grid_inputs(&mut style, collapse.dynamic_expr.is_some());
+            share_size_inputs(&mut style);
+            share_transform_inputs(&mut style);
+
+            let runtime_class_value =
+                collapse.dynamic_expr.is_some() || !tests.is_empty() || style.runtime_class_value;
             let needs_runtime_host = !style.runtime_rules.is_empty()
                 || runtime_class_value
                 || style.animation.is_some()
                 || style.margin.is_some()
                 || style.divide.is_some();
-            let runtime_class_name = collapse.dynamic_expr.map(|leftover| {
+            let forwarded = (!style.runtime_classes.is_empty()).then(|| forwarded_classes(&style));
+            let leftover = match (forwarded, collapse.dynamic_expr) {
+                (Some(forwarded), Some(leftover)) => Some(Box::new(Expr::Array(ArrayLit {
+                    span: DUMMY_SP,
+                    elems: vec![
+                        Some(ExprOrSpread {
+                            spread: None,
+                            expr: forwarded,
+                        }),
+                        Some(ExprOrSpread {
+                            spread: None,
+                            expr: leftover,
+                        }),
+                    ],
+                }))),
+                (forwarded, leftover) => forwarded.or(leftover),
+            };
+            let runtime_class_name = leftover.map(|leftover| {
                 // What is left of a deferred class value goes back deferred:
                 // read once, it would hold whatever its sources said at
                 // creation and never look again.
@@ -175,12 +207,7 @@ pub(crate) fn lower_class_name(
                     leftover
                 };
 
-                let mut runtime_attr = class_name_attr.clone();
-                runtime_attr.value = Some(JSXAttrValue::JSXExprContainer(JSXExprContainer {
-                    span: container.span,
-                    expr: JSXExpr::Expr(leftover),
-                }));
-                runtime_attr
+                runtime_class_attr(class_name_attr, leftover, Some(container.span))
             });
 
             let runtime_margin = readable_margin && style.margin.is_none();
@@ -195,19 +222,13 @@ pub(crate) fn lower_class_name(
                 needs_runtime_host,
                 tests,
                 runtime_margin,
+                class_name_span: class_name_attr.span,
             })
         }
         _ => Some(LoweredClassName {
             style_ir: StyleIr {
-                base: StyleEffectBundle::default(),
-                runtime_rules: Vec::new(),
                 runtime_class_value: true,
-                transition: None,
-                animation: None,
-                text: None,
-                margin: None,
-                divide: None,
-                opacity_alpha: None,
+                ..StyleIr::default()
             },
             preserved_attrs,
             runtime_class_name: Some(class_name_attr.clone()),
@@ -215,6 +236,7 @@ pub(crate) fn lower_class_name(
             tests: Vec::new(),
             // Nothing here was readable, so nothing can be said about a margin.
             runtime_margin: false,
+            class_name_span: class_name_attr.span,
         }),
     }
 }
@@ -243,9 +265,34 @@ fn class_value_names_margin(
         return false;
     }
 
-    resolve_class_tokens(tokens, config, element_tag, &mut Vec::new())
-        .margin
-        .is_some()
+    let style = resolve_class_tokens(tokens, config, element_tag, &mut Vec::new());
+    style.margin.is_some() || forwards_margin(&style, config)
+}
+
+/// Whether a forwarded class can give the element a margin box. A negative
+/// margin only shifts it, so it needs none.
+fn forwards_margin(style: &StyleIr, config: &crate::config::model::TailwindConfig) -> bool {
+    let variants = VariantRegistry::new(config);
+    style.runtime_classes.iter().any(|token| {
+        let analysis = analyze_class_token(token, &variants);
+        matches!(analysis.utility, UtilityKind::Margin(_)) && !analysis.is_negative()
+    })
+}
+
+fn forwarded_classes(style: &StyleIr) -> Box<Expr> {
+    crate::swc::builders::parse_expression(
+        &serde_json::to_string(&style.runtime_classes.join(" "))
+            .expect("class names must serialize to JSON"),
+    )
+}
+
+fn runtime_class_attr(class_name_attr: &JSXAttr, value: Box<Expr>, span: Option<Span>) -> JSXAttr {
+    let mut runtime_attr = class_name_attr.clone();
+    runtime_attr.value = Some(JSXAttrValue::JSXExprContainer(JSXExprContainer {
+        span: span.unwrap_or(DUMMY_SP),
+        expr: JSXExpr::Expr(value),
+    }));
+    runtime_attr
 }
 
 fn attach_token_ranges(diagnostics: &mut [Diagnostic], spans: &[ClassToken]) {

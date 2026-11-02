@@ -45,6 +45,16 @@ export const MAX_WIDTH_VARIANT_PREFIX = "max-";
 /** The prefix a variant that names a Roblox attribute inline is written with. */
 export const ATTRIBUTE_VARIANT_PREFIX = "attr-";
 
+/**
+ * The prefixes relational variants are written with: `group-hover:` reads the
+ * nearest ancestor marked `group`, `peer-hover:` a sibling marked `peer`.
+ */
+export const GROUP_VARIANT_PREFIX = "group-";
+export const PEER_VARIANT_PREFIX = "peer-";
+
+/** The marker classes those variants find an instance by. */
+export const RELATIONAL_MARKERS = ["group", "peer"] as const;
+
 // Roblox attribute names are letters, digits and underscores, and cannot lead
 // with a digit.
 const ATTRIBUTE_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -67,11 +77,15 @@ export function isBuiltInVariant(name: string): boolean {
 
 /**
  * Whether a name would be read as something other than a plain variant: a
- * maximum-width range, or an inline attribute variant.
+ * maximum-width range, an inline attribute variant, or a group or peer marker
+ * or variant.
  */
 export function isReservedVariantPrefix(name: string): boolean {
 	return (
 		name.startsWith(MAX_WIDTH_VARIANT_PREFIX) ||
-		name.startsWith(ATTRIBUTE_VARIANT_PREFIX)
+		name.startsWith(ATTRIBUTE_VARIANT_PREFIX) ||
+		name.startsWith(GROUP_VARIANT_PREFIX) ||
+		name.startsWith(PEER_VARIANT_PREFIX) ||
+		(RELATIONAL_MARKERS as readonly string[]).includes(name)
 	);
 }

@@ -174,6 +174,28 @@ test("a container named in pinnedUnder keeps the literal offsets below it", () =
 	expect(result.code).not.toContain("__VelaBoundary.Pin");
 });
 
+test("a BillboardGui is pinned by default like a SurfaceGui", () => {
+	const literal = transform(
+		'<billboardgui><frame className="w-4 p-2" /></billboardgui>',
+	);
+
+	expect(literal.diagnostics).toEqual([]);
+	expect(emitted(literal.code)).toContain("Size={UDim2.fromOffset(16, 0)}");
+	expect(emitted(literal.code)).toContain("PaddingTop={new UDim(0, 8)}");
+	expect(literal.code).not.toContain("__VelaRem");
+
+	const runtime = transform(
+		'<billboardgui><frame className="w-4 hover:w-8" /></billboardgui>',
+	);
+
+	expect(runtime.code).toContain("__velaRemPinned={true}");
+	expect(runtime.code).not.toContain("__velaRem={");
+
+	expect(
+		emitted(transform("<billboardgui><Panel /></billboardgui>").code),
+	).toContain("<__VelaBoundary.Pin><Panel/></__VelaBoundary.Pin>");
+});
+
 test("the pin stops at the container that opened it", () => {
 	const result = transform(
 		'<screengui><surfacegui><frame className="w-4" /></surfacegui><frame className="w-4" /></screengui>',

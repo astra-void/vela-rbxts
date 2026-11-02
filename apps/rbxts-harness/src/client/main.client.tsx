@@ -2,6 +2,7 @@ import React from "@rbxts/react";
 import ReactRoblox from "@rbxts/react-roblox";
 import { Players } from "@rbxts/services";
 import { App, SurfaceMount } from "./App";
+import { Probe } from "./Probe";
 
 const localPlayer = Players.LocalPlayer;
 if (!localPlayer) {
@@ -27,5 +28,6 @@ root.render(
 	<>
 		<App />
 		<SurfaceMount>{surfaceChildren}</SurfaceMount>
+		<Probe />
 	</>,
 );

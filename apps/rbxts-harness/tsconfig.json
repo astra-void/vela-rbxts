@@ -34,5 +34,6 @@
 		"incremental": true,
 		"tsBuildInfoFile": "out/tsconfig.tsbuildinfo"
 	},
-	"include": ["src"]
+	"include": ["src"],
+	"exclude": ["src/bench"]
 }

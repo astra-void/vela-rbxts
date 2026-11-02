@@ -165,11 +165,50 @@ jobs:
             packages/compiler
             packages/lsp
 
+      # The parity harness runs runtime-core's compiled Luau under Lune, pinned
+      # to the release apps/parity-harness/rokit.toml names.
+      - name: Install Lune
+        env:
+          LUNE_VERSION: 0.10.5
+          LUNE_SHA256: 1fb5dee6a1afa1d300092805c6e660fe06144d29dd68c45cf6956f040667f791
+        run: |
+          grep -q "lune-org/lune@$LUNE_VERSION\"" apps/parity-harness/rokit.toml
+          curl -fsSL -o "$RUNNER_TEMP/lune.zip" \
+            "https://github.com/lune-org/lune/releases/download/v$LUNE_VERSION/lune-$LUNE_VERSION-linux-x86_64.zip"
+          echo "$LUNE_SHA256  $RUNNER_TEMP/lune.zip" | sha256sum --check -
+          unzip -q "$RUNNER_TEMP/lune.zip" -d "$RUNNER_TEMP/lune"
+          lune="$(find "$RUNNER_TEMP/lune" -type f -name lune | head -n 1)"
+          chmod +x "$lune"
+          "$lune" --version
+          echo "LUNE=$lune" >> "$GITHUB_ENV"
+
+      # Pinned to the Rojo release both harness rokit.toml files name.
+      - name: Install Rojo
+        env:
+          ROJO_VERSION: 7.7.0
+          ROJO_SHA256: 22503e5839864f9d7c2171c48b536fc229f2cc4d8774c9cc149f60941d864073
+        run: |
+          grep -q "rojo-rbx/rojo@$ROJO_VERSION\"" apps/rbxts-harness/rokit.toml
+          grep -q "rojo-rbx/rojo@$ROJO_VERSION\"" apps/vide-harness/rokit.toml
+          curl -fsSL -o "$RUNNER_TEMP/rojo.zip" \
+            "https://github.com/rojo-rbx/rojo/releases/download/v$ROJO_VERSION/rojo-$ROJO_VERSION-linux-x86_64.zip"
+          echo "$ROJO_SHA256  $RUNNER_TEMP/rojo.zip" | sha256sum --check -
+          unzip -q "$RUNNER_TEMP/rojo.zip" -d "$RUNNER_TEMP/rojo"
+          rojo="$(find "$RUNNER_TEMP/rojo" -type f -name rojo | head -n 1)"
+          chmod +x "$rojo"
+          "$rojo" --version
+          dirname "$rojo" >> "$GITHUB_PATH"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Run tests
         run: pnpm run test
+
+      - name: Build the Studio bench places
+        run: |
+          pnpm --filter rbxts-harness run bench:place
+          pnpm --filter vide-harness run bench:place
 
   rust:
     name: rust
@@ -208,3 +247,7 @@ jobs:
         run: |
           cargo test --manifest-path packages/compiler/Cargo.toml
           cargo test --manifest-path packages/lsp/Cargo.toml
+
+      # One pass per bench, so they keep running without timing anything.
+      - name: Check benches
+        run: cargo bench --manifest-path packages/compiler/Cargo.toml -- --test

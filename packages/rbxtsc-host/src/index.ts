@@ -10,6 +10,7 @@ export {
 } from "./filter.js";
 export {
 	clearProjectConfigCache,
+	projectConfigDependencies,
 	resolveProjectConfig,
 	resolveProjectConfigInfo,
 } from "./project-config.js";

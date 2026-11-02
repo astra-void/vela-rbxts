@@ -1,7 +1,5 @@
-import { Workspace as __VelaWorkspace } from "@rbxts/services";
 import type {
 	ClassValue,
-	RuntimeCamera,
 	RuntimeDivide,
 	RuntimeEnvironment,
 	RuntimeMargin,
@@ -9,6 +7,7 @@ import type {
 	RuntimeRemConfig,
 	RuntimeResolution,
 	RuntimeRule,
+	RuntimeScopes,
 	RuntimeTextSpec,
 	RuntimeTheme,
 	RuntimeTransition,
@@ -26,6 +25,7 @@ import {
 	__VelaOpacity as __VelaOpacityCore,
 	__VelaRem as __VelaRemCore,
 	__VelaResolution,
+	__VelaScope,
 	__VelaText,
 	__VelaVariant,
 } from "@rbxts/vela-runtime-core";
@@ -61,12 +61,18 @@ type VelaRuntimeHostProps = {
 	__velaAnimation?: string;
 	__velaText?: RuntimeTextSpec;
 	__velaDivide?: RuntimeDivide;
+	/// Matches the React host's prop. A Vide parent writes the rank onto the
+	/// instance itself, since its children are built before it is.
+	__velaLayoutOrder?: number | (() => number);
 	__velaMargin?: RuntimeMargin;
 	/// A margin the transformer could read but not resolve. The box one needs
 	/// goes above an element that is parented as soon as it is built, so it is
 	/// built up front wherever one is still possible.
 	__velaMarginBox?: boolean;
 	__velaOpacity?: number;
+	/// The CollectionService tags this element's `group`/`peer` markers lower
+	/// to. Vide has no `Tag` prop, so the host tags the instance itself.
+	__velaMarkers?: readonly string[];
 	className?: ClassValue | (() => ClassValue);
 	children?: Vide.Node;
 } & Record<string, unknown>;
@@ -84,43 +90,25 @@ const HOST_OWN_PROPS = new Set<string>([
 	"__velaAnimation",
 	"__velaText",
 	"__velaDivide",
+	"__velaLayoutOrder",
 	"__velaMargin",
 	"__velaMarginBox",
 	"__velaOpacity",
+	"__velaMarkers",
 	"className",
 	"children",
 ]);
 
 type VelaRuntimeHostComponent = (props: VelaRuntimeHostProps) => Vide.Node;
 
-/// One reading of the viewport for the whole place, as a source rather than a
-/// per-component subscription: every host derives from it, and Vide only reruns
+/// The core's one reading of the environment for the whole place, as a source
+/// rather than a per-component subscription: every host derives from it, and Vide only reruns
 /// the ones whose resolution actually reads what changed. Rem is a field of it,
 /// so the scaler reads the same source rather than keeping a second one.
 namespace __VelaEnvSource {
-	function read(): RuntimeEnvironment {
-		return __VelaEnvCore.readRuntimeEnvironment(
-			__VelaWorkspace.CurrentCamera as RuntimeCamera | undefined,
-		);
-	}
+	const state = Vide.source(__VelaEnvCore.currentEnvironment());
 
-	const state = Vide.source(read());
-
-	function refresh() {
-		state(read());
-	}
-
-	/// Every consumer re-derives off a set, so a resize goes through the
-	/// debounce rather than landing a frame's worth of intermediate sizes.
-	const viewport = __VelaEnvCore.debounceViewport(refresh);
-
-	__VelaEnvCore.watchViewport(viewport.call);
-
-	// This module is loaded by the emitted preamble, which only then calls the
-	// factory that configures the curve — so the first read above used the
-	// default one. Without this the correction would be left to whichever
-	// viewport signal happened to fire next.
-	__VelaRemCore.whenConfigured(refresh);
+	__VelaEnvCore.subscribeEnvironment(state);
 
 	export const current = state as () => RuntimeEnvironment;
 }
@@ -237,11 +225,20 @@ export namespace __VelaOpacity {
 	/// otherwise compound on every reading.
 	export function fadeChildren(children: defined[], alpha: () => number) {
 		const bases = new Map<Instance, Map<string, number>>();
+		let faded = false;
 
 		Vide.effect(() => {
 			const current = alpha();
+			// Unfaded children are left alone, so their own later writes are not reset.
+			if (current >= 1 && !faded) {
+				return;
+			}
 			for (const child of children) {
 				fade(child as Vide.Node, current, bases);
+			}
+			faded = current < 1;
+			if (!faded) {
+				bases.clear();
 			}
 		});
 	}
@@ -326,6 +323,311 @@ export namespace __VelaBoundary {
 	}
 }
 
+/// Gives a divided list's children their ranks. They were built before the
+/// host that orders them, so the ranks are written onto the instances, and a
+/// `LayoutOrder` someone else writes later is read back as the new declared
+/// order rather than fought over.
+namespace __VelaDivideOrder {
+	export type Ordering = {
+		children: defined[];
+		start: (
+			separators: readonly defined[],
+			active: () => boolean,
+			style: (separator: Frame) => void,
+		) => void;
+	};
+
+	export function order(children: readonly defined[]): Ordering {
+		const declared = new Map<GuiObject, number>();
+		const written = new Map<GuiObject, number>();
+		const connections = new Map<GuiObject, RBXScriptConnection>();
+		const outputs = new Map<number, GuiObject[]>();
+		// The separators between the instances one thunk returns, built plain since
+		// the thunk runs where no reactive scope may open.
+		const spares = new Map<number, Frame[]>();
+		const slots: (GuiObject | number)[] = [];
+		let separators: readonly defined[] = [];
+		let styleSpare: ((separator: Frame) => void) | undefined;
+		let active = false;
+		let started = false;
+
+		function watch(instance: GuiObject) {
+			if (connections.has(instance)) {
+				return;
+			}
+			declared.set(instance, instance.LayoutOrder);
+			connections.set(
+				instance,
+				instance.GetPropertyChangedSignal("LayoutOrder").Connect(() => {
+					const current = instance.LayoutOrder;
+					if (written.get(instance) === current) {
+						return;
+					}
+					declared.set(instance, current);
+					written.delete(instance);
+					plan();
+				}),
+			);
+		}
+
+		function forget(instance: GuiObject) {
+			connections.get(instance)?.Disconnect();
+			connections.delete(instance);
+			declared.delete(instance);
+			written.delete(instance);
+		}
+
+		function slotInstances(slot: GuiObject | number): GuiObject[] {
+			return typeIs(slot, "number") ? (outputs.get(slot) ?? []) : [slot];
+		}
+
+		function sparesFor(index: number, count: number): Frame[] {
+			const held = spares.get(index) ?? [];
+			while (held.size() < count) {
+				const separator = new Instance("Frame");
+				separator.BorderSizePixel = 0;
+				separator.Visible = false;
+				held.push(separator);
+			}
+			while (held.size() > count) {
+				held.pop()?.Destroy();
+			}
+			spares.set(index, held);
+			return held;
+		}
+
+		function plan() {
+			if (!started) {
+				return;
+			}
+			if (!active) {
+				for (const [instance, order] of written) {
+					if (instance.LayoutOrder === order) {
+						instance.LayoutOrder = declared.get(instance) ?? 0;
+					}
+				}
+				written.clear();
+				for (const [, held] of spares) {
+					for (const spare of held) {
+						spare.Visible = false;
+					}
+				}
+				return;
+			}
+
+			// Each instance a thunk returns takes a rank of its own, as an array
+			// child does on React.
+			const present: GuiObject[] = [];
+			const orders: number[] = [];
+			for (const slot of slots) {
+				for (const instance of slotInstances(slot)) {
+					present.push(instance);
+					orders.push(declared.get(instance) ?? 0);
+				}
+			}
+
+			const ranks = __VelaDivide.planDivideOrder(orders);
+			present.forEach((instance, index) => {
+				const rank = ranks.child[index] ?? 0;
+				written.set(instance, rank);
+				instance.LayoutOrder = rank;
+			});
+
+			const pool: GuiObject[] = [];
+			for (const separator of separators) {
+				pool.push(separator as GuiObject);
+			}
+			for (const [, held] of spares) {
+				for (const spare of held) {
+					styleSpare?.(spare);
+					pool.push(spare);
+				}
+			}
+			// A child that rendered nothing leaves one separator too many, and
+			// a hidden one takes no slot in the list.
+			pool.forEach((target, index) => {
+				const rank = ranks.separator[index];
+				target.Visible = rank !== undefined;
+				target.LayoutOrder = rank ?? 0;
+			});
+		}
+
+		const wrapped: defined[] = [];
+		for (const child of children) {
+			if (typeIs(child, "Instance")) {
+				if (child.IsA("GuiObject")) {
+					watch(child);
+					slots.push(child);
+				}
+				wrapped.push(child);
+				continue;
+			}
+			if (!typeIs(child, "function")) {
+				wrapped.push(child);
+				continue;
+			}
+
+			// A thunk builds its instances where Vide evaluates it, so what it
+			// returned is recorded on the way out and ranked from there.
+			const index = slots.size();
+			slots.push(index);
+			const thunk = child as () => unknown;
+			wrapped.push(((): unknown => {
+				const out = thunk();
+				const previous = outputs.get(index) ?? [];
+				const built = collectGuiObjects(out);
+				for (const instance of previous) {
+					if (!built.includes(instance)) {
+						forget(instance);
+					}
+				}
+				for (const instance of built) {
+					watch(instance);
+				}
+				outputs.set(index, built);
+				const between = sparesFor(index, math.max(built.size() - 1, 0));
+				plan();
+				return between.size() > 0 ? [out, between] : out;
+			}) as defined);
+		}
+
+		Vide.cleanup(() => {
+			for (const [, connection] of connections) {
+				connection.Disconnect();
+			}
+			connections.clear();
+			for (const [, held] of spares) {
+				for (const spare of held) {
+					spare.Destroy();
+				}
+			}
+			spares.clear();
+		});
+
+		const start = (
+			built: readonly defined[],
+			isActive: () => boolean,
+			style: (separator: Frame) => void,
+		) => {
+			separators = built;
+			// A thunk calls `plan` while Vide evaluates it, which must not track the resolution.
+			styleSpare = (spare) => Vide.untrack(() => style(spare));
+			started = true;
+			Vide.effect(() => {
+				const divided = isActive();
+				Vide.untrack(() => {
+					active = divided;
+					plan();
+				});
+			});
+		};
+
+		return { children: wrapped, start };
+	}
+
+	function collectGuiObjects(node: unknown): GuiObject[] {
+		const found: GuiObject[] = [];
+		const visit = (value: unknown) => {
+			if (typeIs(value, "Instance")) {
+				if (value.IsA("GuiObject")) {
+					found.push(value);
+				}
+				return;
+			}
+			if (typeIs(value, "table") && getmetatable(value) === undefined) {
+				for (const [, entry] of pairs(value as Record<string, unknown>)) {
+					visit(entry);
+				}
+			}
+		};
+		visit(node);
+		return found;
+	}
+}
+
+namespace __VelaScopeHost {
+	/// Watches exactly the groups and peers this element's styling reads. An
+	/// effect over the class value, so a deferred one re-subscribes when the
+	/// markers it names change; the parenting Vide does bottom-up reaches the
+	/// watcher through `AncestryChanged`.
+	export function watchScopes(
+		element: Instance,
+		theme: RuntimeTheme,
+		rules: readonly RuntimeRule[],
+		className: () => ClassValue,
+		scopes: Vide.Source<RuntimeScopes | undefined>,
+	) {
+		let key: string | undefined;
+		let stop: (() => void) | undefined;
+
+		Vide.effect(() => {
+			const needs = __VelaResolution.scopeNeeds(theme, rules, className());
+			const latest = __VelaScope.needsKey(needs);
+			if (latest === key) {
+				return;
+			}
+
+			key = latest;
+			stop?.();
+			stop = undefined;
+			scopes(undefined);
+			if (__VelaScope.hasNeeds(needs)) {
+				stop = __VelaScope.watch(element, needs, (latestScopes) =>
+					scopes(latestScopes),
+				);
+			}
+		});
+
+		Vide.cleanup(() => {
+			stop?.();
+			stop = undefined;
+		});
+	}
+
+	/// Tags the instance with the markers it was lowered with and the ones its
+	/// class value resolves, and takes back the ones a class value stops naming.
+	export function applyMarkers(
+		element: Instance,
+		fixed: readonly string[],
+		resolved: () => string[] | undefined,
+	) {
+		for (const marker of fixed) {
+			element.AddTag(marker);
+		}
+
+		let applied = new Set<string>();
+		Vide.effect(() => {
+			const latest = new Set<string>();
+			for (const marker of resolved() ?? []) {
+				if (!fixed.includes(marker)) {
+					latest.add(marker);
+				}
+			}
+			for (const marker of applied) {
+				if (!latest.has(marker)) {
+					element.RemoveTag(marker);
+				}
+			}
+			for (const marker of latest) {
+				if (!applied.has(marker)) {
+					element.AddTag(marker);
+				}
+			}
+			applied = latest;
+		});
+
+		Vide.cleanup(() => {
+			for (const marker of fixed) {
+				element.RemoveTag(marker);
+			}
+			for (const marker of applied) {
+				element.RemoveTag(marker);
+			}
+			applied.clear();
+		});
+	}
+}
+
 export function createVelaRuntimeHost(
 	config: VelaRuntimeConfig,
 	motionDriver?: VelaMotionDriver,
@@ -365,6 +667,9 @@ export function createVelaRuntimeHost(
 		// element's styling reads. Empty, and never written to, on an element
 		// that names no attribute variant.
 		const attributes = Vide.source<Record<string, unknown>>({});
+		// What this element's `group-*` and `peer-*` read; never written on an
+		// element that names neither.
+		const scopes = Vide.source<RuntimeScopes | undefined>(undefined);
 
 		function environment(): RuntimeEnvironment {
 			const base = __VelaEnvSource.current();
@@ -386,6 +691,8 @@ export function createVelaRuntimeHost(
 				focused: focused(),
 				attributes: attributes(),
 				tests: readTests,
+				groups: scopes()?.groups,
+				peers: scopes()?.peers,
 			};
 		}
 
@@ -493,7 +800,12 @@ export function createVelaRuntimeHost(
 				}
 			}
 
-			const composed = composedProps(current, preflight, base);
+			const composed = composedProps(
+				current,
+				preflight,
+				base,
+				props.__velaLayoutOrder,
+			);
 			__VelaText.applyTextConfig(composed, textSpec, current);
 
 			const textSize = composed.TextSize;
@@ -582,6 +894,7 @@ export function createVelaRuntimeHost(
 				props.__velaDivide,
 				current.divide,
 				current.remRatio ?? 1,
+				hostTag === "canvasgroup" ? 1 : explicitAlpha,
 			);
 		}
 
@@ -591,10 +904,22 @@ export function createVelaRuntimeHost(
 		// ever be is fixed — one fewer than the children that take a layout slot
 		// — so the thunk returns the run the resolution currently asks for and
 		// Vide unparents the rest.
-		const userChildren = flattenChildren(props.children);
+		// Only a host that is, or could become, divided pays for ranking.
+		const ordering =
+			props.__velaDivide !== undefined ||
+			shape.divide !== undefined ||
+			typeIs(rawClassName, "function")
+				? __VelaDivideOrder.order(flattenChildren(props.children))
+				: undefined;
+		const userChildren = ordering?.children ?? flattenChildren(props.children);
+		const separatorAlpha = () =>
+			hostTag === "canvasgroup"
+				? 1
+				: ambientAlpha * (resolution().opacityAlpha ?? 1);
 		const separators = buildSeparators(
 			countContentChildren(userChildren) - 1,
 			currentDivide,
+			separatorAlpha,
 		);
 		let ownerInstance: Instance | undefined;
 		const helpers = helperChildren(
@@ -649,13 +974,19 @@ export function createVelaRuntimeHost(
 		// transformer's own alpha already reached everything it could see, so
 		// only the context's is passed on with it.
 		const ownAlpha = Vide.untrack(() => resolution().opacityAlpha ?? 1);
+		// A class value or a rule can bring an `opacity-*` the first reading lacked.
+		const alphaCanMove =
+			typeIs(rawClassName, "function") ||
+			rules.some((rule) =>
+				rule.effects.props.some((prop) => prop.name === "OpacityAlpha"),
+			);
 
 		// A CanvasGroup composites its whole subtree, so the channel this element
 		// resolved for itself already carries the fade for everything below it.
 		if (
 			hostTag !== undefined &&
 			hostTag !== "canvasgroup" &&
-			ambientAlpha * ownAlpha < 1
+			(ambientAlpha * ownAlpha < 1 || alphaCanMove)
 		) {
 			__VelaOpacity.fadeChildren(userChildren, () => {
 				const current = resolution();
@@ -691,13 +1022,27 @@ export function createVelaRuntimeHost(
 				1: padding,
 				2: element,
 			}) as Instance;
+			wrapper.AddTag(__VelaScope.MARGIN_BOX_TAG);
 			rendered = wrapper;
 		}
+
+		ordering?.start(
+			separators,
+			() => currentDivide() !== undefined,
+			(separator) =>
+				styleSeparator(separator, currentDivide(), separatorAlpha()),
+		);
 
 		if (typeIs(element, "Instance")) {
 			ownerInstance = element;
 			__VelaOpacity.markProvided(element);
 			watchAttributes(element, theme, rules, className, attributes);
+			__VelaScopeHost.watchScopes(element, theme, rules, className, scopes);
+			__VelaScopeHost.applyMarkers(
+				element,
+				props.__velaMarkers ?? [],
+				() => resolution().markers,
+			);
 			writeResolvedProps({
 				element,
 				wrapper,
@@ -902,9 +1247,19 @@ function componentPropNames(
 	for (const [name] of pairs(composedProps(shape, preflight, {}))) {
 		names.add(name as string);
 	}
+	// What the resolution reads itself rather than handing on as a prop.
+	const consumed = [
+		"OpacityAlpha",
+		"GapOffset",
+		"GridCells",
+		"GridCellsHorizontal",
+		"GridCrossExtent",
+	];
 	for (const rule of rules) {
 		for (const entry of rule.effects.props) {
-			names.add(COMPOSED_BY_CONTRIBUTOR[entry.name] ?? entry.name);
+			if (!consumed.includes(entry.name)) {
+				names.add(COMPOSED_BY_CONTRIBUTOR[entry.name] ?? entry.name);
+			}
 		}
 	}
 
@@ -973,6 +1328,8 @@ const COMPOSED_BY_CONTRIBUTOR: Record<string, string> = {
 	PositionY: "Position",
 	TranslateX: "Position",
 	TranslateY: "Position",
+	AutoX: "AutomaticSize",
+	AutoY: "AutomaticSize",
 };
 
 /// Every separator a divide could ever ask for, built before the children
@@ -982,6 +1339,7 @@ const COMPOSED_BY_CONTRIBUTOR: Record<string, string> = {
 function buildSeparators(
 	count: number,
 	divide: () => RuntimeDivide | undefined,
+	alpha: () => number,
 ): defined[] {
 	const separators: defined[] = [];
 
@@ -989,7 +1347,8 @@ function buildSeparators(
 		separators.push(
 			videJsx("frame", {
 				BackgroundColor3: () => __VelaDivide.separatorColor(divide()),
-				BackgroundTransparency: () => divide()?.transparency ?? 0,
+				BackgroundTransparency: () =>
+					__VelaDivide.separatorTransparency(divide(), alpha()),
 				BorderSizePixel: 0,
 				Size: () => __VelaDivide.separatorSize(divide()),
 			}) as defined,
@@ -999,11 +1358,24 @@ function buildSeparators(
 	return separators;
 }
 
+function styleSeparator(
+	separator: Frame,
+	divide: RuntimeDivide | undefined,
+	alpha: number,
+) {
+	separator.BackgroundColor3 = __VelaDivide.separatorColor(divide);
+	separator.BackgroundTransparency = __VelaDivide.separatorTransparency(
+		divide,
+		alpha,
+	);
+	separator.Size = __VelaDivide.separatorSize(divide);
+}
+
 function countContentChildren(children: readonly defined[]): number {
 	let count = 0;
 
 	for (const child of children) {
-		if (typeIs(child, "Instance") && child.IsA("UIBase")) {
+		if (typeIs(child, "Instance") && !child.IsA("GuiObject")) {
 			continue;
 		}
 		count += 1;
@@ -1052,7 +1424,7 @@ function interleaveDivideSeparators(
 	let taken = 0;
 
 	for (const child of children) {
-		if (typeIs(child, "Instance") && child.IsA("UIBase")) {
+		if (typeIs(child, "Instance") && !child.IsA("GuiObject")) {
 			result.push(child);
 			continue;
 		}
@@ -1074,6 +1446,7 @@ function composedProps(
 	resolution: RuntimeResolution,
 	preflight: boolean,
 	declared: Record<string, unknown>,
+	layoutOrder?: number | (() => number),
 ): Record<string, unknown> {
 	const hostProps: Record<string, unknown> = {};
 	for (const [name, value] of pairs(declared)) {
@@ -1081,6 +1454,11 @@ function composedProps(
 	}
 	for (const [name, value] of pairs(resolution.props)) {
 		hostProps[name as string] = value;
+	}
+	if (layoutOrder !== undefined) {
+		hostProps.LayoutOrder = typeIs(layoutOrder, "function")
+			? layoutOrder()
+			: layoutOrder;
 	}
 	__VelaApply.applyComposedResolution(hostProps, resolution, preflight);
 
@@ -1216,45 +1594,63 @@ function helperChildren(
 		}
 
 		// One effect for the whole helper rather than a thunk per prop: which
-		// props it carries is a rule's to change, and a name the resolution has
-		// dropped must keep its last value rather than be written back as nil.
+		// props it carries is a rule's to change. A name the resolution has
+		// dropped goes back to the class default, which is what React's
+		// reconciler does with a prop it stopped being handed.
 		//
 		// A property that moves under a transition is tweened on the helper
 		// itself rather than assigned, so `hover:rounded-xl` travels the same
 		// way `hover:bg-*` does. The first writing is always an assignment:
 		// there is nothing to tween from yet.
 		const written = new Map<string, unknown>();
+		const write = (name: string, value: unknown, seen: boolean) => {
+			if (
+				seen &&
+				transition !== undefined &&
+				__VelaMotion.transitionCoversProp(transition.property, name, tag) &&
+				__VelaMotion.isTweenableValue(value)
+			) {
+				const instance = child as unknown as Instance;
+				__VelaMotion.playTransition(
+					instance,
+					{ [name]: value as RuntimePropValue },
+					transition,
+					{ owner: owner() ?? instance, helper: tag },
+				);
+				return;
+			}
+
+			(child as unknown as Record<string, unknown>)[name] = value;
+		};
 		Vide.effect(() => {
 			const props = helperProps(resolution(), tag);
 			if (props === undefined) {
 				return;
 			}
+
+			const stale = new Set<string>();
+			for (const [name] of written) {
+				stale.add(name);
+			}
+
 			for (const [key, value] of pairs(props)) {
 				const name = key as string;
+				stale.delete(name);
 				if (written.get(name) === value) {
 					continue;
 				}
 
 				const seen = written.has(name);
 				written.set(name, value);
+				write(name, value, seen);
+			}
 
-				if (
-					seen &&
-					transition !== undefined &&
-					__VelaMotion.transitionCoversProp(transition.property, name, tag) &&
-					__VelaMotion.isTweenableValue(value)
-				) {
-					const instance = child as unknown as Instance;
-					__VelaMotion.playTransition(
-						instance,
-						{ [name]: value as RuntimePropValue },
-						transition,
-						{ owner: owner() ?? instance, helper: tag },
-					);
-					continue;
+			for (const name of stale) {
+				const fallback = classMember(__VelaApply.hostClassName(tag), name);
+				if (fallback !== undefined) {
+					write(name, fallback, true);
 				}
-
-				(child as unknown as Record<string, unknown>)[name] = value;
+				written.delete(name);
 			}
 		});
 

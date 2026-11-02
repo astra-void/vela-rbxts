@@ -192,7 +192,8 @@ fn describe_token(
         | UtilityKind::DivideX
         | UtilityKind::DivideY
         | UtilityKind::ShadowSize(_)
-        | UtilityKind::BackdropBlur => {
+        | UtilityKind::BackdropBlur
+        | UtilityKind::Isolate => {
             describe_effects_family(&analysis, token, config, element_tag, &variant_prefix)
         }
         UtilityKind::Transition
@@ -202,8 +203,52 @@ fn describe_token(
         | UtilityKind::Animation => {
             describe_motion_family(&analysis, token, config, element_tag, &variant_prefix)
         }
+        UtilityKind::GroupMarker | UtilityKind::PeerMarker => {
+            describe_marker(&analysis, token, element_tag, &variant_prefix)
+        }
         UtilityKind::Unknown => None,
     }
+}
+
+fn describe_marker(
+    analysis: &crate::semantic::result::AnalyzedClassToken,
+    token: &str,
+    element_tag: Option<&str>,
+    variant_prefix: &str,
+) -> Option<HoverContent> {
+    use crate::semantic::variant::{GROUP_TAG, PEER_TAG, marker_tag};
+
+    let name = analysis.payload();
+    let (tag, reads) = match analysis.utility {
+        UtilityKind::GroupMarker => (
+            marker_tag(GROUP_TAG, name),
+            format!(
+                "`{}` on any descendant reads this element's hover, press and focus; the nearest marked ancestor wins, starting at the parent.",
+                marker_tag("group-hover", name)
+            ),
+        ),
+        _ => (
+            marker_tag(PEER_TAG, name),
+            format!(
+                "`{}` on a sibling under the same parent reads this element's hover, press and focus. Roblox has no sibling order, so any marked sibling counts, not only an earlier one; name peers to tell them apart.",
+                marker_tag("peer-hover", name)
+            ),
+        ),
+    };
+    let caveat = if element_tag.is_none() {
+        " A component element has no instance of its own, so this marker is dropped; put it on the host element the component renders."
+    } else if !variant_prefix.is_empty() {
+        " A marker cannot be conditional, so it is dropped under a variant."
+    } else {
+        ""
+    };
+
+    Some(HoverContent {
+        display: format!("`{token}` -> CollectionService tag `{tag}`"),
+        documentation: format!(
+            "Tags this instance `{tag}`. {reads} Hover follows Roblox `MouseEnter`/`MouseLeave`, which is geometric: a child drawn outside this element's bounds does not hover it, and the state starts unhovered until the first event.{caveat}"
+        ),
+    })
 }
 
 /// Color, gradient stops and the gradient direction they are read with.
@@ -1202,10 +1247,19 @@ fn describe_effects_family(
                 });
             };
             let props = opacity_transparency_props(Some(tag)).join(", ");
+            // Each descendant fades on its own, so where siblings overlap the
+            // lower one shows through; a CanvasGroup fades them as one layer.
+            let overlap = if tag == "canvasgroup" {
+                ""
+            } else if tag == "frame" {
+                " Overlapping children fade one by one, so the overlap reads darker; add `isolate` to fade them as one layer."
+            } else {
+                " Overlapping children fade one by one, so the overlap reads darker."
+            };
             Some(HoverContent {
                 display: format!("`{token}` -> {props}"),
                 documentation: format!(
-                    "{variant_prefix}Fades this element to `{value}` transparency, and composes into the subtree under it."
+                    "{variant_prefix}Fades this element to `{value}` transparency, and composes into the subtree under it.{overlap}"
                 ),
             })
         }
@@ -1214,14 +1268,28 @@ fn describe_effects_family(
                 UtilityKind::DivideX => "vertical",
                 _ => "horizontal",
             };
+            if analysis.payload() == Some("0") {
+                return Some(HoverContent {
+                    display: format!("`{token}` -> no separators"),
+                    documentation: format!(
+                        "{variant_prefix}Removes the {axis} separators between the element's children."
+                    ),
+                });
+            }
             let thickness = px_length_text(config, analysis.payload().unwrap_or("1"));
             Some(HoverContent {
                 display: format!("`{token}` -> child separators"),
                 documentation: format!(
-                    "{variant_prefix}Inserts a {thickness} {axis} separator frame between the element's children. Not compatible with children that set an explicit `LayoutOrder`."
+                    "{variant_prefix}Inserts a {thickness} {axis} separator frame between the element's children, which need a list layout (`flex`, `flex-col` or `space-*`). Children are ranked by their `LayoutOrder` or `order-*`, so the separators follow the sorted order; a component child has to forward `LayoutOrder` to its root. The gap applies on both sides of a separator."
                 ),
             })
         }
+        UtilityKind::Isolate => Some(HoverContent {
+            display: format!("`{token}` -> CanvasGroup"),
+            documentation: format!(
+                "{variant_prefix}Renders this frame as a CanvasGroup, so `opacity-*` lowers to `GroupTransparency` and the subtree fades as one layer. A CanvasGroup clips its descendants and renders them to a texture, and refs see a CanvasGroup. Has to be written as a static, unconditional class."
+            ),
+        }),
         UtilityKind::ShadowSize(layer) => {
             let label = layer.label();
             let key = analysis.payload();
@@ -1514,6 +1582,12 @@ fn variant_prefix(
                     "Malformed attribute variant `{}`: {}. This class never applies at runtime. ",
                     variant.raw,
                     detail.message()
+                );
+            }
+            Some(VariantError::UnsupportedRelational { reason }) => {
+                return format!(
+                    "Unsupported variant `{}`: {reason}. This class never applies at runtime. ",
+                    variant.raw
                 );
             }
             _ => {}

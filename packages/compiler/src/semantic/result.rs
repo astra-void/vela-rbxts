@@ -23,6 +23,11 @@ pub(crate) enum SemanticIssue {
         variant: String,
         detail: crate::semantic::variant::AttributeVariantError,
     },
+    /// `group-*`/`peer-*` vela recognised and could not read.
+    UnsupportedRelationalVariant {
+        variant: String,
+        reason: String,
+    },
     /// A chain whose width bounds leave no viewport, such as `md:max-sm:`.
     InvalidBreakpointRange {
         min_width: u32,

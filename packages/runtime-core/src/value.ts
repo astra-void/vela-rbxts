@@ -830,9 +830,14 @@ export namespace __VelaValue {
 		}
 
 		return new Vector2(
-			__VelaLua.toNumber(args[0]) ?? 0,
-			__VelaLua.toNumber(args[1]) ?? 0,
+			parseVectorComponent(args[0]) ?? 0,
+			parseVectorComponent(args[1]) ?? 0,
 		);
+	}
+
+	/// The static path writes an unbounded `MaxSize` axis as `math.huge`.
+	function parseVectorComponent(value: string | undefined): number | undefined {
+		return value === "math.huge" ? math.huge : __VelaLua.toNumber(value);
 	}
 
 	/// `new Font("family", Enum.FontWeight.Bold, Enum.FontStyle.Italic)`, with

@@ -88,12 +88,14 @@ fn sort_key(
     variants: &VariantRegistry<'_>,
 ) -> (Vec<VariantRank>, i64, usize) {
     let analysis = analyze_class_token(token, variants);
-    let ranks = analysis
+    let mut ranks: Vec<VariantRank> = analysis
         .parsed
         .variants
         .iter()
         .map(|variant| variant_rank(variant.kind.as_ref(), &variant.raw))
         .collect();
+    // A chain is a set; broadest first ties `hover:md:` with `md:hover:` and keeps it after `md:`.
+    ranks.sort_by(|left, right| right.cmp(left));
 
     // A plugin utility bundles whole property groups, so it leads: a utility
     // written beside it is the one meant to win.
@@ -127,8 +129,9 @@ const BAND_ORIENTATION: u8 = 2;
 const BAND_INPUT: u8 = 3;
 const BAND_STATE: u8 = 4;
 const BAND_INTERACTION: u8 = 5;
-const BAND_COLOR_SCHEME: u8 = 6;
-const BAND_UNKNOWN: u8 = 7;
+const BAND_RELATIONAL: u8 = 6;
+const BAND_COLOR_SCHEME: u8 = 7;
+const BAND_UNKNOWN: u8 = 8;
 
 fn variant_rank(kind: Option<&VariantKind>, raw: &str) -> VariantRank {
     let Some(kind) = kind else {
@@ -171,13 +174,20 @@ fn variant_rank(kind: Option<&VariantKind>, raw: &str) -> VariantRank {
         VariantKind::Hover => (BAND_INTERACTION, 0, raw.to_owned()),
         VariantKind::Active => (BAND_INTERACTION, 1, raw.to_owned()),
         VariantKind::Focus => (BAND_INTERACTION, 2, raw.to_owned()),
+        VariantKind::Group { state, .. } => (BAND_RELATIONAL, state.rank(), raw.to_owned()),
+        VariantKind::Peer { state, .. } => (BAND_RELATIONAL, 3 + state.rank(), raw.to_owned()),
         VariantKind::ColorScheme { .. } => (BAND_COLOR_SCHEME, 0, raw.to_owned()),
     }
 }
 
 fn group_rank(utility: &UtilityKind) -> u32 {
     match utility {
-        UtilityKind::Visibility | UtilityKind::Overflow | UtilityKind::PointerEvents => 0,
+        // A marker writes no property, so it leads the way Tailwind's does.
+        UtilityKind::GroupMarker
+        | UtilityKind::PeerMarker
+        | UtilityKind::Visibility
+        | UtilityKind::Overflow
+        | UtilityKind::PointerEvents => 0,
         UtilityKind::ZIndex | UtilityKind::LayoutOrder => 1,
         UtilityKind::FlexDirection
         | UtilityKind::FlexWrap
@@ -233,7 +243,10 @@ fn group_rank(utility: &UtilityKind) -> u32 {
         UtilityKind::Border | UtilityKind::Ring | UtilityKind::Outline => 10,
         UtilityKind::Radius(_) => 11,
         UtilityKind::DivideX | UtilityKind::DivideY | UtilityKind::DivideColor => 12,
-        UtilityKind::ShadowSize(_) | UtilityKind::ShadowColor(_) | UtilityKind::BackdropBlur => 13,
+        UtilityKind::ShadowSize(_)
+        | UtilityKind::ShadowColor(_)
+        | UtilityKind::BackdropBlur
+        | UtilityKind::Isolate => 13,
         UtilityKind::Rotation | UtilityKind::Scale => 14,
         UtilityKind::TextSize => 15,
         UtilityKind::FontFamily | UtilityKind::FontWeight | UtilityKind::FontStyle => 16,

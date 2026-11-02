@@ -3,7 +3,10 @@ import { expect, test } from "vitest";
 import { emitted, runtimeSource, withoutPreflight } from "./helpers";
 
 test("lowers opacity utilities to BackgroundTransparency", () => {
-	const result = transform('<frame className="opacity-25" />');
+	const result = transform(
+		'<frame className="opacity-25" />',
+		withoutPreflight,
+	);
 
 	expect(result.changed).toBe(true);
 	expect(result.diagnostics).toEqual([]);
@@ -24,7 +27,10 @@ test("lowers opacity on a canvas group to GroupTransparency", () => {
 });
 
 test("fades the text an opacity utility sits on", () => {
-	const result = transform('<textlabel className="opacity-25" Text="hi" />');
+	const result = transform(
+		'<textlabel className="opacity-25" Text="hi" />',
+		withoutPreflight,
+	);
 
 	expect(result.diagnostics).toEqual([]);
 	expect(result.code).toMatch(/TextTransparency=\{0\.75\}/);
@@ -84,6 +90,127 @@ test("carries an opacity into a variant that restates the transparency", () => {
 	// The variant overlays the base at render time, so it carries the product
 	// too — 0.5 alpha of its own under 0.5 from the parent.
 	expect(result.code).toContain('"value": "0.75"');
+});
+
+type Rule = {
+	condition: { kind: string; conditions?: unknown[] };
+	effects: {
+		props: { name: string; value: string }[];
+		helpers: { tag: string }[];
+	};
+};
+
+// The rules that fire beside it can repaint any channel, and only the runtime
+// knows which of them did, so it is the one that multiplies the alpha in.
+test("a variant opacity leaves the product to the runtime, helpers included", () => {
+	const result = transform(
+		'<frame className="bg-red-500/50 ring-2 hover:opacity-50" />',
+		withoutPreflight,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	const ir = JSON.parse(result.ir[0]);
+	const [resting, hover] = ir.runtimeRules as Rule[];
+	expect(resting.condition).toEqual({ kind: "all", conditions: [] });
+	expect(resting.effects.props).toEqual([
+		{ name: "BackgroundTransparency", value: "0.5" },
+	]);
+	expect(resting.effects.helpers.map((helper) => helper.tag)).toEqual([
+		"uistroke",
+	]);
+	expect(ir.base.helpers).toEqual([]);
+	expect(hover.condition.kind).toBe("hover");
+	expect(hover.effects).toEqual({
+		props: [{ name: "ChannelAlpha", value: "0.5" }],
+		helpers: [],
+	});
+	expect(runtimeSource).toContain('name === "ChannelAlpha"');
+});
+
+test("a variant opacity replaces the element's own rather than multiplying it", () => {
+	const result = transform(
+		'<frame className="opacity-50 hover:opacity-75" />',
+		withoutPreflight,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	const ir = JSON.parse(result.ir[0]);
+	expect(ir.base.props).toContainEqual({
+		name: "BackgroundTransparency",
+		value: "0.5",
+	});
+	const [resting, hover] = ir.runtimeRules as Rule[];
+	expect(resting.effects.props).toEqual([
+		{ name: "ChannelAlpha", value: "0.5" },
+	]);
+	expect(hover.effects.props).toEqual([
+		{ name: "ChannelAlpha", value: "0.75" },
+	]);
+});
+
+test("the runtime composes an element's own opacity once every token resolved", () => {
+	expect(runtimeSource).toContain('propEffect("OpacityAlpha", 1 - value)');
+	expect(runtimeSource).toContain(
+		"resolution.opacityAlpha ?? resolution.channelAlpha",
+	);
+	expect(runtimeSource).toContain(
+		"composeOwnOpacity(resolution, tag, ownAlpha, preflight);",
+	);
+});
+
+test("an opacity leaves a background preflight neutralized transparent", () => {
+	for (const className of [
+		"opacity-50",
+		"ring-2 hover:opacity-50",
+		"border-2 opacity-50 hover:opacity-25",
+	]) {
+		const ir = JSON.parse(
+			transform(`<frame className="${className}" />`).ir[0],
+		);
+		expect(ir.base.props).toContainEqual({
+			name: "BackgroundTransparency",
+			value: "1",
+		});
+		for (const rule of ir.runtimeRules as Rule[]) {
+			expect(rule.effects.props.map((prop) => prop.name)).not.toContain(
+				"BackgroundTransparency",
+			);
+		}
+	}
+});
+
+test("a variant background over a neutralized base fades with the element", () => {
+	const ir = JSON.parse(
+		transform('<frame className="opacity-50 hover:bg-red-500" />').ir[0],
+	);
+	const hover = (ir.runtimeRules as Rule[]).find(
+		(rule) => rule.condition.kind === "hover",
+	);
+
+	expect(hover?.effects.props).toContainEqual({
+		name: "BackgroundTransparency",
+		value: "0.5",
+	});
+});
+
+test("an opacity still fades a background the author painted", () => {
+	const result = transform(
+		'<frame BackgroundColor3={color} className="opacity-50" />',
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toMatch(/BackgroundTransparency=\{0\.5\}/);
+});
+
+test("a solid color takes back an earlier one's opacity modifier", () => {
+	const result = transform(
+		'<textlabel className="bg-red-500/50 text-red-500/50 bg-blue-500 text-blue-500" />',
+		withoutPreflight,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toMatch(/BackgroundTransparency=\{0\}/);
+	expect(result.code).toMatch(/TextTransparency=\{0\}/);
 });
 
 test("hands a dynamic class value the inherited opacity to compose itself", () => {

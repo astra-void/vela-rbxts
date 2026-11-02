@@ -1,7 +1,9 @@
 import { __VelaColor } from "./color";
 import { __VelaLua } from "./lua";
+import { __VelaOpacity } from "./opacity";
 import type {
 	RuntimeDivide,
+	RuntimeDividePlan,
 	RuntimeDivideState,
 	RuntimeResolution,
 	RuntimeTheme,
@@ -53,9 +55,10 @@ export namespace __VelaDivide {
 			if (color !== undefined) {
 				const state = divideState(resolution);
 				state.color = color;
-				if (opacity !== undefined) {
-					state.transparency = __VelaValue.opacityToTransparency(opacity);
-				}
+				state.transparency =
+					opacity === undefined
+						? undefined
+						: __VelaValue.opacityToTransparency(opacity);
 			}
 			return true;
 		}
@@ -77,22 +80,81 @@ export namespace __VelaDivide {
 		return `Color3.fromRGB(${math.floor(color.R * 255 + 0.5)}, ${math.floor(color.G * 255 + 0.5)}, ${math.floor(color.B * 255 + 0.5)})`;
 	}
 
+	/// `alpha` is the static fade the transformer composed into `base`. A
+	/// transparency only the class value names never met it, so it is composed
+	/// here instead.
 	export function resolveDivideConfig(
 		base: RuntimeDivide | undefined,
 		dynamic: RuntimeDivideState | undefined,
 		remRatio: number,
+		alpha?: number,
 	): RuntimeDivide | undefined {
 		const axis = dynamic?.axis ?? base?.axis;
 		if (axis === undefined) {
 			return undefined;
 		}
 
+		// CSS draws no border at zero width, and a zero-size separator would
+		// still take the gap twice.
+		const thickness = dynamic?.thickness ?? base?.thickness ?? 1;
+		if (thickness === 0) {
+			return undefined;
+		}
+
+		let transparency = dynamic?.transparency ?? base?.transparency;
+		if (
+			alpha !== undefined &&
+			alpha < 1 &&
+			(dynamic?.transparency !== undefined || base === undefined)
+		) {
+			transparency = __VelaOpacity.compose(transparency ?? 0, alpha);
+		}
+
 		return {
 			axis,
-			thickness: (dynamic?.thickness ?? base?.thickness ?? 1) * remRatio,
+			thickness: thickness * remRatio,
 			color: dynamic?.color ?? base?.color,
-			transparency: dynamic?.transparency ?? base?.transparency,
+			transparency,
 		};
+	}
+
+	/// What a separator paints at under the fade its host hands its children.
+	export function separatorTransparency(
+		divide: RuntimeDivide | undefined,
+		alpha: number,
+	): number {
+		return __VelaOpacity.compose(divide?.transparency ?? 0, alpha);
+	}
+
+	/// Ranks the content children by their declared `LayoutOrder`, ties kept in
+	/// source order, and slots a separator between each pair of neighbours.
+	/// Ranks are always assigned: equal orders would otherwise fall back to the
+	/// engine's tie-break, which follows instance creation rather than the JSX.
+	export function planDivideOrder(
+		orders: readonly number[],
+	): RuntimeDividePlan {
+		const count = orders.size();
+		const ranked: number[] = [];
+		for (let index = 0; index < count; index += 1) {
+			ranked.push(index);
+		}
+		// `table.sort` is not stable, so the source index settles a tie.
+		table.sort(ranked, (left, right) => {
+			const leftOrder = orders[left] ?? 0;
+			const rightOrder = orders[right] ?? 0;
+			return leftOrder !== rightOrder ? leftOrder < rightOrder : left < right;
+		});
+
+		const child = table.create<number>(count, 0);
+		const separator: number[] = [];
+		ranked.forEach((index, rank) => {
+			child[index] = 2 * rank;
+			if (rank > 0) {
+				separator.push(2 * rank - 1);
+			}
+		});
+
+		return { child, separator };
 	}
 
 	export function separatorColor(divide: RuntimeDivide | undefined): Color3 {

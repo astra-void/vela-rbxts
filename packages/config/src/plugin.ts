@@ -252,7 +252,7 @@ function normalizeVariantName(
 
 	if (isReservedVariantPrefix(key)) {
 		throw new Error(
-			`${label} registered the variant "${key}", whose prefix vela reads as a breakpoint range ("max-*") or an inline attribute variant ("attr-*"). Pick another name.`,
+			`${label} registered the variant "${key}", whose prefix vela reads as a breakpoint range ("max-*"), an inline attribute variant ("attr-*"), or a group or peer marker or variant ("group", "group-*", "peer", "peer-*"). Pick another name.`,
 		);
 	}
 

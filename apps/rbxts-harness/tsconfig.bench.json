@@ -1,0 +1,8 @@
+{
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"tsBuildInfoFile": "out/bench.tsbuildinfo"
+	},
+	"include": ["src/bench", "src/client/motion.ts", "src/client/vela-env.d.ts"],
+	"exclude": []
+}

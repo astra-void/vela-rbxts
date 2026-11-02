@@ -48,6 +48,19 @@ test("merges italic with font weight into a single FontFace", () => {
 	);
 });
 
+test("a variant font utility keeps the family and weight the base set", () => {
+	const result = transform(
+		`export const A = () => <textlabel className="font-mono font-bold dark:italic" />;`,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	const [rule] = JSON.parse(result.ir[0]).runtimeRules;
+	expect(rule.effects.props).toEqual([
+		{ name: "FontStyle", value: "Enum.FontStyle.Italic" },
+	]);
+	expect(runtimeSource).toContain('if (name === "FontStyle") {');
+});
+
 test("merges the font family with weight and style into a single FontFace", () => {
 	const mono = transform(
 		`export const A = () => <textlabel className="font-mono" />;`,

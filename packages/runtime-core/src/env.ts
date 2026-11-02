@@ -132,6 +132,110 @@ export namespace __VelaEnv {
 		return "mouse";
 	}
 
+	export type EnvironmentListener = (environment: RuntimeEnvironment) => void;
+
+	const listeners = new Set<EnvironmentListener>();
+	let current: RuntimeEnvironment | undefined;
+	let connected = false;
+
+	function sameEnvironment(
+		previous: RuntimeEnvironment,
+		latest: RuntimeEnvironment,
+	): boolean {
+		return (
+			previous.width === latest.width &&
+			previous.rem === latest.rem &&
+			previous.orientation === latest.orientation &&
+			previous.input === latest.input &&
+			previous.colorScheme === latest.colorScheme
+		);
+	}
+
+	function refreshEnvironment() {
+		const latest = readRuntimeEnvironment(
+			__VelaWorkspace.CurrentCamera as RuntimeCamera | undefined,
+		);
+		if (current !== undefined && sameEnvironment(current, latest)) {
+			return;
+		}
+
+		current = latest;
+		// A listener may re-render synchronously and mount or unmount hosts.
+		for (const listener of [...listeners]) {
+			listener(latest);
+		}
+	}
+
+	/// One set of signal connections for the whole place, whichever runtime reads
+	/// it: a set per host would grow with every mounted element. Connected the
+	/// first time something asks, so a game that never resolves at runtime never
+	/// listens.
+	function connectEnvironment() {
+		if (connected) {
+			return;
+		}
+
+		connected = true;
+
+		// The local player arrives after the first render on some load paths, and
+		// its attribute is where the color scheme lives.
+		let schemeConnection: RBXScriptConnection | undefined;
+		function watchPlayer() {
+			schemeConnection?.Disconnect();
+			const player = __VelaPlayers.LocalPlayer as Player | undefined;
+			schemeConnection = player
+				?.GetAttributeChangedSignal(VELA_COLOR_SCHEME_ATTRIBUTE)
+				.Connect(refreshEnvironment);
+		}
+
+		__VelaPlayers.GetPropertyChangedSignal("LocalPlayer").Connect(() => {
+			watchPlayer();
+			refreshEnvironment();
+		});
+		watchPlayer();
+
+		__VelaUserInputService
+			.GetPropertyChangedSignal("TouchEnabled")
+			.Connect(refreshEnvironment);
+		__VelaUserInputService
+			.GetPropertyChangedSignal("MouseEnabled")
+			.Connect(refreshEnvironment);
+		__VelaUserInputService
+			.GetPropertyChangedSignal("GamepadEnabled")
+			.Connect(refreshEnvironment);
+
+		// ViewportSize stays 1x1 until the first frame renders, so breakpoints
+		// have to follow the signal instead of the first read.
+		watchViewport(debounceViewport(refreshEnvironment).call);
+		// The first read may have used the default rem curve, before the factory
+		// that configures it ran.
+		__VelaRem.whenConfigured(refreshEnvironment);
+		refreshEnvironment();
+	}
+
+	export function currentEnvironment(): RuntimeEnvironment {
+		connectEnvironment();
+
+		return current as RuntimeEnvironment;
+	}
+
+	/// Hears every change that moved a field resolution reads, and nothing else.
+	export function subscribeEnvironment(
+		listener: EnvironmentListener,
+	): () => void {
+		connectEnvironment();
+		listeners.add(listener);
+
+		return () => {
+			listeners.delete(listener);
+		};
+	}
+
+	/// Read-only, for benches and specs: Roblox exposes no connection count.
+	export function listenerCount(): number {
+		return listeners.size();
+	}
+
 	/// The defaults every project starts from. They live here rather than in
 	/// each emitted module because they are the same table in every one of them
 	/// — and they are most of what a theme weighs.

@@ -1,0 +1,36 @@
+{
+	"name": "rbxts-harness-bench",
+	"tree": {
+		"$className": "DataModel",
+		"ReplicatedStorage": {
+			"$className": "ReplicatedStorage",
+			"node_modules": {
+				"$className": "Folder",
+				"@rbxts": {
+					"$path": "node_modules/@rbxts"
+				},
+				"@rbxts-js": {
+					"$path": "../../node_modules/@rbxts-js"
+				}
+			},
+			"TS": {
+				"$path": "include"
+			}
+		},
+		"StarterPlayer": {
+			"$className": "StarterPlayer",
+			"StarterPlayerScripts": {
+				"$className": "StarterPlayerScripts",
+				"Client": {
+					"$className": "Folder",
+					"motion": {
+						"$path": "out/client/motion.luau"
+					}
+				},
+				"Bench": {
+					"$path": "out/bench"
+				}
+			}
+		}
+	}
+}

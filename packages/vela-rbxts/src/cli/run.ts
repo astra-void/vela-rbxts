@@ -3,21 +3,17 @@ import path from "node:path";
 import { clearProjectConfigCache } from "@vela-rbxts/rbxtsc-host";
 
 import { type Builder, createBuilder } from "./builder.js";
+import {
+	isConfigFileName,
+	POLL_INTERVAL_MS,
+	watchProjectConfig,
+} from "./config-watch.js";
 import { listFilesRecursive, toSystemPath } from "./files.js";
 import type { CliOptions } from "./options.js";
 import { collectSetupWarnings, ensureVelaDirIgnored } from "./project.js";
 import { createReporter, type Reporter } from "./reporter.js";
 
 const DEBOUNCE_MS = 60;
-const POLL_INTERVAL_MS = 400;
-const CONFIG_FILE_NAMES = new Set(["vela.config.ts", "vela.config.json"]);
-
-// A stylesheet the config folds in can sit anywhere the entry imports it from,
-// so any CSS edit counts as a config change rather than having the watcher
-// track the import graph.
-function isConfigFileName(fileName: string): boolean {
-	return CONFIG_FILE_NAMES.has(fileName) || fileName.endsWith(".css");
-}
 
 export function runBuild(options: CliOptions): number {
 	const reporter = createReporter(options.quiet);
@@ -90,34 +86,46 @@ function watchLoop(
 			const stats = wasFull ? builder.buildAll() : builder.rebuild(changed);
 			exitCode = stats.errors > 0 ? 1 : 0;
 			reporter.summary(stats, "vela watch: ");
+
+			// An edit can add or drop an `@import`, which moves what has to be watched.
+			if (wasFull) {
+				configWatcher.sync();
+			}
 		};
 
-		const queue = (relativePath: string | undefined) => {
-			const isConfig =
-				relativePath !== undefined &&
-				relativePath !== "" &&
-				isConfigFileName(path.posix.basename(relativePath));
-
-			// A config edit changes how every file lowers, so it takes the whole
-			// tree with it rather than just itself.
-			if (isConfig) {
-				clearProjectConfigCache();
-			}
-
-			if (relativePath === undefined || relativePath === "" || isConfig) {
-				fullRebuild = true;
-			} else {
-				pending.add(relativePath);
-			}
-
+		const schedule = () => {
 			if (timer !== undefined) {
 				clearTimeout(timer);
 			}
 			timer = setTimeout(flush, DEBOUNCE_MS);
 		};
 
+		// A config edit changes how every file lowers, so it takes the whole tree
+		// with it rather than just itself.
+		const reloadConfig = () => {
+			clearProjectConfigCache();
+			fullRebuild = true;
+			schedule();
+		};
+
+		const queue = (relativePath: string | undefined) => {
+			if (relativePath === undefined || relativePath === "") {
+				fullRebuild = true;
+			} else if (isConfigFileName(path.posix.basename(relativePath))) {
+				reloadConfig();
+				return;
+			} else {
+				pending.add(relativePath);
+			}
+
+			schedule();
+		};
+
+		const configWatcher = watchProjectConfig(options, reloadConfig, (message) =>
+			reporter.warn(message),
+		);
 		closers.push(watchSources(options, reporter, queue));
-		closers.push(watchProjectConfig(options, queue));
+		closers.push(() => configWatcher.close());
 
 		const stop = () => {
 			if (timer !== undefined) {
@@ -199,22 +207,4 @@ function takeSnapshot(srcDir: string): Map<string, string> {
 	}
 
 	return snapshot;
-}
-
-function watchProjectConfig(
-	options: CliOptions,
-	onChange: (fileName: string) => void,
-): () => void {
-	try {
-		const watcher = fs.watch(options.projectRoot, (_event, fileName) => {
-			const name = fileName === null ? undefined : fileName.toString();
-			if (name !== undefined && isConfigFileName(name)) {
-				onChange(name);
-			}
-		});
-
-		return () => watcher.close();
-	} catch {
-		return () => undefined;
-	}
 }

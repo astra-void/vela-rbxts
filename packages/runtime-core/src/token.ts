@@ -1,7 +1,6 @@
 import { __VelaColor } from "./color";
 import { __VelaDefaults } from "./defaults";
 import { __VelaLua } from "./lua";
-import { __VelaOpacity } from "./opacity";
 import type {
 	RuntimePropValue,
 	RuntimeResolvedEffectBundle,
@@ -525,39 +524,18 @@ export namespace __VelaToken {
 			: helperEffect("uiscale", [{ name: "Scale", value }]);
 	}
 
+	/// Only the alpha is recorded here. It multiplies into the channels the colors
+	/// left once every token has had its say, the way the static path composes it,
+	/// so neither the token order nor a color's own `/N` decides the result.
 	function resolveOpacityToken(
 		token: string,
-		tag: string | undefined,
 	): RuntimeResolvedEffectBundle | undefined {
 		const value = __VelaValue.resolveOpacityValue(
 			__VelaLua.after(token, "opacity-"),
 		);
-		if (value === undefined) {
-			return undefined;
-		}
-
-		// A CanvasGroup composites its whole subtree, so `GroupTransparency` is
-		// the only property that means what CSS `opacity` means.
-		if (tag === "canvasgroup") {
-			return propEffect("GroupTransparency", value);
-		}
-
-		// A component element hides which instance it will render, so there is
-		// no channel to name here. The alpha travels to whatever it renders
-		// instead, and lowers there against a tag that is known.
-		if (tag === undefined) {
-			return propEffect("OpacityAlpha", 1 - value);
-		}
-
-		// The channels fade the instance; the alpha travels on to the subtree,
-		// which the transformer left alone because this class list was not
-		// knowable until now.
-		const props: RuntimeResolvedPropEntry[] = __VelaOpacity
-			.transparencyProps(tag)
-			.map((name) => ({ name, value }));
-		props.push({ name: "OpacityAlpha", value: 1 - value });
-
-		return propsEffect(props);
+		return value === undefined
+			? undefined
+			: propEffect("OpacityAlpha", 1 - value);
 	}
 
 	function resolveAspectRatioToken(
@@ -1136,7 +1114,7 @@ export namespace __VelaToken {
 		}
 
 		if (__VelaLua.startsWith(token, "opacity-")) {
-			return resolveOpacityToken(token, tag);
+			return resolveOpacityToken(token);
 		}
 
 		if (__VelaLua.startsWith(token, "aspect-")) {

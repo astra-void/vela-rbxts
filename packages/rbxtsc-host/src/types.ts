@@ -56,6 +56,8 @@ export type HostTransformResult = {
 	skipped: boolean;
 	eligibility: HostFileEligibility;
 	compilerResult?: HostCompilerResult;
+	/** Sorted `[genLine, genCol, origLine, origCol]` quads, 0-based with UTF-16 columns. */
+	mappings?: number[];
 };
 
 export type HostCompilerResult = Omit<CompilerTransformResult, "ir"> & {

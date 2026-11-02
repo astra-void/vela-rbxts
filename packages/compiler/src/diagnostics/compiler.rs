@@ -83,6 +83,20 @@ pub(crate) fn malformed_attribute_variant_diagnostic(
     }
 }
 
+pub(crate) fn unsupported_relational_variant_diagnostic(
+    variant: &str,
+    reason: &str,
+    token: &str,
+) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "unsupported-relational-variant".to_owned(),
+        message: format!("Variant \"{variant}\" in \"{token}\" cannot be read; {reason}."),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
 /// Width bounds that leave no viewport. The rule would be emitted and never
 /// match, which reads as a utility that silently does nothing.
 pub(crate) fn invalid_breakpoint_range_diagnostic(
@@ -277,6 +291,94 @@ pub(crate) fn unsupported_divide_value_diagnostic(value: &str, token: &str) -> D
         code: "unsupported-divide-value".to_owned(),
         message: format!("Divide thickness \"{value}\" is not supported; use 0, 1, 2, 4, or 8."),
         token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+pub(crate) fn divide_without_list_layout_diagnostic(token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "divide-without-list-layout".to_owned(),
+        message: format!(
+            "\"{token}\" inserts separators as list items, and nothing here lays them out; add `flex`, `flex-col` or `space-*`."
+        ),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+pub(crate) fn divide_with_grid_diagnostic(token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "divide-with-grid".to_owned(),
+        message: format!(
+            "\"{token}\" inserts separators as list items, and a grid gives each one a cell of its own; use a list layout (`flex` or `flex-col`) instead."
+        ),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+pub(crate) fn divide_unreadable_order_diagnostic(token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "divide-unreadable-order".to_owned(),
+        message: format!(
+            "This child of a divided list ranks by the order its parent can read, and \"{token}\" is only decided at render time; the separators follow its static order instead."
+        ),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+pub(crate) fn isolate_not_static_diagnostic(token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "isolate-not-static".to_owned(),
+        message: format!(
+            "\"{token}\" renders the frame as a CanvasGroup, and an instance cannot change class at render time; write `isolate` as a static, unconditional class."
+        ),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+/// A marker is the tag that lets `group-*` and `peer-*` find an instance, and a
+/// tag that came and went with a variant would move the scope under them.
+pub(crate) fn conditional_marker_diagnostic(token: &str) -> Diagnostic {
+    let marker = crate::semantic::variant::utility_of(token);
+
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "conditional-marker".to_owned(),
+        message: format!(
+            "\"{token}\" puts a `group-*`/`peer-*` marker under a variant, and a marker cannot be conditional; write `{marker}` as an unconditional class."
+        ),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+pub(crate) fn marker_on_component_diagnostic(token: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "marker-on-component".to_owned(),
+        message: format!(
+            "\"{token}\" tags a Roblox instance for `group-*`/`peer-*` variants, and a component element has none of its own; put it on the host element the component renders."
+        ),
+        token: Some(token.to_owned()),
+        range: None,
+    }
+}
+
+pub(crate) fn isolate_needs_frame_diagnostic(element: &str) -> Diagnostic {
+    Diagnostic {
+        level: "warning".to_owned(),
+        code: "isolate-needs-frame".to_owned(),
+        message: format!(
+            "`isolate` turns a `frame` into a CanvasGroup and does nothing on `{element}`; wrap the content in a `<canvasgroup>` instead."
+        ),
+        token: Some("isolate".to_owned()),
         range: None,
     }
 }

@@ -260,6 +260,151 @@ function HelperTransitions() {
 	);
 }
 
+/// group-* reads the nearest marked ancestor, and a named group is found past
+/// an unnamed one nested inside it. peer-* reads a marked sibling under the
+/// same parent. Vide builds the children first, so each is found on parenting.
+function RelationalVariants() {
+	return (
+		<>
+			<Row label="group-hover:">
+				<frame Name="GroupCardProbe" className="group w-24 h-6 bg-slate-800">
+					<textlabel
+						Name="GroupCardLabel"
+						Text="group"
+						className="w-24 h-6 text-slate-400 text-xs group-hover:text-blue-400"
+					/>
+				</frame>
+			</Row>
+			<Row label="group/outer">
+				<frame
+					Name="GroupOuterProbe"
+					className="group/outer w-24 h-6 bg-slate-800"
+				>
+					<frame Name="GroupInnerProbe" className="group w-16 h-6 bg-slate-700">
+						<textlabel
+							Name="GroupInnerLabel"
+							Text="nest"
+							className="w-16 h-6 text-slate-400 text-xs group-hover:text-blue-400 group-hover/outer:bg-rose-500"
+						/>
+					</frame>
+				</frame>
+			</Row>
+			<Row label="peer-focus/field:">
+				<frame Name="PeerPairProbe" className="flex flex-row gap-1 w-24 h-6">
+					<textbox Name="PeerField" Text="" className="peer/field w-12 h-6" />
+					<textlabel
+						Name="PeerHint"
+						Text="hint"
+						className="w-12 h-6 text-slate-400 text-xs peer-focus/field:text-blue-400 peer-hover/field:text-rose-500"
+					/>
+				</frame>
+			</Row>
+		</>
+	);
+}
+
+/// Value children under a fade, which the host ranks one instance at a time.
+function DivideFade(props: { children?: Vide.Node }) {
+	return (
+		<frame
+			Name="DivideFadeProbe"
+			className="flex flex-row divide-x-2 divide-rose-500 opacity-50 h-6"
+		>
+			{props.children}
+		</frame>
+	);
+}
+
+/// Separators sort by LayoutOrder with everything else, so each child is
+/// ranked by the order it declares or lowers.
+function DivideOrdering(props: { active: () => boolean }) {
+	return (
+		<>
+			<Row label="divide 3,1,2">
+				<frame
+					Name="DivideOrderProbe"
+					className="flex flex-row divide-x-2 divide-rose-500 h-6"
+				>
+					<frame Name="c3" LayoutOrder={3} className="w-6 h-6 bg-slate-500" />
+					<frame Name="c1" LayoutOrder={1} className="w-6 h-6 bg-slate-600" />
+					<frame Name="c2" LayoutOrder={2} className="w-6 h-6 bg-slate-800" />
+				</frame>
+			</Row>
+			<Row label="divide first/last">
+				<frame
+					Name="DivideFirstLastProbe"
+					className="flex flex-row divide-x-2 divide-rose-500 h-6"
+				>
+					<frame Name="last" className="order-last w-6 h-6 bg-slate-500" />
+					<frame Name="middle" className="w-6 h-6 bg-slate-600" />
+					<frame Name="first" className="order-first w-6 h-6 bg-slate-800" />
+				</frame>
+			</Row>
+			<Row label="divide-x-0">
+				<frame
+					Name="DivideZeroProbe"
+					className="flex flex-row divide-x-0 gap-1 h-6"
+				>
+					<frame Name="a" className="w-6 h-6 bg-slate-500" />
+					<frame Name="b" className="w-6 h-6 bg-slate-600" />
+				</frame>
+			</Row>
+			<Row label="divide under fade">
+				<DivideFade>
+					<frame Name="a" className="w-6 h-6 bg-slate-500" />
+					<frame Name="b" className="w-6 h-6 bg-slate-600" />
+				</DivideFade>
+			</Row>
+			{/* A child that renders nothing must not leave two separators. */}
+			<Row label="divide conditional">
+				<frame
+					Name="DivideConditionalProbe"
+					className="flex flex-row divide-x-2 divide-rose-500 h-6"
+				>
+					{() =>
+						props.active() ? (
+							<imagelabel
+								Name="toggled"
+								BackgroundColor3={Color3.fromRGB(20, 184, 166)}
+								Size={UDim2.fromOffset(24, 24)}
+							/>
+						) : undefined
+					}
+					<frame Name="steady-a" className="w-6 h-6 bg-slate-500" />
+					<frame Name="steady-b" className="w-6 h-6 bg-slate-600" />
+				</frame>
+			</Row>
+			{/* Each instance one thunk returns is ranked alone, with a separator between. */}
+			<Row label="divide thunk list">
+				<frame
+					Name="DivideThunkListProbe"
+					className="flex flex-row divide-x-2 divide-rose-500 h-6"
+				>
+					{() =>
+						[3, 1, 2].map((order) => (
+							<frame
+								Name={`t${order}`}
+								LayoutOrder={order}
+								className="w-6 h-6 bg-slate-600"
+							/>
+						))
+					}
+				</frame>
+			</Row>
+			{/* One CanvasGroup layer: the overlap must not read darker. */}
+			<Row label="isolate opacity-50">
+				<frame
+					Name="IsolateProbe"
+					className="isolate opacity-50 size-8 bg-slate-500"
+				>
+					<frame Name="under" className="size-6 bg-rose-500" />
+					<frame Name="over" className="size-6 left-2 top-2 bg-blue-600" />
+				</frame>
+			</Row>
+		</>
+	);
+}
+
 /// The alpha crosses a component boundary as context, so it reaches instances
 /// this pass never saw.
 function InheritedOpacity() {
@@ -376,6 +521,19 @@ function LateArrivals(props: { active: () => boolean }) {
 							: "w-24 h-6 bg-fuchsia-500 rounded-sm"
 					}
 				/>
+			</Row>
+			{/* An `opacity-*` the first reading lacked still reaches the children. */}
+			<Row label="late opacity kids">
+				<frame
+					Name="LateOpacityProbe"
+					className={() =>
+						props.active()
+							? "w-24 h-6 bg-slate-800 opacity-50"
+							: "w-24 h-6 bg-slate-800"
+					}
+				>
+					<frame Name="kid" className="size-full bg-red-500" />
+				</frame>
 			</Row>
 			<Row label="late divide">
 				<frame
@@ -508,6 +666,7 @@ export function App() {
 				{StaticUtilities()}
 				{DerivableClassValue({ active, padded })}
 				{InteractionVariants()}
+				{RelationalVariants()}
 				{EnvironmentVariants()}
 				{InheritedOpacity()}
 				{RuntimeOpacity()}
@@ -515,6 +674,7 @@ export function App() {
 				{StateVariants({ active })}
 				{HelperTransitions()}
 				{LateArrivals({ active })}
+				{DivideOrdering({ active })}
 			</frame>
 		</screengui>
 	);

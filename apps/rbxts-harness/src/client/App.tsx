@@ -64,6 +64,17 @@ export const SurfaceMount = (props: { children?: React.Element }) => (
 	<surfacegui>{props.children}</surfacegui>
 );
 
+// Value children under a fade arrive wrapped in one provider, which the divided
+// host has to split back into one slot per child.
+const DivideFade = (props: { children?: React.ReactNode }) => (
+	<frame
+		key="DivideFadeProbe"
+		className="flex flex-row divide-x-2 divide-rose-500 opacity-50 h-6"
+	>
+		{props.children}
+	</frame>
+);
+
 /// The state variants read a Roblox attribute off the instance they style, so
 /// the harness drives one the way an application would: from outside the class
 /// list entirely.
@@ -324,6 +335,84 @@ export const App = () => {
 				    statically, plus a strength a hover swaps. */}
 				<frame className="size-8 bg-white/40 shadow-md backdrop-blur-md" />
 				<frame className="size-8 bg-slate-800 backdrop-blur-sm hover:backdrop-blur-xl" />
+				{/* Separators sort by LayoutOrder with everything else, so each
+				    child is ranked by the order it declares: c1, c2, c3. */}
+				<frame
+					key="DivideOrderProbe"
+					className="flex flex-row divide-x-2 divide-rose-500 h-6"
+				>
+					<frame key="c3" LayoutOrder={3} className="w-6 h-6 bg-slate-500" />
+					<frame key="c1" LayoutOrder={1} className="w-6 h-6 bg-slate-600" />
+					<frame key="c2" LayoutOrder={2} className="w-6 h-6 bg-slate-800" />
+				</frame>
+				<frame
+					key="DivideFirstLastProbe"
+					className="flex flex-row divide-x-2 divide-rose-500 h-6"
+				>
+					<frame key="last" className="order-last w-6 h-6 bg-slate-500" />
+					<frame key="middle" className="w-6 h-6 bg-slate-600" />
+					<frame key="first" className="order-first w-6 h-6 bg-slate-800" />
+				</frame>
+				<frame
+					key="DivideZeroProbe"
+					className="flex flex-row divide-x-0 gap-1 h-6"
+				>
+					<frame key="a" className="w-6 h-6 bg-slate-500" />
+					<frame key="b" className="w-6 h-6 bg-slate-600" />
+				</frame>
+				<DivideFade>
+					<frame key="a" className="w-6 h-6 bg-slate-500" />
+					<frame key="b" className="w-6 h-6 bg-slate-600" />
+				</DivideFade>
+				{/* A child toggling at the front must not leave a separator first. */}
+				<frame
+					key="DivideConditionalProbe"
+					className="flex flex-row divide-x-2 divide-rose-500 h-6"
+				>
+					{active && (
+						<imagelabel key="toggled" className="w-6 h-6 bg-teal-500" />
+					)}
+					<frame key="steady-a" className="w-6 h-6 bg-slate-500" />
+					<frame key="steady-b" className="w-6 h-6 bg-slate-600" />
+				</frame>
+				{/* One CanvasGroup layer: the overlap must not read darker. */}
+				<frame
+					key="IsolateProbe"
+					className="isolate opacity-50 size-8 bg-slate-500"
+				>
+					<frame key="under" className="size-6 bg-rose-500" />
+					<frame key="over" className="size-6 left-2 top-2 bg-blue-600" />
+				</frame>
+				{/* group-* reads the nearest marked ancestor, and a named group is
+				    found past an unnamed one nested inside it. peer-* reads a
+				    marked sibling under the same parent. */}
+				<frame key="GroupCardProbe" className="group size-8 bg-slate-800">
+					<textlabel
+						key="GroupCardLabel"
+						Text="group"
+						className="size-8 text-slate-400 group-hover:text-blue-400"
+					/>
+				</frame>
+				<frame
+					key="GroupOuterProbe"
+					className="group/outer size-8 bg-slate-800"
+				>
+					<frame key="GroupInnerProbe" className="group size-6 bg-slate-700">
+						<textlabel
+							key="GroupInnerLabel"
+							Text="nest"
+							className="size-6 text-slate-400 group-hover:text-blue-400 group-hover/outer:bg-rose-500"
+						/>
+					</frame>
+				</frame>
+				<frame key="PeerPairProbe" className="flex flex-row gap-1 h-6">
+					<textbox key="PeerField" Text="" className="peer/field w-12 h-6" />
+					<textlabel
+						key="PeerHint"
+						Text="hint"
+						className="w-12 h-6 text-slate-400 peer-focus/field:text-blue-400 peer-hover/field:text-rose-500"
+					/>
+				</frame>
 				{/* Three UIShadows on one element: drop, inset and text. */}
 				<textlabel
 					Text="glow"

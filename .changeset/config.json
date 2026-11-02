@@ -25,6 +25,7 @@
     "rbxts-harness",
     "vide-harness",
     "lsp-harness",
+    "parity-harness",
     "playground"
   ]
 }

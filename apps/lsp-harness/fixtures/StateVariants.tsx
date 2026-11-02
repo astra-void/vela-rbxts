@@ -6,6 +6,7 @@ export const StateVariants = () => (
 			"open:bg-blue-600 attr-[Selected=true]:ring-2",
 			"md:px-6 max-md:px-3 md:max-lg:px-4 tablet:px-8",
 			"max-mdd:px-2 attr-[State]:px-2 md:max-sm:px-2",
+			"group group-hover:bg-blue-500 peer-focus/field:ring-2 group-md:px-2",
 		]}
 	/>
 );

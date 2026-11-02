@@ -205,3 +205,105 @@ test("a custom variant composes with a known branch", () => {
 	expect(result.code).toContain('"kind": "test"');
 	expect(result.code).toContain('"kind": "attribute"');
 });
+
+test("lowers group and peer variants into relational rules", () => {
+	const result = transform(
+		`export const A = () => <textlabel className="group-hover:text-blue-400 group-active/card:text-red-500 peer-focus/field:text-green-500" />;`,
+		withStateVariants,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.needsRuntimeHost).toBe(true);
+	expect(result.ir[0]).toContain(
+		'{"kind":"group","condition":{"kind":"hover"}}',
+	);
+	expect(result.ir[0]).toContain(
+		'{"kind":"group","name":"card","condition":{"kind":"active"}}',
+	);
+	expect(result.ir[0]).toContain(
+		'{"kind":"peer","name":"field","condition":{"kind":"focus"}}',
+	);
+	// The element's own hover is not what a group variant reads.
+	expect(result.ir[0]).not.toContain('"condition":{"kind":"hover"},"effects"');
+	expect(runtimeSource).toContain("__VelaScope.watch");
+});
+
+test("composes a relational variant with the variants around it", () => {
+	const result = transform(
+		`export const A = () => <frame className="md:group-hover:bg-blue-600" />;`,
+		withStateVariants,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.ir[0]).toContain(
+		'"kind":"all","conditions":[{"kind":"width","alias":"md","minWidth":768},{"kind":"group","condition":{"kind":"hover"}}]',
+	);
+});
+
+test("a marker on a static React element lowers to its Tag", () => {
+	const result = transform(
+		`export const A = () => <frame className="group/card peer bg-slate-700" />;`,
+		withStateVariants,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.needsRuntimeHost).toBe(false);
+	expect(result.code).toContain('Tag="VelaGroup/card VelaPeer"');
+	expect(result.ir[0]).toContain('"markers":["VelaGroup/card","VelaPeer"]');
+});
+
+test("reports a relational variant vela cannot read", () => {
+	for (const token of ["group-md:bg-red-500", "peer-hover/a.b:bg-red-500"]) {
+		const result = transform(
+			`export const A = () => <frame className="${token}" />;`,
+			withStateVariants,
+		);
+
+		expect(result.diagnostics.map((entry) => entry.code)).toEqual([
+			"unsupported-relational-variant",
+		]);
+		expect(result.ir[0]).not.toContain("BackgroundColor3");
+	}
+});
+
+test("reports a marker that has nothing to tag", () => {
+	const conditional = transform(
+		`export const A = () => <frame className="hover:group" />;`,
+		withStateVariants,
+	);
+	expect(conditional.diagnostics.map((entry) => entry.code)).toEqual([
+		"conditional-marker",
+	]);
+
+	const component = transform(
+		`export const A = () => <Card className="group" />;`,
+		withStateVariants,
+	);
+	expect(component.diagnostics.map((entry) => entry.code)).toEqual([
+		"marker-on-component",
+	]);
+	expect(component.code).not.toContain("VelaGroup");
+});
+
+test("a config cannot register a group or peer name", () => {
+	const result = transform(
+		`export const A = () => <frame className="group-hover:p-4" />;`,
+		{
+			configJson: JSON.stringify({
+				plugins: {
+					variants: {
+						group: { attribute: "State", equals: "open" },
+						"peer-checked": { attribute: "State", equals: "open" },
+					},
+				},
+			}),
+		},
+	);
+
+	expect(
+		result.diagnostics.filter(
+			(entry) => entry.code === "invalid-custom-variant",
+		),
+	).toHaveLength(2);
+	expect(result.ir[0]).toContain('"kind":"group"');
+});

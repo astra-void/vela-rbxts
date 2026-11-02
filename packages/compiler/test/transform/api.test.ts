@@ -6,6 +6,7 @@ test("keeps the public transform options compiler-centric", () => {
 	expectTypeOf<Parameters<typeof transform>[1]>().toEqualTypeOf<
 		| {
 				configJson?: string;
+				sourceMap?: boolean;
 		  }
 		| null
 		| undefined

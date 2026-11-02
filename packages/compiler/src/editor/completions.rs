@@ -241,6 +241,15 @@ fn completion_candidates(
         if !is_utility_allowed_on_host(element_tag, &base.utility_kind) {
             continue;
         }
+        // A marker tags an instance, and a component element has none.
+        if element_tag.is_none()
+            && matches!(
+                base.utility_kind,
+                UtilityKind::GroupMarker | UtilityKind::PeerMarker
+            )
+        {
+            continue;
+        }
 
         let Some(score) = match_score(&base.item.label, prefix) else {
             continue;
@@ -427,6 +436,7 @@ fn base_utility_candidates(config: &TailwindConfig) -> Vec<CompletionSpec> {
         shadow_and_gradient_candidates,
         size_constraint_candidates,
         flex_alignment_candidates,
+        marker_candidates,
     ]
     .into_iter()
     .flat_map(|family| family(config))
@@ -671,6 +681,13 @@ fn transform_and_opacity_candidates(_config: &TailwindConfig) -> Vec<CompletionS
             UtilityKind::Opacity,
         ));
     }
+    items.push(CompletionSpec::new(
+        "isolate",
+        "effects",
+        "Render this frame as a CanvasGroup, so `opacity-*` fades its children as one layer."
+            .to_owned(),
+        UtilityKind::Isolate,
+    ));
 
     items
 }
@@ -960,20 +977,25 @@ fn divide_and_margin_candidates(config: &TailwindConfig) -> Vec<CompletionSpec> 
             label.to_owned(),
             "layout",
             format!(
-                "Insert a {} {axis} separator frame between children (not for LayoutOrder lists).",
+                "Insert a {} {axis} separator frame between children, in their LayoutOrder.",
                 crate::editor::px_length_text(config, "1")
             ),
             utility_kind.clone(),
         ));
 
         for thickness in RING_THICKNESS_VALUES {
-            items.push(CompletionSpec::new(
-                format!("{label}-{thickness}"),
-                "layout",
+            let documentation = if thickness == "0" {
+                format!("Remove the {axis} separators between children.")
+            } else {
                 format!(
                     "Insert a {} {axis} separator frame between children.",
                     crate::editor::px_length_text(config, thickness)
-                ),
+                )
+            };
+            items.push(CompletionSpec::new(
+                format!("{label}-{thickness}"),
+                "layout",
+                documentation,
                 utility_kind.clone(),
             ));
         }
@@ -1217,6 +1239,38 @@ fn typography_candidates(config: &TailwindConfig) -> Vec<CompletionSpec> {
     ));
 
     items
+}
+
+fn marker_candidates(_config: &TailwindConfig) -> Vec<CompletionSpec> {
+    vec![
+        CompletionSpec::new(
+            "group",
+            "state",
+            "Mark this element so `group-hover:`, `group-active:` and `group-focus:` on its descendants read its state."
+                .to_owned(),
+            UtilityKind::GroupMarker,
+        ),
+        CompletionSpec::new(
+            "group/",
+            "state",
+            "Mark this element as a named group, read by `group-hover/name:` and the other named states."
+                .to_owned(),
+            UtilityKind::GroupMarker,
+        ),
+        CompletionSpec::new(
+            "peer",
+            "state",
+            "Mark this element so `peer-hover:`, `peer-active:` and `peer-focus:` on its siblings read its state."
+                .to_owned(),
+            UtilityKind::PeerMarker,
+        ),
+        CompletionSpec::new(
+            "peer/",
+            "state",
+            "Mark this element as a named peer, read by `peer-hover/name:` on its siblings.".to_owned(),
+            UtilityKind::PeerMarker,
+        ),
+    ]
 }
 
 fn visibility_candidates(_config: &TailwindConfig) -> Vec<CompletionSpec> {

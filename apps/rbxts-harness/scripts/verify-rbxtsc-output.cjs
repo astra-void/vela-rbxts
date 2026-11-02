@@ -144,7 +144,7 @@ const requiredFragments = [
 	"PaddingRight = __VelaRem.scale(UDim.new(0, 16), ",
 	"PaddingTop = __VelaRem.scale(UDim.new(0, 12), ",
 	"PaddingBottom = __VelaRem.scale(UDim.new(0, 12), ",
-	"Padding = __VelaRem.scale(UDim.new(0, 16), ",
+	"CellPadding = __VelaRem.scale(UDim2.fromOffset(16, 16), ",
 	"Size = __VelaRem.scale(UDim2.new(0, 120, 0.5, 0), ",
 	"PaddingTop = __VelaRem.scale(UDim.new(0, 7), ",
 	"CornerRadius = __VelaRem.scale(UDim.new(0, 10), ",
@@ -213,6 +213,15 @@ const requiredFragments = [
 	"Inset = true",
 	'value = "Enum.ApplyShadowMode.Text"',
 	'tag = "uitextshadow"',
+	// group/peer markers ride the static Tag prop, and their variants lower to
+	// relational rules over the inner state.
+	'Tag = "VelaGroup"',
+	'Tag = "VelaGroup/outer"',
+	'Tag = "VelaPeer/field"',
+	'kind = "group"',
+	'kind = "peer"',
+	'name = "outer"',
+	'name = "field"',
 ];
 
 // The runtime is imported, not copied, so every consumer reaches the same one.
@@ -256,6 +265,13 @@ const requiredRuntimeFragments = [
 	"local function collectConditionAttributes(",
 	"local function collectClassValueAttributes(",
 	"local function parseVariantPrefix(",
+	// group-* and peer-* find their instance through the tags markers lower to.
+	"local function scopeNeeds(",
+	"local function findGroup(",
+	"local function findPeers(",
+	"GetInstanceAddedSignal",
+	":HasTag(tag)",
+	"__VelaScope.watch(instance, scopeNeeds, setScopes)",
 	// A helper prop belongs to the same transition groups the element's own
 	// props do, which is what makes `hover:rounded-xl` tween.
 	"local function transitionCoversProp(",

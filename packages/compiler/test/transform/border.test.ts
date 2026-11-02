@@ -186,15 +186,14 @@ test("divide separators step over helper elements lowered as children", () => {
 	// raw positions puts a separator above the first real child.
 	expect(result.code).toContain("<uilistlayout");
 	expect(runtimeSource).toMatch(/if \(isModifierChild\(child\)\) \{/);
-	expect(runtimeSource).toMatch(/if \(seenContentChild\) \{/);
 	expect(runtimeSource).toMatch(
-		/function isModifierChild[\s\S]*?startsWith\(elementType\.lower\(\), "ui"\)/,
+		/function isModifierChild[\s\S]*?!LAYOUT_TAGS\.has\(elementType\.lower\(\)\)/,
 	);
 });
 
 test("bare divide-x defaults to a one pixel separator", () => {
 	const result = transform(
-		`export const A = () => <frame className="divide-x" />;`,
+		`export const A = () => <frame className="flex divide-x" />;`,
 		null,
 	);
 

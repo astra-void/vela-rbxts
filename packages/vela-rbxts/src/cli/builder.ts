@@ -12,7 +12,12 @@ import {
 	writeFileIfChanged,
 } from "./files.js";
 import type { CliOptions } from "./options.js";
-import { MANIFEST_FILE } from "./options.js";
+import { MANIFEST_FILE, MAPS_DIR } from "./options.js";
+import {
+	encodeMappings,
+	hashGeneratedText,
+	type VelaSourceMap,
+} from "./source-map.js";
 
 const MANIFEST_VERSION = 1;
 
@@ -41,7 +46,21 @@ type Manifest = {
 
 export function createBuilder(options: CliOptions): Builder {
 	const manifestPath = path.resolve(options.projectRoot, MANIFEST_FILE);
+	const mapsDir = path.resolve(options.projectRoot, MAPS_DIR);
+	// rbxtsc copies everything under its rootDir to out/, maps included.
+	const writesMaps = !isWithin(options.outDir, mapsDir);
 	let emitted = readManifest(manifestPath, options);
+
+	function mapPathFor(relativePath: string): string {
+		return `${toSystemPath(mapsDir, relativePath)}.map`;
+	}
+
+	function removeMap(relativePath: string): void {
+		const mapPath = mapPathFor(relativePath);
+		if (removeFile(mapPath)) {
+			removeEmptyDirectories(path.dirname(mapPath), mapsDir);
+		}
+	}
 
 	function emit(relativePath: string, stats: MutableStats): void {
 		const sourcePath = toSystemPath(options.srcDir, relativePath);
@@ -57,11 +76,14 @@ export function createBuilder(options: CliOptions): Builder {
 		}
 
 		const sourceText = fs.readFileSync(sourcePath, "utf8");
-		const result = transformSourceForHost({
-			fileName: sourcePath,
-			sourceText,
-			projectRoot: options.projectRoot,
-		});
+		const result = transformSourceForHost(
+			{
+				fileName: sourcePath,
+				sourceText,
+				projectRoot: options.projectRoot,
+			},
+			{ sourceMap: writesMaps },
+		);
 
 		for (const diagnostic of result.diagnostics) {
 			const formatted = formatDiagnostic(relativePath, sourceText, diagnostic);
@@ -74,7 +96,27 @@ export function createBuilder(options: CliOptions): Builder {
 			}
 		}
 
-		if (writeFileIfChanged(outputPath, result.sourceText)) {
+		// An unchanged file goes out as written, and a map lands before its file so `rbxtsc -w` never reads one through a stale map.
+		const generatedText = result.changed ? result.sourceText : sourceText;
+		if (result.changed && writesMaps) {
+			const mapPath = mapPathFor(relativePath);
+			writeFileIfChanged(
+				mapPath,
+				`${JSON.stringify(
+					createSourceMap(
+						mapPath,
+						sourcePath,
+						outputPath,
+						generatedText,
+						result.mappings ?? [],
+					),
+				)}\n`,
+			);
+		} else {
+			removeMap(relativePath);
+		}
+
+		if (writeFileIfChanged(outputPath, generatedText)) {
 			stats.written += 1;
 		}
 
@@ -96,6 +138,7 @@ export function createBuilder(options: CliOptions): Builder {
 
 		emitted.delete(relativePath);
 		removeEmptyDirectories(path.dirname(outputPath), options.outDir);
+		removeMap(relativePath);
 	}
 
 	return {
@@ -140,6 +183,9 @@ export function createBuilder(options: CliOptions): Builder {
 
 		clean() {
 			fs.rmSync(options.outDir, { recursive: true, force: true });
+			if (writesMaps) {
+				fs.rmSync(mapsDir, { recursive: true, force: true });
+			}
 			emitted = new Set();
 			writeManifest(manifestPath, options, emitted);
 		},
@@ -162,6 +208,34 @@ function createStats(): MutableStats {
 
 function finish(stats: MutableStats, started: number): BuildStats {
 	return { ...stats, durationMs: Date.now() - started };
+}
+
+function createSourceMap(
+	mapPath: string,
+	sourcePath: string,
+	outputPath: string,
+	generatedText: string,
+	mappings: readonly number[],
+): VelaSourceMap {
+	const mapDir = path.dirname(mapPath);
+
+	return {
+		version: 3,
+		file: toPosixRelative(mapDir, outputPath),
+		sources: [toPosixRelative(mapDir, sourcePath)],
+		names: [],
+		mappings: encodeMappings(mappings),
+		x_vela_generated: hashGeneratedText(generatedText),
+	};
+}
+
+function toPosixRelative(from: string, to: string): string {
+	return path.relative(from, to).split(path.sep).join("/");
+}
+
+function isWithin(parent: string, child: string): boolean {
+	const relative = path.relative(parent, child);
+	return !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
 // Pruning is driven by what an earlier run recorded, never by whatever else

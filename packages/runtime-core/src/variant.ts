@@ -3,6 +3,7 @@ import type {
 	RuntimeAttributeValue,
 	RuntimeCondition,
 	RuntimeEnvironment,
+	RuntimeScopeState,
 	RuntimeTheme,
 	VariantEventBinding,
 	VelaRuntimeTag,
@@ -12,6 +13,10 @@ import type {
 const MAX_WIDTH_PREFIX = "max-";
 /// The prefix a variant that names a Roblox attribute inline is written with.
 const ATTRIBUTE_PREFIX = "attr-";
+/// The prefixes a relational variant is written with: `group-hover:` reads the
+/// nearest ancestor marked `group`, `peer-hover:` a sibling marked `peer`.
+const GROUP_PREFIX = "group-";
+const PEER_PREFIX = "peer-";
 
 export namespace __VelaVariant {
 	/// What a `prefix:` segment means, resolved against the project's own
@@ -37,6 +42,20 @@ export namespace __VelaVariant {
 
 		if (__VelaLua.startsWith(prefix, ATTRIBUTE_PREFIX)) {
 			return parseAttributeVariant(__VelaLua.after(prefix, ATTRIBUTE_PREFIX));
+		}
+
+		if (__VelaLua.startsWith(prefix, GROUP_PREFIX)) {
+			return parseRelationalVariant(
+				"group",
+				__VelaLua.after(prefix, GROUP_PREFIX),
+			);
+		}
+
+		if (__VelaLua.startsWith(prefix, PEER_PREFIX)) {
+			return parseRelationalVariant(
+				"peer",
+				__VelaLua.after(prefix, PEER_PREFIX),
+			);
 		}
 
 		const registered = theme.pluginVariants[prefix];
@@ -67,6 +86,43 @@ export namespace __VelaVariant {
 			default:
 				return undefined;
 		}
+	}
+
+	/// Reads what follows `group-` or `peer-`: a state, then an optional `/name`,
+	/// the same reading as the compiler's `parse_relational`.
+	function parseRelationalVariant(
+		kind: "group" | "peer",
+		rest: string,
+	): RuntimeCondition | undefined {
+		const slash = __VelaLua.indexOf(rest, "/");
+		const state = slash < 0 ? rest : __VelaLua.substring(rest, 0, slash);
+		const name = slash < 0 ? undefined : __VelaLua.substring(rest, slash + 1);
+		if (name !== undefined && !isMarkerName(name)) {
+			return undefined;
+		}
+
+		let condition: RuntimeCondition;
+		switch (state) {
+			case "hover":
+				condition = { kind: "hover" };
+				break;
+			case "active":
+				condition = { kind: "active" };
+				break;
+			case "focus":
+				condition = { kind: "focus" };
+				break;
+			default:
+				return undefined;
+		}
+
+		return { kind, name, condition };
+	}
+
+	/// The variant-name charset: a letter or digit, then letters, digits, `-`
+	/// and `_`.
+	export function isMarkerName(name: string): boolean {
+		return string.match(name, "^%w[%w_%-]*$")[0] !== undefined;
 	}
 
 	/// Reads the `[Name=value]` an `attr-` prefix carries. Nothing here is
@@ -141,6 +197,54 @@ export namespace __VelaVariant {
 			: actual !== undefined && tostring(actual) === expected;
 	}
 
+	/// Above every breakpoint rank, where Tailwind registers orientation,
+	/// `dark` and the pointer variants.
+	const AFTER_SCREENS = 8589934592;
+
+	/// Where a condition ranks when several write one property, the order
+	/// Tailwind's stylesheet gives them: unconditional first, then a state such
+	/// as `hover:`, then breakpoints by their minimum width, then orientation,
+	/// `dark:` and the input variants. The compiler sorts its rules by the same
+	/// `RuntimeCondition::precedence`; equal ranks keep source order.
+	export function conditionPrecedence(condition: RuntimeCondition): number {
+		switch (condition.kind) {
+			case "all": {
+				let rank = 0;
+				for (const entry of condition.conditions) {
+					rank = math.max(rank, conditionPrecedence(entry));
+				}
+				return rank;
+			}
+			case "test":
+				return 0;
+			case "width":
+				return 2 + condition.minWidth;
+			case "orientation":
+				return AFTER_SCREENS;
+			case "color-scheme":
+				return AFTER_SCREENS + 1;
+			case "input":
+				return AFTER_SCREENS + 2;
+			default:
+				return 1;
+		}
+	}
+
+	/// The same rank for a class token's written prefixes.
+	export function segmentsPrecedence(
+		segments: readonly string[],
+		theme: RuntimeTheme,
+	): number {
+		let rank = 0;
+		for (const segment of segments) {
+			const condition = parseVariantPrefix(segment, theme);
+			if (condition !== undefined) {
+				rank = math.max(rank, conditionPrecedence(condition));
+			}
+		}
+		return rank;
+	}
+
 	export function conditionUsesState(
 		condition: RuntimeCondition,
 		kind: "hover" | "active" | "focus",
@@ -170,6 +274,47 @@ export namespace __VelaVariant {
 		if (condition.kind === "all") {
 			for (const entry of condition.conditions) {
 				collectConditionAttributes(entry, into);
+			}
+		}
+	}
+
+	/// The group and peer marker names a condition reads, added to the sets.
+	export function collectConditionScopes(
+		condition: RuntimeCondition,
+		groups: Set<string>,
+		peers: Set<string>,
+	) {
+		if (condition.kind === "group") {
+			groups.add(condition.name ?? "");
+			return;
+		}
+		if (condition.kind === "peer") {
+			peers.add(condition.name ?? "");
+			return;
+		}
+		if (condition.kind === "all") {
+			for (const entry of condition.conditions) {
+				collectConditionScopes(entry, groups, peers);
+			}
+		}
+	}
+
+	/// The same scan over a class value's prefixes.
+	export function collectClassValueScopes(
+		tokens: readonly string[],
+		theme: RuntimeTheme,
+		groups: Set<string>,
+		peers: Set<string>,
+	) {
+		for (const token of tokens) {
+			const segments = splitVariantSegments(token);
+			segments.pop();
+
+			for (const segment of segments) {
+				const condition = parseVariantPrefix(segment, theme);
+				if (condition !== undefined) {
+					collectConditionScopes(condition, groups, peers);
+				}
 			}
 		}
 	}
@@ -397,6 +542,16 @@ export namespace __VelaVariant {
 				return environment.pressed;
 			case "focus":
 				return environment.focused;
+			case "group":
+				return matchesScopeState(
+					condition.condition,
+					environment.groups?.[condition.name ?? ""],
+				);
+			case "peer":
+				return matchesScopeState(
+					condition.condition,
+					environment.peers?.[condition.name ?? ""],
+				);
 			case "attribute":
 				return attributeMatches(
 					environment.attributes?.[condition.name],
@@ -406,6 +561,27 @@ export namespace __VelaVariant {
 				return (
 					(environment.tests?.[condition.index] ?? false) === condition.expected
 				);
+			default:
+				return false;
+		}
+	}
+
+	/// A relational variant's inner state, read off the instance it found
+	/// rather than off the element itself. No instance reads as idle.
+	function matchesScopeState(
+		condition: RuntimeCondition,
+		state: RuntimeScopeState | undefined,
+	): boolean {
+		if (state === undefined) {
+			return false;
+		}
+		switch (condition.kind) {
+			case "hover":
+				return state.hovered;
+			case "active":
+				return state.pressed;
+			case "focus":
+				return state.focused;
 			default:
 				return false;
 		}

@@ -26,6 +26,78 @@ pub(crate) const MAX_WIDTH_PREFIX: &str = "max-";
 /// The prefix a variant that names a Roblox attribute inline is written with.
 pub(crate) const ATTRIBUTE_PREFIX: &str = "attr-";
 
+/// The prefixes a relational variant is written with: `group-hover:` reads the
+/// nearest ancestor marked `group`, `peer-hover:` a sibling marked `peer`.
+pub(crate) const GROUP_PREFIX: &str = "group-";
+pub(crate) const PEER_PREFIX: &str = "peer-";
+
+/// The classes that mark an instance for those variants, written bare or as
+/// `group/card`.
+pub(crate) const GROUP_MARKER: &str = "group";
+pub(crate) const PEER_MARKER: &str = "peer";
+
+/// The CollectionService tags a marker lowers to. Namespaced because game code
+/// sees them too; a named marker appends `/name`.
+pub(crate) const GROUP_TAG: &str = "VelaGroup";
+pub(crate) const PEER_TAG: &str = "VelaPeer";
+
+/// The tag `group`, `group/card`, `peer` or `peer/x` puts on its instance.
+pub(crate) fn marker_tag(base: &str, name: Option<&str>) -> String {
+    match name {
+        Some(name) => format!("{base}/{name}"),
+        None => base.to_owned(),
+    }
+}
+
+/// The states a relational variant reads off the instance it found. Only these
+/// three in v1; the boxed condition in the IR leaves room for more.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum InteractionState {
+    Hover,
+    Active,
+    Focus,
+}
+
+impl InteractionState {
+    pub(crate) const ALL: [Self; 3] = [Self::Hover, Self::Active, Self::Focus];
+
+    fn parse(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|state| state.name() == name)
+    }
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Hover => "hover",
+            Self::Active => "active",
+            Self::Focus => "focus",
+        }
+    }
+
+    pub(crate) fn rank(self) -> i64 {
+        match self {
+            Self::Hover => 0,
+            Self::Active => 1,
+            Self::Focus => 2,
+        }
+    }
+
+    fn condition(self) -> RuntimeCondition {
+        match self {
+            Self::Hover => RuntimeCondition::Hover,
+            Self::Active => RuntimeCondition::Active,
+            Self::Focus => RuntimeCondition::Focus,
+        }
+    }
+
+    fn describe(self) -> &'static str {
+        match self {
+            Self::Hover => "is hovered",
+            Self::Active => "is being pressed",
+            Self::Focus => "holds input focus",
+        }
+    }
+}
+
 /// What `attr-[…]` came to, or why it could not be read. The malformed cases
 /// are kept apart so a half-typed variant is reported as itself rather than as
 /// an unknown one.
@@ -89,6 +161,17 @@ pub(crate) enum VariantKind {
     Hover,
     Active,
     Focus,
+    /// `group-hover:` or `group-hover/card:`: a state of the nearest ancestor
+    /// carrying that marker, starting at the parent.
+    Group {
+        name: Option<String>,
+        state: InteractionState,
+    },
+    /// `peer-hover:`: a state of any same-parent sibling carrying that marker.
+    Peer {
+        name: Option<String>,
+        state: InteractionState,
+    },
     /// A registered variant, or one an `attr-[…]` named inline. Both read the
     /// same attribute off the styled instance.
     Attribute {
@@ -105,8 +188,17 @@ pub(crate) enum VariantKind {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum VariantError {
     Unknown,
-    UnknownBreakpoint { name: String },
-    MalformedAttribute { detail: AttributeVariantError },
+    UnknownBreakpoint {
+        name: String,
+    },
+    MalformedAttribute {
+        detail: AttributeVariantError,
+    },
+    /// `group-md:` or `peer-hover/a b:`: a relational prefix vela recognised
+    /// and cannot read.
+    UnsupportedRelational {
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -142,6 +234,14 @@ impl ParsedVariant {
             VariantKind::Hover => RuntimeCondition::Hover,
             VariantKind::Active => RuntimeCondition::Active,
             VariantKind::Focus => RuntimeCondition::Focus,
+            VariantKind::Group { name, state } => RuntimeCondition::Group {
+                name: name.clone(),
+                condition: Box::new(state.condition()),
+            },
+            VariantKind::Peer { name, state } => RuntimeCondition::Peer {
+                name: name.clone(),
+                condition: Box::new(state.condition()),
+            },
             VariantKind::Attribute { name, value, .. } => RuntimeCondition::Attribute {
                 name: name.clone(),
                 value: value.clone(),
@@ -231,9 +331,23 @@ impl<'a> VariantRegistry<'a> {
             entries.push((name.to_owned(), describe_attribute_variant(definition)));
         }
 
-        for name in ["hover", "active", "focus", "dark"] {
+        for name in ["hover", "active", "focus"] {
             entries.push((name.to_owned(), describe(name)));
         }
+
+        for (prefix, subject) in [
+            (GROUP_PREFIX, "the nearest ancestor marked `group`"),
+            (PEER_PREFIX, "a sibling marked `peer`"),
+        ] {
+            for state in InteractionState::ALL {
+                entries.push((
+                    format!("{prefix}{}", state.name()),
+                    format!("{subject} {}", state.describe()),
+                ));
+            }
+        }
+
+        entries.push(("dark".to_owned(), describe("dark")));
 
         entries
     }
@@ -272,6 +386,16 @@ impl<'a> VariantRegistry<'a> {
                 }),
                 Err(detail) => Err(VariantError::MalformedAttribute { detail }),
             };
+        }
+
+        if let Some(rest) = prefix.strip_prefix(GROUP_PREFIX) {
+            return parse_relational(GROUP_MARKER, rest)
+                .map(|(name, state)| VariantKind::Group { name, state });
+        }
+
+        if let Some(rest) = prefix.strip_prefix(PEER_PREFIX) {
+            return parse_relational(PEER_MARKER, rest)
+                .map(|(name, state)| VariantKind::Peer { name, state });
         }
 
         if let Some(definition) = self.custom_variant(prefix) {
@@ -344,6 +468,7 @@ impl<'a> VariantRegistry<'a> {
             ));
         }
 
+        parts.push("`group-*` and `peer-*` over hover, active and focus".to_owned());
         parts.push("and `attr-[Name=value]`".to_owned());
 
         parts.join(", ")
@@ -365,15 +490,7 @@ pub(crate) fn custom_variant_problem(
     name: &str,
     screens: &BTreeMap<String, u32>,
 ) -> Option<&'static str> {
-    if name.is_empty()
-        || !name
-            .chars()
-            .next()
-            .is_some_and(|first| first.is_ascii_alphanumeric())
-        || !name
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-    {
+    if !is_variant_name(name) {
         return Some("is not a usable class prefix");
     }
 
@@ -385,11 +502,63 @@ pub(crate) fn custom_variant_problem(
         return Some("vela reads as a breakpoint range or an inline attribute variant");
     }
 
+    if is_relational_name(name) {
+        return Some("vela reads as a group or peer marker or variant");
+    }
+
     if screens.contains_key(name) {
         return Some("is already a breakpoint in `theme.screens`");
     }
 
     None
+}
+
+/// Whether a registration would collide with `group`, `peer` or a prefix that
+/// starts a relational variant.
+fn is_relational_name(name: &str) -> bool {
+    name == GROUP_MARKER
+        || name == PEER_MARKER
+        || name.starts_with(GROUP_PREFIX)
+        || name.starts_with(PEER_PREFIX)
+}
+
+/// A class-token prefix: no `:`, no brackets, and it leads with a letter or digit.
+pub(crate) fn is_variant_name(name: &str) -> bool {
+    name.chars()
+        .next()
+        .is_some_and(|first| first.is_ascii_alphanumeric())
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+}
+
+/// Reads what follows `group-` or `peer-`: a state, then an optional `/name`.
+fn parse_relational(
+    marker: &str,
+    rest: &str,
+) -> Result<(Option<String>, InteractionState), VariantError> {
+    let (state, name) = match rest.split_once('/') {
+        Some((state, name)) => (state, Some(name)),
+        None => (rest, None),
+    };
+
+    if let Some(name) = name
+        && !is_variant_name(name)
+    {
+        return Err(VariantError::UnsupportedRelational {
+            reason: format!(
+                "\"{name}\" is not a usable {marker} name; use letters, digits, \"-\" and \"_\", as `{marker}-hover/card`"
+            ),
+        });
+    }
+
+    let Some(state) = InteractionState::parse(state) else {
+        return Err(VariantError::UnsupportedRelational {
+            reason: format!("`{marker}-*` reads hover, active or focus, not `{state}`"),
+        });
+    };
+
+    Ok((name.map(str::to_owned), state))
 }
 
 pub(crate) fn describe_attribute_variant(definition: &VariantDefinition) -> String {
@@ -429,6 +598,16 @@ pub(crate) fn describe_variant_kind(kind: &VariantKind) -> String {
         VariantKind::Hover => "the pointer is over the element".to_owned(),
         VariantKind::Active => "the element is being pressed".to_owned(),
         VariantKind::Focus => "the element holds input focus".to_owned(),
+        VariantKind::Group { name, state } => format!(
+            "the nearest ancestor marked `{}` {}",
+            marker_tag(GROUP_MARKER, name.as_deref()),
+            state.describe()
+        ),
+        VariantKind::Peer { name, state } => format!(
+            "a sibling marked `{}` {}",
+            marker_tag(PEER_MARKER, name.as_deref()),
+            state.describe()
+        ),
         VariantKind::Attribute { name, value, .. } => {
             format!("the element's `{name}` attribute is `{}`", value.display())
         }
@@ -545,10 +724,14 @@ pub(crate) fn utility_of(token: &str) -> &str {
 /// different things in the compiler and at runtime.
 #[cfg(test)]
 mod parity {
-    use super::{ATTRIBUTE_PREFIX, BUILT_IN_VARIANTS, MAX_WIDTH_PREFIX};
+    use super::{
+        ATTRIBUTE_PREFIX, BUILT_IN_VARIANTS, GROUP_MARKER, GROUP_PREFIX, GROUP_TAG,
+        MAX_WIDTH_PREFIX, PEER_MARKER, PEER_PREFIX, PEER_TAG,
+    };
 
     const CONFIG_VARIANTS: &str = include_str!("../../../config/src/variants.ts");
     const RUNTIME_VARIANTS: &str = include_str!("../../../runtime-core/src/variant.ts");
+    const RUNTIME_SCOPE: &str = include_str!("../../../runtime-core/src/scope.ts");
 
     #[test]
     fn the_config_package_validates_against_this_built_in_list() {
@@ -585,6 +768,22 @@ mod parity {
         for source in [CONFIG_VARIANTS, RUNTIME_VARIANTS] {
             assert!(source.contains(&format!("\"{MAX_WIDTH_PREFIX}\"")));
             assert!(source.contains(&format!("\"{ATTRIBUTE_PREFIX}\"")));
+            assert!(source.contains(&format!("\"{GROUP_PREFIX}\"")));
+            assert!(source.contains(&format!("\"{PEER_PREFIX}\"")));
+        }
+        assert!(CONFIG_VARIANTS.contains(&format!("\"{GROUP_MARKER}\"")));
+        assert!(CONFIG_VARIANTS.contains(&format!("\"{PEER_MARKER}\"")));
+    }
+
+    /// A marker lowers to a tag the runtime walks the instance tree for, so a
+    /// different spelling there finds no group and no peer at all.
+    #[test]
+    fn the_runtime_looks_for_the_tags_markers_lower_to() {
+        for name in [GROUP_TAG, PEER_TAG, GROUP_MARKER, PEER_MARKER] {
+            assert!(
+                RUNTIME_SCOPE.contains(&format!("\"{name}\"")),
+                "runtime-core never spells `{name}`"
+            );
         }
     }
 
@@ -712,6 +911,70 @@ mod tests {
                 name: "St ate".to_owned()
             }
         );
+    }
+
+    #[test]
+    fn reads_group_and_peer_states_with_an_optional_name() {
+        let registry = registry();
+
+        assert_eq!(
+            registry.parse("group-hover"),
+            Ok(VariantKind::Group {
+                name: None,
+                state: InteractionState::Hover,
+            })
+        );
+        assert_eq!(
+            registry.parse("group-focus/card"),
+            Ok(VariantKind::Group {
+                name: Some("card".to_owned()),
+                state: InteractionState::Focus,
+            })
+        );
+        assert_eq!(
+            registry.parse("peer-active/field_1"),
+            Ok(VariantKind::Peer {
+                name: Some("field_1".to_owned()),
+                state: InteractionState::Active,
+            })
+        );
+        for prefix in ["group-md", "peer-dark", "group-hover/", "peer-hover/a.b"] {
+            assert!(
+                matches!(
+                    registry.parse(prefix),
+                    Err(VariantError::UnsupportedRelational { .. })
+                ),
+                "{prefix} should be an unsupported relational variant"
+            );
+        }
+    }
+
+    #[test]
+    fn serializes_a_relational_condition_with_its_inner_state() {
+        let registry = registry();
+        let condition = |prefix: &str| {
+            let (variants, _) = registry.split(&format!("{prefix}:bg-red-500"));
+            serde_json::to_string(&variants[0].runtime_condition().unwrap()).unwrap()
+        };
+
+        assert_eq!(
+            condition("group-hover/card"),
+            r#"{"kind":"group","name":"card","condition":{"kind":"hover"}}"#
+        );
+        assert_eq!(
+            condition("peer-focus"),
+            r#"{"kind":"peer","condition":{"kind":"focus"}}"#
+        );
+    }
+
+    #[test]
+    fn reserves_the_relational_names_for_registrations() {
+        let screens = BTreeMap::new();
+
+        for name in ["group", "peer", "group-open", "peer-x"] {
+            assert!(custom_variant_problem(name, &screens).is_some(), "{name}");
+        }
+        assert!(custom_variant_problem("grouped", &screens).is_none());
     }
 
     #[test]

@@ -64,13 +64,19 @@ export namespace __VelaMargin {
 				return true;
 			}
 
+			// One value per side, whichever token named it last, as on the static
+			// path: a shift and a padding on the same side replace each other.
 			if (negative) {
 				if (prefix === "mt-") {
-					resolution.marginShiftY =
-						(resolution.marginShiftY ?? 0) - value.Offset;
+					resolution.marginShiftY = -value.Offset;
+					if (resolution.margin !== undefined) {
+						resolution.margin.top = undefined;
+					}
 				} else if (prefix === "ml-") {
-					resolution.marginShiftX =
-						(resolution.marginShiftX ?? 0) - value.Offset;
+					resolution.marginShiftX = -value.Offset;
+					if (resolution.margin !== undefined) {
+						resolution.margin.left = undefined;
+					}
 				}
 				return true;
 			}
@@ -78,6 +84,11 @@ export namespace __VelaMargin {
 			const state = marginState(resolution);
 			for (const side of sides) {
 				state[side] = value.Offset;
+				if (side === "top") {
+					resolution.marginShiftY = undefined;
+				} else if (side === "left") {
+					resolution.marginShiftX = undefined;
+				}
 			}
 			return true;
 		}

@@ -160,6 +160,10 @@ pub(crate) enum UtilityKind {
     ShadowSize(ShadowLayer),
     ShadowColor(ShadowLayer),
     BackdropBlur,
+    Isolate,
+    /// `group` or `group/card`, the name carried as the payload.
+    GroupMarker,
+    PeerMarker,
     GradientDirection,
     GradientFrom,
     GradientVia,
@@ -587,11 +591,35 @@ pub(crate) fn is_utility_allowed_on_host(element_tag: Option<&str>, kind: &Utili
         | UtilityKind::ScrollbarThickness
         | UtilityKind::ScrollbarColor
         | UtilityKind::CanvasSize => element_tag == "scrollingframe",
+        UtilityKind::Isolate => matches!(element_tag, "frame" | "canvasgroup"),
         _ => true,
     }
 }
 
 pub(crate) fn parse_utility(token: &str) -> ParsedUtility {
+    use crate::semantic::variant::{GROUP_MARKER, PEER_MARKER, is_variant_name};
+
+    for (marker, kind) in [
+        (GROUP_MARKER, UtilityKind::GroupMarker),
+        (PEER_MARKER, UtilityKind::PeerMarker),
+    ] {
+        let Some(rest) = token.strip_prefix(marker) else {
+            continue;
+        };
+        let name = match rest.strip_prefix('/') {
+            Some(name) if is_variant_name(name) => Some(name),
+            None if rest.is_empty() => None,
+            _ => continue,
+        };
+
+        return ParsedUtility {
+            raw: token.to_owned(),
+            family: marker.to_owned(),
+            payload: name.map(str::to_owned),
+            kind,
+        };
+    }
+
     // Both prefixes would otherwise be swallowed by `inset-*` and `text-*`.
     for layer in [ShadowLayer::Inset, ShadowLayer::Text] {
         if let Some(payload) = token
@@ -784,6 +812,15 @@ pub(crate) fn parse_utility(token: &str) -> ParsedUtility {
                 kind: UtilityKind::GradientDirection,
             };
         }
+    }
+
+    if token == "isolate" {
+        return ParsedUtility {
+            raw: token.to_owned(),
+            family: "isolate".to_owned(),
+            payload: None,
+            kind: UtilityKind::Isolate,
+        };
     }
 
     if token == "backdrop-blur" {

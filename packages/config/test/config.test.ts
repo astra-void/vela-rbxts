@@ -439,6 +439,10 @@ test("rejects variant names vela already reads as something else", () => {
 	expect(() => register("md")).toThrow(/theme.screens/);
 	expect(() => register("max-md")).toThrow(/breakpoint range/);
 	expect(() => register("attr-x")).toThrow(/attribute variant/);
+	expect(() => register("group")).toThrow(/group or peer/);
+	expect(() => register("peer")).toThrow(/group or peer/);
+	expect(() => register("group-open")).toThrow(/group or peer/);
+	expect(() => register("peer-checked")).toThrow(/group or peer/);
 	expect(() => register("open:closed")).toThrow(/usable class prefix/);
 });
 

@@ -222,8 +222,21 @@ spacing) disappears, so this proceeds only after actual usage demand is confirme
 Each child needs a UIStroke/frame injected → the parent has to rebuild its child
 list. With dynamic JSX children this is impossible at compile time and the runtime
 host has to walk the children. **Implemented** by having the runtime host insert
-separator frames between content children only — see `phase4-structural-review.md`
-for details.
+separator frames between content children only, ranking every child by its
+`LayoutOrder` (or static `order-*`) so the separators follow the sorted order. Gap
+applies on both sides of a separator, which is a documented approximation. See
+`phase4-structural-review.md` for the ordering contract.
+
+### `group-*` / `peer-*`: state read from another element
+
+CSS reads these through the selector tree; Roblox has none, and a React context
+cannot cross into Vide, where children are built before their parents. **Implemented**
+by lowering the `group` / `peer` markers (with an optional `/name`) to CollectionService
+tags and letting a shared observer in `@rbxts/vela-runtime-core` find the nearest tagged
+ancestor or a tagged sibling in the instance tree. Only `hover`, `active` and `focus`
+are read; any other inner state warns `unsupported-relational-variant`. Roblox keeps no
+sibling order, so any marked sibling counts as a peer, not only an earlier one. A
+margin box is tagged `VelaMarginBox` so peers are looked for beside it.
 
 ## Phase 5 — Roblox-specific properties (tier A) — **implemented**
 
@@ -461,7 +474,14 @@ declared on the element alone, and a fade arriving through the context has no wa
 tell that prop from one Vela lowered, so it composes over both.
 
 Limitation: overlapping siblings would fade together under real compositing, but here
-each fades on its own, so the overlap ends up darker.
+each fades on its own, so the overlap ends up darker. The opt-in fix is `isolate` on a
+`frame`: the compiler builds the element as a `canvasgroup`, so `opacity-*` lowers to
+`GroupTransparency` and the subtree fades as one layer. It costs what a CanvasGroup
+costs: descendants are clipped to its bounds, the subtree renders to a texture (GPU
+memory, and a redraw whenever a descendant changes), and a ref or `IsA` check sees a
+CanvasGroup rather than a Frame. The instance class cannot change after it is built,
+so `isolate` has to be static and unconditional (`isolate-not-static` otherwise), and
+it does nothing on other hosts or components (`isolate-needs-frame`).
 
 ## Permanently unsupported (tier D — keep `no-roblox-equivalent`)
 
@@ -475,7 +495,7 @@ each fades on its own, so the overlap ends up darker.
 | `static/fixed/absolute/relative/sticky`, `block/inline/table/contents` | Roblox always positions absolutely relative to the parent; there is no positioning model at all |
 | `cursor-*`, `caret-*`, `accent-*`, `appearance-*`, `select-*` | No per-element cursor/caret/native widget styling |
 | `snap-*`, `resize-*` | No scroll snap or resize handles |
-| `isolate`, `box-*`, `container`, `sr-*`, `antialiased` | The rendering concept does not exist |
+| `box-*`, `container`, `sr-*`, `antialiased` | The rendering concept does not exist (`isolate` maps to a CanvasGroup instead, see opacity above) |
 | `brightness-*`, `fill-*`, `stroke-*` | An approximate mapping (ImageColor3) distorts the meaning — too misleading, so excluded |
 
 This list is kept 1:1 with `is_known_tailwind_family`, and is managed by removing
