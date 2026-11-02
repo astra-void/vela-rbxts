@@ -384,7 +384,9 @@ function DivideOrdering(props: { active: () => boolean }) {
 					<frame Name="steady-b" className="w-6 h-6 bg-slate-600" />
 				</frame>
 			</Row>
-			{/* Each instance one thunk returns is ranked alone, with a separator between. */}
+			{/* Each instance one thunk returns is ranked alone, with a separator
+			    between. Raw props: a rem-scaled class would make them reactive,
+			    which Vide refuses inside the children effect. */}
 			<Row label="divide thunk list">
 				<frame
 					Name="DivideThunkListProbe"
@@ -395,7 +397,8 @@ function DivideOrdering(props: { active: () => boolean }) {
 							<frame
 								Name={`t${order}`}
 								LayoutOrder={order}
-								className="w-6 h-6 bg-slate-600"
+								BackgroundColor3={Color3.fromRGB(69, 85, 108)}
+								Size={UDim2.fromOffset(24, 24)}
 							/>
 						))
 					}
