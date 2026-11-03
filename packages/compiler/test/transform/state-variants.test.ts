@@ -228,6 +228,40 @@ test("lowers group and peer variants into relational rules", () => {
 	expect(runtimeSource).toContain("__VelaScope.watch");
 });
 
+test("lowers attribute variants read through a group or a peer", () => {
+	const result = transform(
+		`export const A = () => <textlabel className="group-open:text-blue-400 group-attr-[Tier=2]/card:text-red-500 peer-disabled/field:opacity-50 peer-attr-[Path=a/b]:text-green-500" />;`,
+		withStateVariants,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.needsRuntimeHost).toBe(true);
+	expect(result.ir[0]).toContain(
+		'{"kind":"group","condition":{"kind":"attribute","name":"State","value":"open"}}',
+	);
+	expect(result.ir[0]).toContain(
+		'{"kind":"group","name":"card","condition":{"kind":"attribute","name":"Tier","value":2.0}}',
+	);
+	expect(result.ir[0]).toContain(
+		'{"kind":"peer","name":"field","condition":{"kind":"attribute","name":"Disabled","value":true}}',
+	);
+	expect(result.ir[0]).toContain(
+		'{"kind":"peer","condition":{"kind":"attribute","name":"Path","value":"a/b"}}',
+	);
+});
+
+test("reports a malformed attribute variant under a group as itself", () => {
+	const result = transform(
+		`export const A = () => <frame className="group-attr-[State]:bg-red-500" />;`,
+		withStateVariants,
+	);
+
+	expect(result.diagnostics.map((entry) => entry.code)).toEqual([
+		"malformed-attribute-variant",
+	]);
+	expect(result.ir[0]).not.toContain("BackgroundColor3");
+});
+
 test("composes a relational variant with the variants around it", () => {
 	const result = transform(
 		`export const A = () => <frame className="md:group-hover:bg-blue-600" />;`,
@@ -253,7 +287,12 @@ test("a marker on a static React element lowers to its Tag", () => {
 });
 
 test("reports a relational variant vela cannot read", () => {
-	for (const token of ["group-md:bg-red-500", "peer-hover/a.b:bg-red-500"]) {
+	for (const token of [
+		"group-md:bg-red-500",
+		"peer-hover/a.b:bg-red-500",
+		"group-dark:bg-red-500",
+		"peer-checked:bg-red-500",
+	]) {
 		const result = transform(
 			`export const A = () => <frame className="${token}" />;`,
 			withStateVariants,

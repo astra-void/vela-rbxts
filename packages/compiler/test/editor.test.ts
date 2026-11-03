@@ -1781,7 +1781,9 @@ test("completes, hovers and sorts group and peer", () => {
 			source: unsupportedSource,
 			position: positionAfter(unsupportedSource, "bg-red"),
 		}).contents?.documentation,
-	).toContain("reads hover, active or focus, not `md`");
+	).toContain(
+		"reads hover, active, focus, a registered attribute variant or `attr-[Name=value]`, not `md`",
+	);
 	const unsupported = getDiagnostics({
 		source: '<frame className="group-md:bg-red-500" />',
 	}).diagnostics;
@@ -2052,6 +2054,55 @@ test("completes the inline attribute variant", () => {
 	expect(items.find((item) => item.insertText === "attr-[")).toBeDefined();
 	// ...and every attribute the config already names, written out.
 	expect(items.map((item) => item.label)).toContain("attr-[Selected=true]:");
+});
+
+test("completes, hovers and sorts attribute variants under group and peer", () => {
+	const source = '<frame className="group-" />';
+	const labels = variantLabels(source, positionAfter(source, '"group-'));
+	expect(labels).toEqual(
+		expect.arrayContaining([
+			"group-selected:",
+			"group-open:",
+			"group-attr-[Selected=true]:",
+		]),
+	);
+	const peerSource = '<frame className="peer-attr-[" />';
+	expect(
+		getCompletions({
+			source: peerSource,
+			position: positionAfter(peerSource, '"peer-attr-['),
+			options: variantOptions,
+		}).items.find((item) => item.insertText === "peer-attr-["),
+	).toBeDefined();
+
+	const hovered = '<textlabel className="group-selected/card:text-blue-400" />';
+	expect(
+		getHover({
+			source: hovered,
+			position: positionAfter(hovered, "text-blue"),
+			options: variantOptions,
+		}).contents?.documentation,
+	).toContain(
+		"the nearest ancestor marked `group/card` has its `Selected` attribute set to `true`",
+	);
+
+	const sorted = sortClassNames({
+		source:
+			'<frame className="peer-hover:p-1 group-attr-[Selected=true]:p-2 group-selected:p-3 group-hover:p-4 peer-open:p-5 dark:p-6" />',
+		options: variantOptions,
+	});
+	expect(sorted.edits[0].text).toBe(
+		"group-hover:p-4 group-selected:p-3 group-attr-[Selected=true]:p-2 peer-hover:p-1 peer-open:p-5 dark:p-6",
+	);
+
+	const overridden = getDiagnostics({
+		source:
+			'<frame className="group-selected:bg-red-500 group-attr-[Selected=true]:bg-blue-500 peer-selected:bg-green-500" />',
+		options: variantOptions,
+	}).diagnostics.filter((entry) => entry.code === "overridden-class");
+	expect(overridden.map((entry) => entry.token)).toEqual([
+		"group-selected:bg-red-500",
+	]);
 });
 
 // The fix that keeps a chained variant from swallowing the rest of the token.

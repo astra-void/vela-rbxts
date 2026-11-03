@@ -22,8 +22,8 @@ use crate::semantic::{
         resolve_color_value, size_completion_keys, spacing_completion_keys,
     },
     variant::{
-        ATTRIBUTE_PREFIX, VariantRegistry, describe_attribute_variant, split_variant_prefixes,
-        utility_of,
+        ATTRIBUTE_PREFIX, GROUP_PREFIX, PEER_PREFIX, VariantRegistry, describe_attribute_variant,
+        split_variant_prefixes, utility_of,
     },
 };
 
@@ -279,54 +279,68 @@ fn variant_item(label: String, score: u32, documentation: String) -> CompletionI
     }
 }
 
-/// The inline attribute variant. The bare `attr-[` is offered as the shape to
-/// type, and once the bracket is open every attribute the config already names
-/// is offered whole so the common cases need no typing at all.
+/// The inline attribute variant, on the element and through a group or a
+/// peer. The bare `attr-[` is offered as the shape to type, and once the
+/// bracket is open every attribute the config already names is offered whole
+/// so the common cases need no typing at all.
 fn attribute_variant_candidates(
     variants: &VariantRegistry<'_>,
     prefix: &str,
 ) -> Vec<CompletionItem> {
     let mut items = Vec::new();
-    let opening = format!("{ATTRIBUTE_PREFIX}[");
-
-    if let Some(score) = match_score(&opening, prefix).map(|score| score + 1) {
-        items.push(CompletionItem {
-            label: format!("{opening}\u{2026}]:"),
-            insert_text: opening.clone(),
-            kind: "runtime variant".to_owned(),
-            category: "variant".to_owned(),
-            documentation:
-                "Apply the following vela-rbxts utility while a Roblox attribute on this element holds a value, as `attr-[State=open]:bg-blue-600`. The value is compared as a boolean, a number, or text, whichever it reads as."
-                    .to_owned(),
-            replacement: None,
-            color: None,
-            sort_text: Some(sort_text(score, &opening)),
-        });
-    }
-
     let mut seen = std::collections::BTreeSet::new();
-    for (_, definition) in variants.custom_variants() {
-        let label = format!(
-            "{opening}{}={}]:",
-            definition.attribute,
-            definition.equals.display()
-        );
-        if !seen.insert(label.clone()) {
-            continue;
+
+    for (scope, subject) in [
+        ("", "this element"),
+        (GROUP_PREFIX, "the nearest ancestor marked `group`"),
+        (PEER_PREFIX, "a sibling marked `peer`"),
+    ] {
+        let opening = format!("{scope}{ATTRIBUTE_PREFIX}[");
+
+        if let Some(score) = match_score(&opening, prefix).map(|score| score + 1) {
+            items.push(CompletionItem {
+                label: format!("{opening}\u{2026}]:"),
+                insert_text: opening.clone(),
+                kind: "runtime variant".to_owned(),
+                category: "variant".to_owned(),
+                documentation: format!(
+                    "Apply the following vela-rbxts utility while a Roblox attribute on {subject} holds a value, as `{opening}State=open]:bg-blue-600`. The value is compared as a boolean, a number, or text, whichever it reads as."
+                ),
+                replacement: None,
+                color: None,
+                sort_text: Some(sort_text(score, &opening)),
+            });
         }
 
-        let Some(score) = match_score(&label, prefix).map(|score| score + 1) else {
-            continue;
-        };
+        for (_, definition) in variants.custom_variants() {
+            let label = format!(
+                "{opening}{}={}]:",
+                definition.attribute,
+                definition.equals.display()
+            );
+            if !seen.insert(label.clone()) {
+                continue;
+            }
 
-        items.push(variant_item(
-            label,
-            score,
-            format!(
-                "Apply the following vela-rbxts utility when {}.",
+            let Some(score) = match_score(&label, prefix).map(|score| score + 1) else {
+                continue;
+            };
+
+            let condition = if scope.is_empty() {
                 describe_attribute_variant(definition)
-            ),
-        ));
+            } else {
+                format!(
+                    "{subject} has its `{}` attribute set to `{}`",
+                    definition.attribute,
+                    definition.equals.display()
+                )
+            };
+            items.push(variant_item(
+                label,
+                score,
+                format!("Apply the following vela-rbxts utility when {condition}."),
+            ));
+        }
     }
 
     items

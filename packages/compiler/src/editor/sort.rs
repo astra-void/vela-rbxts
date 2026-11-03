@@ -3,7 +3,7 @@ use crate::class_token::class_token_ranges;
 use crate::editor::{collect_class_name_contexts, tokenize_class_name_with_ranges};
 use crate::semantic::analyze::analyze_class_token;
 use crate::semantic::utility::{PaddingKind, UtilityKind};
-use crate::semantic::variant::{VariantKind, VariantRegistry};
+use crate::semantic::variant::{RelationalState, VariantKind, VariantRegistry};
 
 pub(crate) fn sort_class_names_impl(request: SortClassNamesRequest) -> SortClassNamesResponse {
     let config = crate::editor::parse_editor_config(request.options.as_ref());
@@ -174,9 +174,23 @@ fn variant_rank(kind: Option<&VariantKind>, raw: &str) -> VariantRank {
         VariantKind::Hover => (BAND_INTERACTION, 0, raw.to_owned()),
         VariantKind::Active => (BAND_INTERACTION, 1, raw.to_owned()),
         VariantKind::Focus => (BAND_INTERACTION, 2, raw.to_owned()),
-        VariantKind::Group { state, .. } => (BAND_RELATIONAL, state.rank(), raw.to_owned()),
-        VariantKind::Peer { state, .. } => (BAND_RELATIONAL, 3 + state.rank(), raw.to_owned()),
+        VariantKind::Group { state, .. } => {
+            (BAND_RELATIONAL, state.rank(), relational_tie(state, raw))
+        }
+        VariantKind::Peer { state, .. } => (
+            BAND_RELATIONAL,
+            RelationalState::RANKS + state.rank(),
+            relational_tie(state, raw),
+        ),
         VariantKind::ColorScheme { .. } => (BAND_COLOR_SCHEME, 0, raw.to_owned()),
+    }
+}
+
+/// Attribute states group by attribute name, as they do in `BAND_STATE`.
+fn relational_tie(state: &RelationalState, raw: &str) -> String {
+    match state {
+        RelationalState::Attribute { name, .. } => format!("{name}:{raw}"),
+        RelationalState::Interaction(_) => raw.to_owned(),
     }
 }
 

@@ -49,8 +49,7 @@ pub(crate) fn marker_tag(base: &str, name: Option<&str>) -> String {
     }
 }
 
-/// The states a relational variant reads off the instance it found. Only these
-/// three in v1; the boxed condition in the IR leaves room for more.
+/// The interaction states a relational variant reads off the instance it found.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum InteractionState {
     Hover,
@@ -94,6 +93,53 @@ impl InteractionState {
             Self::Hover => "is hovered",
             Self::Active => "is being pressed",
             Self::Focus => "holds input focus",
+        }
+    }
+}
+
+/// What a relational variant reads off the instance it found: an interaction
+/// state, or an attribute the way `attr-[…]` and registered variants read one
+/// off the styled instance itself.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum RelationalState {
+    Interaction(InteractionState),
+    Attribute {
+        /// The registered name, `None` for `attr-[…]`.
+        variant: Option<String>,
+        name: String,
+        value: AttributeValue,
+    },
+}
+
+impl RelationalState {
+    /// How many ranks one marker's states take, so peers sort after groups.
+    pub(crate) const RANKS: i64 = 5;
+
+    /// The interaction states first, then a registered attribute variant ahead
+    /// of the inline form, the order they take on the element itself.
+    pub(crate) fn rank(&self) -> i64 {
+        match self {
+            Self::Interaction(state) => state.rank(),
+            Self::Attribute { variant, .. } => 3 + i64::from(variant.is_none()),
+        }
+    }
+
+    fn condition(&self) -> RuntimeCondition {
+        match self {
+            Self::Interaction(state) => state.condition(),
+            Self::Attribute { name, value, .. } => RuntimeCondition::Attribute {
+                name: name.clone(),
+                value: value.clone(),
+            },
+        }
+    }
+
+    fn describe(&self) -> String {
+        match self {
+            Self::Interaction(state) => state.describe().to_owned(),
+            Self::Attribute { name, value, .. } => {
+                format!("has its `{name}` attribute set to `{}`", value.display())
+            }
         }
     }
 }
@@ -161,16 +207,16 @@ pub(crate) enum VariantKind {
     Hover,
     Active,
     Focus,
-    /// `group-hover:` or `group-hover/card:`: a state of the nearest ancestor
-    /// carrying that marker, starting at the parent.
+    /// `group-hover:` or `group-selected/card:`: a state of the nearest
+    /// ancestor carrying that marker, starting at the parent.
     Group {
         name: Option<String>,
-        state: InteractionState,
+        state: RelationalState,
     },
     /// `peer-hover:`: a state of any same-parent sibling carrying that marker.
     Peer {
         name: Option<String>,
-        state: InteractionState,
+        state: RelationalState,
     },
     /// A registered variant, or one an `attr-[…]` named inline. Both read the
     /// same attribute off the styled instance.
@@ -345,6 +391,17 @@ impl<'a> VariantRegistry<'a> {
                     format!("{subject} {}", state.describe()),
                 ));
             }
+            for (name, definition) in self.custom_variants() {
+                let state = RelationalState::Attribute {
+                    variant: Some(name.to_owned()),
+                    name: definition.attribute.clone(),
+                    value: definition.equals.clone(),
+                };
+                entries.push((
+                    format!("{prefix}{name}"),
+                    format!("{subject} {}", state.describe()),
+                ));
+            }
         }
 
         entries.push(("dark".to_owned(), describe("dark")));
@@ -389,12 +446,14 @@ impl<'a> VariantRegistry<'a> {
         }
 
         if let Some(rest) = prefix.strip_prefix(GROUP_PREFIX) {
-            return parse_relational(GROUP_MARKER, rest)
+            return self
+                .parse_relational(GROUP_MARKER, rest)
                 .map(|(name, state)| VariantKind::Group { name, state });
         }
 
         if let Some(rest) = prefix.strip_prefix(PEER_PREFIX) {
-            return parse_relational(PEER_MARKER, rest)
+            return self
+                .parse_relational(PEER_MARKER, rest)
                 .map(|(name, state)| VariantKind::Peer { name, state });
         }
 
@@ -468,10 +527,70 @@ impl<'a> VariantRegistry<'a> {
             ));
         }
 
-        parts.push("`group-*` and `peer-*` over hover, active and focus".to_owned());
+        parts.push(
+            "`group-*` and `peer-*` over hover, active, focus and the attribute variants"
+                .to_owned(),
+        );
         parts.push("and `attr-[Name=value]`".to_owned());
 
         parts.join(", ")
+    }
+
+    /// Reads what follows `group-` or `peer-`: a state, then an optional
+    /// `/name`. An attribute state reads the way the same prefix does on the
+    /// element itself.
+    fn parse_relational(
+        &self,
+        marker: &str,
+        rest: &str,
+    ) -> Result<(Option<String>, RelationalState), VariantError> {
+        let (state, name) = split_marker_name(rest);
+
+        if let Some(name) = name
+            && !is_variant_name(name)
+        {
+            return Err(VariantError::UnsupportedRelational {
+                reason: format!(
+                    "\"{name}\" is not a usable {marker} name; use letters, digits, \"-\" and \"_\", as `{marker}-hover/card`"
+                ),
+            });
+        }
+        let name = name.map(str::to_owned);
+
+        if let Some(state) = InteractionState::parse(state) {
+            return Ok((name, RelationalState::Interaction(state)));
+        }
+
+        if let Some(payload) = state.strip_prefix(ATTRIBUTE_PREFIX) {
+            return match parse_attribute_payload(payload) {
+                Ok((attribute, value)) => Ok((
+                    name,
+                    RelationalState::Attribute {
+                        variant: None,
+                        name: attribute,
+                        value,
+                    },
+                )),
+                Err(detail) => Err(VariantError::MalformedAttribute { detail }),
+            };
+        }
+
+        if let Some(definition) = self.custom_variant(state) {
+            return Ok((
+                name,
+                RelationalState::Attribute {
+                    variant: Some(state.to_owned()),
+                    name: definition.attribute.clone(),
+                    value: definition.equals.clone(),
+                },
+            ));
+        }
+
+        Err(VariantError::UnsupportedRelational {
+            reason: format!(
+                "`{marker}-*` reads hover, active, focus, a registered attribute variant or `attr-[Name=value]`, not `{state}`"
+            ),
+        })
     }
 
     /// Breakpoint names, for a completion list or a "did you mean" suggestion.
@@ -522,6 +641,23 @@ fn is_relational_name(name: &str) -> bool {
         || name.starts_with(PEER_PREFIX)
 }
 
+/// Splits `hover/card` or `attr-[Path=a/b]/card` at the first `/` outside
+/// brackets, so an attribute value may carry one.
+fn split_marker_name(rest: &str) -> (&str, Option<&str>) {
+    let mut depth = 0usize;
+
+    for (index, ch) in rest.char_indices() {
+        match ch {
+            '[' | '(' => depth += 1,
+            ']' | ')' => depth = depth.saturating_sub(1),
+            '/' if depth == 0 => return (&rest[..index], Some(&rest[index + 1..])),
+            _ => {}
+        }
+    }
+
+    (rest, None)
+}
+
 /// A class-token prefix: no `:`, no brackets, and it leads with a letter or digit.
 pub(crate) fn is_variant_name(name: &str) -> bool {
     name.chars()
@@ -530,35 +666,6 @@ pub(crate) fn is_variant_name(name: &str) -> bool {
         && name
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
-}
-
-/// Reads what follows `group-` or `peer-`: a state, then an optional `/name`.
-fn parse_relational(
-    marker: &str,
-    rest: &str,
-) -> Result<(Option<String>, InteractionState), VariantError> {
-    let (state, name) = match rest.split_once('/') {
-        Some((state, name)) => (state, Some(name)),
-        None => (rest, None),
-    };
-
-    if let Some(name) = name
-        && !is_variant_name(name)
-    {
-        return Err(VariantError::UnsupportedRelational {
-            reason: format!(
-                "\"{name}\" is not a usable {marker} name; use letters, digits, \"-\" and \"_\", as `{marker}-hover/card`"
-            ),
-        });
-    }
-
-    let Some(state) = InteractionState::parse(state) else {
-        return Err(VariantError::UnsupportedRelational {
-            reason: format!("`{marker}-*` reads hover, active or focus, not `{state}`"),
-        });
-    };
-
-    Ok((name.map(str::to_owned), state))
 }
 
 pub(crate) fn describe_attribute_variant(definition: &VariantDefinition) -> String {
@@ -921,21 +1028,21 @@ mod tests {
             registry.parse("group-hover"),
             Ok(VariantKind::Group {
                 name: None,
-                state: InteractionState::Hover,
+                state: RelationalState::Interaction(InteractionState::Hover),
             })
         );
         assert_eq!(
             registry.parse("group-focus/card"),
             Ok(VariantKind::Group {
                 name: Some("card".to_owned()),
-                state: InteractionState::Focus,
+                state: RelationalState::Interaction(InteractionState::Focus),
             })
         );
         assert_eq!(
             registry.parse("peer-active/field_1"),
             Ok(VariantKind::Peer {
                 name: Some("field_1".to_owned()),
-                state: InteractionState::Active,
+                state: RelationalState::Interaction(InteractionState::Active),
             })
         );
         for prefix in ["group-md", "peer-dark", "group-hover/", "peer-hover/a.b"] {
@@ -964,6 +1071,94 @@ mod tests {
         assert_eq!(
             condition("peer-focus"),
             r#"{"kind":"peer","condition":{"kind":"focus"}}"#
+        );
+        assert_eq!(
+            condition("group-attr-[State=open]/card"),
+            r#"{"kind":"group","name":"card","condition":{"kind":"attribute","name":"State","value":"open"}}"#
+        );
+    }
+
+    fn config_with_selected() -> TailwindConfig {
+        let mut config = crate::config::defaults::default_config();
+        config.plugins.variants.insert(
+            "selected".to_owned(),
+            VariantDefinition {
+                attribute: "Selected".to_owned(),
+                equals: AttributeValue::Bool(true),
+            },
+        );
+        config
+    }
+
+    #[test]
+    fn reads_attribute_states_through_group_and_peer() {
+        let config = config_with_selected();
+        let registry = VariantRegistry::new(&config);
+
+        assert_eq!(
+            registry.parse("group-selected"),
+            Ok(VariantKind::Group {
+                name: None,
+                state: RelationalState::Attribute {
+                    variant: Some("selected".to_owned()),
+                    name: "Selected".to_owned(),
+                    value: AttributeValue::Bool(true),
+                },
+            })
+        );
+        assert_eq!(
+            registry.parse("peer-selected/field"),
+            Ok(VariantKind::Peer {
+                name: Some("field".to_owned()),
+                state: RelationalState::Attribute {
+                    variant: Some("selected".to_owned()),
+                    name: "Selected".to_owned(),
+                    value: AttributeValue::Bool(true),
+                },
+            })
+        );
+        // The name splits at the first `/` past the brackets.
+        assert_eq!(
+            registry.parse("group-attr-[Path=a/b]/card"),
+            Ok(VariantKind::Group {
+                name: Some("card".to_owned()),
+                state: RelationalState::Attribute {
+                    variant: None,
+                    name: "Path".to_owned(),
+                    value: AttributeValue::Text("a/b".to_owned()),
+                },
+            })
+        );
+        assert_eq!(
+            registry.parse("peer-attr-[State]"),
+            Err(VariantError::MalformedAttribute {
+                detail: AttributeVariantError::MissingSeparator
+            })
+        );
+        for prefix in ["group-md", "group-max-md", "peer-dark", "group-open"] {
+            assert!(
+                matches!(
+                    registry.parse(prefix),
+                    Err(VariantError::UnsupportedRelational { .. })
+                ),
+                "{prefix} should be an unsupported relational variant"
+            );
+        }
+    }
+
+    #[test]
+    fn documents_a_registered_variant_under_group_and_peer() {
+        let config = config_with_selected();
+        let documented = VariantRegistry::new(&config).documented_variants();
+        let names: Vec<&str> = documented.iter().map(|(name, _)| name.as_str()).collect();
+        let at = |wanted: &str| names.iter().position(|name| *name == wanted).unwrap();
+
+        assert!(at("group-focus") < at("group-selected"));
+        assert!(at("group-selected") < at("peer-hover"));
+        assert!(at("peer-selected") < at("dark"));
+        assert_eq!(
+            documented[at("peer-selected")].1,
+            "a sibling marked `peer` has its `Selected` attribute set to `true`"
         );
     }
 
