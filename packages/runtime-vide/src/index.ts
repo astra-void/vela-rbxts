@@ -45,6 +45,7 @@ type VelaRemScaler = {
 	scale: <T>(value: T, slot: number) => () => T;
 	scaleText: (value: number, slot: number) => () => number;
 	bind: (offsets: Record<string, unknown>) => Vide.Action<Instance>;
+	after: (callback: (instance: Instance) => void) => Vide.Action<Instance>;
 };
 
 type VelaRuntimeHostProps = {
@@ -193,7 +194,13 @@ namespace __VelaRemSource {
 			});
 		}
 
-		return { scale, scaleText, bind };
+		/// The element's own `action`, queued behind `bind` so it reads the
+		/// offsets already written.
+		function after(callback: (instance: Instance) => void) {
+			return Vide.action(callback);
+		}
+
+		return { scale, scaleText, bind, after };
 	}
 }
 

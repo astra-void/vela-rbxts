@@ -11,7 +11,7 @@ use crate::semantic::plugin::{ExpandedToken, expand_class_token};
 use crate::semantic::utility::{UtilityKind, parse_utility};
 use crate::swc::builders::{
     create_expression_child, create_helper_child, create_helper_child_cast_any, create_prop_attr,
-    create_prop_attr_cast_any, helper_tag_name, inherit_child_span, inherit_span,
+    create_prop_attr_cast_any, helper_tag_name, inherit_child_span, inherit_span, parse_expression,
 };
 use crate::transform::boundary::{
     consume_component_function, consume_component_initializer, is_component_binding,
@@ -25,13 +25,15 @@ use crate::transform::opacity::{
     branch_opacity_needs_runtime, compose_inherited_opacity, opacity_alpha_entry,
     static_opacity_alpha,
 };
+use crate::transform::rem::REM_NAMESPACE;
 use swc_core::{
     common::DUMMY_SP,
     ecma::ast::{
-        BlockStmt, DefaultDecl, ExportDefaultDecl, ExportDefaultExpr, Expr, FnDecl, Ident, JSXAttr,
-        JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXClosingElement, JSXElement, JSXElementChild,
-        JSXElementName, JSXEmptyExpr, JSXExpr, JSXExprContainer, JSXFragment, Module, Pat, Str,
-        TplElement, VarDecl, VarDeclKind, VarDeclarator,
+        BlockStmt, CallExpr, Callee, DefaultDecl, ExportDefaultDecl, ExportDefaultExpr, Expr,
+        ExprOrSpread, FnDecl, Ident, JSXAttr, JSXAttrName, JSXAttrOrSpread, JSXAttrValue,
+        JSXClosingElement, JSXElement, JSXElementChild, JSXElementName, JSXEmptyExpr, JSXExpr,
+        JSXExprContainer, JSXFragment, Module, Pat, Str, TplElement, VarDecl, VarDeclKind,
+        VarDeclarator,
     },
     ecma::visit::{Visit, VisitMut, VisitMutWith, VisitWith},
 };
@@ -819,6 +821,35 @@ impl VelaTransformer {
                 props = kept;
                 if let Some(binding) = binding {
                     helper_children.push(create_expression_child(&binding));
+                    // Vide queues `action` ahead of the children, and the user's
+                    // runs after Vela's, so it moves behind the binding.
+                    if let Some(index) = attrs.iter().position(|attr| {
+                        matches!(attr, JSXAttrOrSpread::JSXAttr(JSXAttr { name: JSXAttrName::Ident(name), value: Some(JSXAttrValue::JSXExprContainer(_)), .. }) if name.sym == "action")
+                    }) && let JSXAttrOrSpread::JSXAttr(JSXAttr {
+                        value:
+                            Some(JSXAttrValue::JSXExprContainer(JSXExprContainer {
+                                expr: JSXExpr::Expr(callback),
+                                ..
+                            })),
+                        ..
+                    }) = attrs.remove(index)
+                    {
+                        helper_children.push(JSXElementChild::JSXExprContainer(JSXExprContainer {
+                            span: DUMMY_SP,
+                            expr: JSXExpr::Expr(Box::new(Expr::Call(CallExpr {
+                                span: DUMMY_SP,
+                                callee: Callee::Expr(parse_expression(&format!(
+                                    "{REM_NAMESPACE}.after"
+                                ))),
+                                args: vec![ExprOrSpread {
+                                    spread: None,
+                                    expr: callback,
+                                }],
+                                type_args: None,
+                                ctxt: Default::default(),
+                            }))),
+                        }));
+                    }
                 }
             }
             let scales_props = scales_rem && !bound;

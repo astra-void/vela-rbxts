@@ -113,6 +113,19 @@ test("an element built inside a function child is bound the same way", () => {
 	);
 });
 
+test("the element's own action runs after the binding", () => {
+	const result = transform(
+		'<frame className="w-6 h-6" action={(frame) => print(frame.Size)} />',
+		withVide,
+	);
+	const code = emitted(result.code);
+
+	expect(code).not.toContain("action={");
+	expect(code).toContain(
+		"{__VelaRem.bind({ Size: UDim2.fromOffset(24, 24) })}{__VelaRem.after((frame)=>print(frame.Size))}</frame>",
+	);
+});
+
 // The action writes after every attribute, which would beat a later spread.
 test("a spread after the class keeps a binding per prop on Vide", () => {
 	const result = transform(

@@ -148,9 +148,11 @@ re-rendered into place; the Vide host creates and destroys it imperatively under
 | 4. Reactive boundary | arrow unwrap, thunked tests, hover/pressed/focused, opacity context, margin/divide | **done** |
 
 Deferred past v1: static analysis of `className` inside
-`<Show>`/`<For>`/`<Index>`/`<Switch>`; the `changed()` macro interaction;
-fine-grained `action` composition ordering (v1 fixes "user action runs after
-Vela's"). Motion was on this list and landed in §9, on the same neutral
+`<Show>`/`<For>`/`<Index>`/`<Switch>`; the `changed()` macro interaction.
+`action` ordering is fixed: the user's runs after Vela's. `jsx` queues an `action`
+attribute ahead of the children, so on an element whose offsets bind through an
+action child the compiler moves the user's behind it as `__VelaRem.after(...)`.
+Motion was on this list and landed in §9, on the same neutral
 `__VelaMotion` the React host drives rather than on `spring()`.
 
 Phases 1 and 2 are what make everything after them unable to regress the React path.
@@ -255,6 +257,7 @@ dictionary), rem on both the static and the host path, `hover:`, `active:`, `foc
   the viewport, torn down with the function child. A component is safe as it is, because
   `Vide.jsx` calls every component untracked. A class followed by a spread keeps a binding
   per prop, since the action writes after every attribute and would beat the spread.
+  The element's own `action` moves behind the binding, so it reads the scaled offsets.
 - **A helper's props follow the resolution, not the snapshot.** Built once from the
   untracked snapshot they freeze — and at creation the viewport is still 1×1, so rem
   freezes at a ratio of 1. This is invisible under a variant probe, because the variant
