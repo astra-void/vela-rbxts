@@ -1174,6 +1174,14 @@ function writeResolvedProps(writer: ResolvedPropWriter) {
 	const transition = writer.transition;
 	const written = new Map<string, unknown>();
 	let warned = false;
+	// Whether the element fills the box. A size its class resolves here is the
+	// box's, so the element has to fill it, which the build could only arrange
+	// for a size that was already a static prop.
+	let fills = false;
+	const hugs =
+		wrapper !== undefined && wrapper.IsA("GuiObject")
+			? wrapper.AutomaticSize
+			: undefined;
 
 	function routed(name: string): boolean {
 		return wrapper !== undefined && __VelaMargin.isMarginWrapperProp(name);
@@ -1259,6 +1267,21 @@ function writeResolvedProps(writer: ResolvedPropWriter) {
 			const fallback = declared[name] ?? classMember(writer.hostTag, name);
 			write(name, finalValue(name, fallback), true);
 			written.delete(name);
+		}
+
+		if (wrapper !== undefined && element.IsA("GuiObject")) {
+			const sized = written.has("Size") || declared.Size !== undefined;
+			if (sized !== fills) {
+				fills = sized;
+				element.Size = sized
+					? UDim2.fromScale(1, 1)
+					: (classMember(writer.hostTag, "Size") as UDim2);
+				// A sized box hugging a child that fills it would size itself
+				// off that child, as React's box never does.
+				if (wrapper.IsA("GuiObject") && hugs !== undefined) {
+					wrapper.AutomaticSize = sized ? Enum.AutomaticSize.None : hugs;
+				}
+			}
 		}
 	});
 }
