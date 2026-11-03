@@ -247,6 +247,14 @@ dictionary), rem on both the static and the host path, `hover:`, `active:`, `foc
   built up front instead, and the children thunk returns the subset the resolution
   currently names. Vide unparents the rest. `hover:rounded-lg` costs one UICorner that
   spends most of its life detached.
+- **A static offset binds through an action.** An instance a function child builds sits in
+  that child's effect, so the same refusal throws for any thunked prop on it, and a rem
+  offset is one. `{() => items.map((item) => <frame className="w-6" />)}` took the whole
+  root down. A static element's offsets now leave as one `__VelaRem.bind({ ... })` action
+  child, which opens its effect untracked: owned by the scope it is built in, rerun with
+  the viewport, torn down with the function child. A component is safe as it is, because
+  `Vide.jsx` calls every component untracked. A class followed by a spread keeps a binding
+  per prop, since the action writes after every attribute and would beat the spread.
 - **A helper's props follow the resolution, not the snapshot.** Built once from the
   untracked snapshot they freeze — and at creation the viewport is still 1×1, so rem
   freezes at a ratio of 1. This is invisible under a variant probe, because the variant

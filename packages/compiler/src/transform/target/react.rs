@@ -50,6 +50,10 @@ impl EmitTarget for ReactTarget {
         false
     }
 
+    fn binds_rem_by_action(&self) -> bool {
+        false
+    }
+
     /// Each test is narrowed to a boolean where it is written, so an expression
     /// the rules hang on is evaluated once however many of them name it. A
     /// re-render is what brings the next value, so the value itself travels.

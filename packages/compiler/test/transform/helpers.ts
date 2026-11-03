@@ -28,7 +28,13 @@ export const withoutPreflight = {
 // properties of its own, so an assertion about what an element emitted has to
 // read the declaration rather than the whole emit.
 export const emitted = (code: string) =>
-	code.trimEnd().split("\n").at(-1) ?? "";
+	code
+		.replace(/__VelaRem\.bind\(\{[^}]*\}\)/g, (binding) =>
+			binding.replace(/\s*\n\s*/g, " "),
+		)
+		.trimEnd()
+		.split("\n")
+		.at(-1) ?? "";
 
 /// The config travels as the host factory's first argument, so it ends at the
 /// only closing brace the emitter leaves at column zero.

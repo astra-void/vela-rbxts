@@ -653,6 +653,23 @@ export function SurfacePanel() {
 	);
 }
 
+/// Instances a function child builds sit in its effect, where Vide refuses a
+/// prop effect; their rem offsets have to reach them anyway. The list flips
+/// with `active`, so the bindings are also torn down and rebuilt.
+function RemInsideThunk(props: { active: () => boolean }) {
+	return (
+		<Row label="rem inside a thunk">
+			<frame Name="RemThunkProbe" className="flex flex-row gap-1 h-6">
+				{() =>
+					(props.active() ? [1, 2, 3] : [1, 2]).map((n) => (
+						<frame Name={`r${n}`} className="w-6 h-6 rounded-sm bg-slate-600" />
+					))
+				}
+			</frame>
+		</Row>
+	);
+}
+
 export function App() {
 	const active = Vide.source(false);
 	// A template the collapser cannot read, so this one stays on the runtime
@@ -688,6 +705,7 @@ export function App() {
 				{HelperTransitions()}
 				{LateArrivals({ active })}
 				{DivideOrdering({ active })}
+				{RemInsideThunk({ active })}
 			</frame>
 		</screengui>
 	);

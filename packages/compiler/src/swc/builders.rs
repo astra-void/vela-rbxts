@@ -146,6 +146,13 @@ pub(crate) fn deferred_body(expr: &Expr) -> Option<&Expr> {
     }
 }
 
+pub(crate) fn create_expression_child(value: &str) -> JSXElementChild {
+    JSXElementChild::JSXExprContainer(JSXExprContainer {
+        span: DUMMY_SP,
+        expr: JSXExpr::Expr(parse_expression(value)),
+    })
+}
+
 pub(crate) fn parse_expression(value: &str) -> Box<Expr> {
     crate::swc::parse::parse_expression(value)
 }

@@ -42,6 +42,12 @@ pub(crate) trait EmitTarget {
     /// reads it off the element, before the child has resolved anything.
     fn reads_built_layout_order(&self) -> bool;
 
+    /// Whether a static element's rem offsets travel as one action child rather
+    /// than as a binding per prop. Vide refuses to open a prop effect on an
+    /// instance built inside a function child, and an action can open one
+    /// untracked.
+    fn binds_rem_by_action(&self) -> bool;
+
     /// The expressions the emitted branch rules decide on, as one attribute the
     /// host reads by index.
     fn tests_attr(&self, tests: Vec<Expr>) -> JSXAttrOrSpread;

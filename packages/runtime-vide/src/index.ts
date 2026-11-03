@@ -44,6 +44,7 @@ const videJsx = (
 type VelaRemScaler = {
 	scale: <T>(value: T, slot: number) => () => T;
 	scaleText: (value: number, slot: number) => () => number;
+	bind: (offsets: Record<string, unknown>) => Vide.Action<Instance>;
 };
 
 type VelaRuntimeHostProps = {
@@ -163,7 +164,36 @@ namespace __VelaRemSource {
 			return () => math.min(value * ratio(), __VelaRemCore.TEXT_SIZE_CEILING);
 		}
 
-		return { scale, scaleText };
+		/// What a statically lowered element scales. An instance built inside a
+		/// function child sits in that child's effect, where Vide refuses a prop
+		/// effect but lets an untracked one open, owned by and rerun with it.
+		function bind(offsets: Record<string, unknown>): Vide.Action<Instance> {
+			const pinned = __VelaPin.pinned();
+
+			return Vide.action((instance) => {
+				const target = instance as unknown as Record<string, unknown>;
+				const write = (current: number) => {
+					for (const [name, value] of pairs(offsets)) {
+						target[name] =
+							name === "TextSize"
+								? math.min(
+										(value as number) * current,
+										__VelaRemCore.TEXT_SIZE_CEILING,
+									)
+								: __VelaRemCore.apply(value as never, current);
+					}
+				};
+
+				if (pinned) {
+					write(1);
+					return;
+				}
+
+				Vide.untrack(() => Vide.effect(() => write(ratio())));
+			});
+		}
+
+		return { scale, scaleText, bind };
 	}
 }
 

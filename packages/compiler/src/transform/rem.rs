@@ -115,6 +115,41 @@ impl RemScaler {
         }
     }
 
+    /// Splits the offsets out of `props` into one `bind` expression, which the
+    /// runtime turns into an action that writes them.
+    pub(crate) fn bind_props(&mut self, props: Vec<PropEntry>) -> (Vec<PropEntry>, Option<String>) {
+        self.bind(props, scales_prop)
+    }
+
+    pub(crate) fn bind_helper(&mut self, helper: HelperEntry) -> (HelperEntry, Option<String>) {
+        let tag = helper.tag;
+        let (props, binding) = self.bind(helper.props, |name| scales_helper_prop(tag, name));
+
+        (HelperEntry { tag, props }, binding)
+    }
+
+    fn bind(
+        &mut self,
+        props: Vec<PropEntry>,
+        should_scale: impl Fn(&str) -> bool,
+    ) -> (Vec<PropEntry>, Option<String>) {
+        let (scaled, kept): (Vec<_>, Vec<_>) = props
+            .into_iter()
+            .partition(|prop| should_scale(&prop.name) && carries_offset(&prop.value));
+        if scaled.is_empty() {
+            return (kept, None);
+        }
+
+        self.used = true;
+        let fields = scaled
+            .iter()
+            .map(|prop| format!("{}: {}", prop.name, prop.value))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        (kept, Some(format!("{REM_NAMESPACE}.bind({{ {fields} }})")))
+    }
+
     fn expression(&mut self, name: &str, value: &str) -> String {
         let method = if name == TEXT_SIZE_PROP {
             "scaleText"
@@ -198,6 +233,46 @@ mod tests {
         let prop = scaler.prop(prop);
 
         (prop, scaler.used)
+    }
+
+    #[test]
+    fn a_binding_takes_only_the_offsets() {
+        let mut scaler = RemScaler::default();
+        let (kept, binding) = scaler.bind_props(vec![
+            PropEntry {
+                name: "Size".into(),
+                value: "UDim2.fromOffset(24, 24)".to_owned(),
+            },
+            PropEntry {
+                name: "ZIndex".into(),
+                value: "3".to_owned(),
+            },
+            PropEntry {
+                name: "TextSize".into(),
+                value: "14".to_owned(),
+            },
+        ]);
+
+        assert_eq!(
+            binding.as_deref(),
+            Some("__VelaRem.bind({ Size: UDim2.fromOffset(24, 24), TextSize: 14 })")
+        );
+        assert_eq!(kept.len(), 1);
+        assert_eq!(&*kept[0].name, "ZIndex");
+        assert!(scaler.used);
+    }
+
+    #[test]
+    fn nothing_to_scale_binds_nothing() {
+        let mut scaler = RemScaler::default();
+        let (kept, binding) = scaler.bind_props(vec![PropEntry {
+            name: "Size".into(),
+            value: "UDim2.fromScale(1, 1)".to_owned(),
+        }]);
+
+        assert_eq!(binding, None);
+        assert_eq!(kept.len(), 1);
+        assert!(!scaler.used);
     }
 
     #[test]

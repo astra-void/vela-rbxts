@@ -47,6 +47,10 @@ impl EmitTarget for VideTarget {
         true
     }
 
+    fn binds_rem_by_action(&self) -> bool {
+        true
+    }
+
     /// The React target can hand the host a boolean, because a re-render brings
     /// the next one. A Vide component body runs once, so a test that arrived
     /// evaluated would pin its rule to whatever was true at creation.

@@ -10,8 +10,8 @@ use crate::ir::model::{PropEntry, StyleIr, TextSpec};
 use crate::semantic::plugin::{ExpandedToken, expand_class_token};
 use crate::semantic::utility::{UtilityKind, parse_utility};
 use crate::swc::builders::{
-    create_helper_child, create_helper_child_cast_any, create_prop_attr, create_prop_attr_cast_any,
-    helper_tag_name, inherit_child_span, inherit_span,
+    create_expression_child, create_helper_child, create_helper_child_cast_any, create_prop_attr,
+    create_prop_attr_cast_any, helper_tag_name, inherit_child_span, inherit_span,
 };
 use crate::transform::boundary::{
     consume_component_function, consume_component_initializer, is_component_binding,
@@ -436,12 +436,15 @@ impl VisitMut for VelaTransformer {
         } else {
             create_helper_child
         };
+        let binds_rem = scales_rem && self.target.binds_rem_by_action();
         let mut helper_children = Vec::new();
         for helper in lowered.style_ir.base.helpers {
-            let helper = if scales_rem {
-                self.rem.helper(helper)
+            let (helper, binding) = if binds_rem {
+                self.rem.bind_helper(helper)
+            } else if scales_rem {
+                (self.rem.helper(helper), None)
             } else {
-                helper
+                (helper, None)
             };
             let tag = crate::semantic::utility::helper_element_tag(helper.tag);
             let name = match self.target.helper_element_name(tag) {
@@ -451,7 +454,15 @@ impl VisitMut for VelaTransformer {
                 }
                 None => helper_tag_name(tag),
             };
-            let mut child = create_child(helper, name);
+            let mut child = create_child(helper, name.clone());
+            if let (Some(binding), JSXElementChild::JSXElement(element)) = (binding, &mut child) {
+                element.opening.self_closing = false;
+                element.children = vec![create_expression_child(&binding)];
+                element.closing = Some(JSXClosingElement {
+                    span: DUMMY_SP,
+                    name,
+                });
+            }
             inherit_child_span(&mut child, lowered.class_name_span);
             helper_children.push(child);
         }
@@ -579,14 +590,29 @@ impl VisitMut for VelaTransformer {
                 closing.name = element.opening.name.clone();
             }
         } else {
+            // A binding writes after every attribute, so a spread that follows
+            // the class would lose to it; such an element keeps a binding per prop.
+            let has_spread = attrs
+                .iter()
+                .any(|attr| matches!(attr, JSXAttrOrSpread::SpreadElement(_)));
+            let bound = binds_rem && !has_spread;
+            let mut props = lowered.style_ir.base.props;
+            if bound {
+                let (kept, binding) = self.rem.bind_props(props);
+                props = kept;
+                if let Some(binding) = binding {
+                    helper_children.push(create_expression_child(&binding));
+                }
+            }
+            let scales_props = scales_rem && !bound;
             let rem = &mut self.rem;
             place_lowered_props(
                 &mut attrs,
-                lowered.style_ir.base.props,
+                props,
                 &neutralized,
                 lowered.class_name_index,
                 |prop| {
-                    if !scales_rem {
+                    if !scales_props {
                         return create_prop_attr(prop);
                     }
 

@@ -66,24 +66,34 @@ expect(
 	/Vide\.jsx\("uicorner"/.test(source) && /Vide\.jsx\("uipadding"/.test(source),
 );
 
-// Rem needs no emit change at all: Vide's Derivable accepts the thunk the
-// scaler returns where React accepted a binding.
+// A static element's offsets travel as one action child: Vide refuses a prop
+// effect on an instance a function child builds, and the action opens its own.
 expect(
-	"rem-scaled offsets stay a plain call at the prop site",
-	/CornerRadius = __VelaRem\.scale\(UDim\.new\(0, 8\), \d+\)/.test(source),
+	"rem-scaled offsets bind through an action child",
+	/__VelaRem\.bind\(\{\s*CornerRadius = UDim\.new\(0, 8\),?\s*\}\)/.test(
+		source,
+	) && !/__VelaRem\.scale\(/.test(source),
 );
 
 // A directional radius names the corners it rounds and squares off the rest,
 // so the same UICorner carries all four rather than the shorthand.
 const directionalCorners = [
-	/TopLeftRadius = __VelaRem\.scale\(UDim\.new\(0, 8\), \d+\)/,
-	/BottomLeftRadius = __VelaRem\.scale\(UDim\.new\(0, 8\), \d+\)/,
+	/TopLeftRadius = UDim\.new\(0, 8\)/,
+	/BottomLeftRadius = UDim\.new\(0, 8\)/,
 	/TopRightRadius = UDim\.new\(0, 0\)/,
 	/BottomRightRadius = UDim\.new\(0, 0\)/,
 ];
 expect(
 	"a directional radius squares the corners it does not name",
 	directionalCorners.every((corner) => corner.test(source)),
+);
+
+// The DEV-65 shape: rem-scaled elements built inside a function child.
+expect(
+	"elements a function child builds bind their offsets too",
+	/Name = `r\{n\}`[\s\S]{0,300}__VelaRem\.bind\(\{\s*Size = UDim2\.fromOffset\(24, 24\)/.test(
+		source,
+	),
 );
 
 // The collapser opens the thunk a Vide class value is written as, so a

@@ -78,6 +78,63 @@ test("the Vide runtime host consumes rem metadata reactively", () => {
 	expect(videRuntimeSource).toContain("__VelaRemCore.TEXT_SIZE_CEILING");
 });
 
+const withVide = {
+	configJson: JSON.stringify(defineConfig({ framework: "vide" })),
+};
+
+// Vide refuses a prop effect on an instance built inside a function child, so
+// a static element's offsets travel as one action that opens its effect untracked.
+test("a static Vide element binds its offsets through one action child", () => {
+	const result = transform('<frame className="w-6 h-6 p-2" />', withVide);
+	const code = emitted(result.code);
+
+	expect(result.needsRuntimeHost).toBe(false);
+	expect(code).not.toContain("__VelaRem.scale");
+	expect(code).toContain(
+		"<uipadding>{__VelaRem.bind({ PaddingTop: new UDim(0, 8), PaddingRight: new UDim(0, 8), PaddingBottom: new UDim(0, 8), PaddingLeft: new UDim(0, 8) })}</uipadding>",
+	);
+	expect(code).toContain(
+		"{__VelaRem.bind({ Size: UDim2.fromOffset(24, 24) })}</frame>",
+	);
+	expect(videRuntimeSource).toContain(
+		"Vide.untrack(() => Vide.effect(() => write(ratio())));",
+	);
+});
+
+test("an element built inside a function child is bound the same way", () => {
+	const result = transform(
+		'<frame>{() => [1, 2].map((n) => <frame className="w-6 h-6" />)}</frame>',
+		withVide,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(emitted(result.code)).toContain(
+		"BackgroundTransparency={1}>{__VelaRem.bind({ Size: UDim2.fromOffset(24, 24) })}</frame>)}</frame>",
+	);
+});
+
+// The action writes after every attribute, which would beat a later spread.
+test("a spread after the class keeps a binding per prop on Vide", () => {
+	const result = transform(
+		'<frame className="w-6 h-6" {...props} />',
+		withVide,
+	);
+
+	expect(emitted(result.code)).toContain(
+		"Size={__VelaRem.scale(UDim2.fromOffset(24, 24), 0)}",
+	);
+	expect(result.code).not.toContain("__VelaRem.bind");
+});
+
+test("the React target keeps a binding per prop", () => {
+	const result = transform('<frame className="w-6 h-6" />');
+
+	expect(emitted(result.code)).toContain(
+		"Size={__VelaRem.scale(UDim2.fromOffset(24, 24), 0)}",
+	);
+	expect(result.code).not.toContain("__VelaRem.bind");
+});
+
 test("the Vide margin wrapper reads its base spec and current rem ratio", () => {
 	const result = transform('<frame className="m-4 hover:bg-red-500" />', {
 		configJson: JSON.stringify(defineConfig({ framework: "vide" })),
