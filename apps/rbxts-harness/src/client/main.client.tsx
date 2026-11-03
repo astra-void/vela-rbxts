@@ -3,6 +3,7 @@ import ReactRoblox from "@rbxts/react-roblox";
 import { Players } from "@rbxts/services";
 import { App, SurfaceMount } from "./App";
 import { MarginTweenProbe } from "./MarginTween";
+import { DivideGapProbe } from "./DivideGapProbe";
 import { Probe } from "./Probe";
 
 const localPlayer = Players.LocalPlayer;
@@ -31,5 +32,6 @@ root.render(
 		<SurfaceMount>{surfaceChildren}</SurfaceMount>
 		<Probe />
 		<MarginTweenProbe />
+		<DivideGapProbe gap="gap-4" />
 	</>,
 );
