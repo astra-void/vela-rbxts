@@ -204,3 +204,17 @@ test("keeps one helper instance when a branch overwrites the base's", () => {
 		{ kind: "test", index: 0, expected: true },
 	]);
 });
+
+// The scope used to keep only whether a `const` was truthy, so a string one
+// read as a class value lowered to nothing at all.
+test("a const string used as the class value lowers its classes", () => {
+	const result = transform(
+		'const item = "w-6 bg-slate-500"; export function A() { return <frame className={item} />; }',
+	);
+
+	expect(result.needsRuntimeHost).toBe(false);
+	expect(result.code).toContain(
+		"BackgroundColor3={Color3.fromRGB(98, 116, 142)}",
+	);
+	expect(result.code).toContain("UDim2.fromOffset(24, 0)");
+});

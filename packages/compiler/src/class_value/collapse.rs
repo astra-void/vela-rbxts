@@ -245,7 +245,12 @@ impl Reducer<'_> {
             },
             Expr::Lit(Lit::Bool(_)) | Expr::Lit(Lit::Null(_)) => Reduction::default(),
             Expr::Ident(ident) if ident.sym == "undefined" => Reduction::default(),
-            Expr::Ident(ident) if self.scopes.resolve(ident).is_some() => Reduction::default(),
+            Expr::Ident(ident) if self.scopes.resolve(ident).is_some() => {
+                match self.scopes.resolve_text(ident) {
+                    Some(text) => Reduction::tokens(owned_tokens(text)),
+                    None => Reduction::default(),
+                }
+            }
             Expr::Unary(UnaryExpr {
                 op: UnaryOp::Bang,
                 arg,
@@ -510,6 +515,15 @@ fn owned_tokens(value: &str) -> Vec<String> {
 }
 
 /// A template with nothing to substitute is a string literal wearing backticks.
+pub(crate) fn constant_text(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Paren(ParenExpr { expr, .. }) => constant_text(expr),
+        Expr::Lit(Lit::Str(value)) => Some(value.value.to_string_lossy().into_owned()),
+        Expr::Tpl(template) => no_substitution_template(template),
+        _ => None,
+    }
+}
+
 fn no_substitution_template(template: &Tpl) -> Option<String> {
     if !template.exprs.is_empty() {
         return None;

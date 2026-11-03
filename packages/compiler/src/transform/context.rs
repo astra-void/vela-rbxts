@@ -182,8 +182,11 @@ impl VisitMut for VelaTransformer {
                 continue;
             };
 
-            self.class_value_scopes
-                .insert(binding.id.sym.to_string(), value);
+            self.class_value_scopes.insert(
+                binding.id.sym.to_string(),
+                value,
+                crate::class_value::collapse::constant_text(init),
+            );
         }
     }
 
