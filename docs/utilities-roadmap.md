@@ -233,8 +233,11 @@ CSS reads these through the selector tree; Roblox has none, and a React context
 cannot cross into Vide, where children are built before their parents. **Implemented**
 by lowering the `group` / `peer` markers (with an optional `/name`) to CollectionService
 tags and letting a shared observer in `@rbxts/vela-runtime-core` find the nearest tagged
-ancestor or a tagged sibling in the instance tree. Only `hover`, `active` and `focus`
-are read; any other inner state warns `unsupported-relational-variant`. Roblox keeps no
+ancestor or a tagged sibling in the instance tree. `hover`, `active`, `focus` and the
+attribute variants (registered ones and `attr-[…]`) are read, the attributes through one
+`GetAttributeChangedSignal` connection per attribute per observed instance; responsive
+and other environment states (`group-md:`, `peer-dark:`) warn
+`unsupported-relational-variant`. Roblox keeps no
 sibling order, so any marked sibling counts as a peer, not only an earlier one. A
 margin box is tagged `VelaMarginBox` so peers are looked for beside it.
 
