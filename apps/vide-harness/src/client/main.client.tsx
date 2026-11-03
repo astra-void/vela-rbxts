@@ -1,6 +1,7 @@
 import { Players } from "@rbxts/services";
 import Vide from "@rbxts/vide";
 import { App } from "./App";
+import { MarginTweenProbe } from "./MarginTween";
 
 const localPlayer = Players.LocalPlayer;
 if (!localPlayer) {
@@ -13,3 +14,4 @@ if (!playerGuiInstance.IsA("PlayerGui")) {
 }
 
 Vide.mount(() => App(), playerGuiInstance);
+Vide.mount(() => MarginTweenProbe(), playerGuiInstance);

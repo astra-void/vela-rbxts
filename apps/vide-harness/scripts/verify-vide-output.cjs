@@ -249,6 +249,8 @@ for (const fragment of [
 	"GetInstanceAddedSignal",
 	"element:AddTag(marker)",
 	"element:RemoveTag(marker)",
+	// The margin box tweens the layout props it carries rather than snapping.
+	"marginBox = true",
 ]) {
 	expect(
 		`the vide runtime carries ${fragment}`,

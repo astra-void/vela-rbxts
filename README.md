@@ -685,6 +685,8 @@ What each group covers:
 
 `UICorner.CornerRadius` and the layout helpers belong to no narrow group; `transition` covers them. A value Roblox cannot tween, such as the `ColorSequence` or `NumberSequence` a `UIGradient` holds, is written instantly whatever the group says.
 
+An `m-*` element's `Size`, `Position`, `AnchorPoint`, `LayoutOrder` and `ZIndex` live on its margin box, so that is where they tween: `<frame className="m-4 w-20 transition-all hover:w-40" />` widens the box, margin included, and the element fills it as it grows.
+
 ### Arbitrary Values
 
 Length families read a `[...]` payload directly, so a one-off value does not need a theme key:
@@ -993,8 +995,9 @@ export const springDriver = {
   // `EasingStyle`/`EasingDirection` member names — "Linear", "InOut" — so they
   // index the enums directly.
   // `target` (added in 0.13) says what `instance` is: `{ owner }` for the
-  // styled GuiObject, and `{ owner, helper: "uicorner" }` for one of the UI*
-  // helpers vela renders under it.
+  // styled GuiObject, `{ owner, helper: "uicorner" }` for one of the UI*
+  // helpers vela renders under it, and `{ owner, marginBox: true }` for the
+  // margin box an `m-*` wraps it in.
   transition(instance: Instance, goal: Record<string, unknown>, spec, target?) { … },
   // `animate-spin` and friends, by name. Return a cleanup for when the
   // animation is taken away.
@@ -1006,7 +1009,7 @@ Write them as methods, as above — not as arrow properties. roblox-ts gives a m
 
 Each method is taken over independently, so a driver that only implements `transition` keeps the built-in `animate-*` presets. **A driver that implements `transition` owns writing those properties**: while a transition is in play the element renders its held value and never assigns the new one itself, so a driver that does nothing leaves the instance where it was.
 
-`transition` is also called for the UI* helpers vela renders under the element: a `UICorner` a `hover:rounded-xl` reshapes, a `UIStroke` a border variant repaints, a `UIShadow` a `shadow-*` variant grows. The instance passed is the helper itself, and the fourth argument names it, so a driver keying state off the element can still tell the two apart. The argument is optional and additive: a driver written against the three-argument shape keeps working and simply tweens the helper as it would any other instance.
+`transition` is also called for the UI* helpers vela renders under the element: a `UICorner` a `hover:rounded-xl` reshapes, a `UIStroke` a border variant repaints, a `UIShadow` a `shadow-*` variant grows. The instance passed is the helper itself, and the fourth argument names it, so a driver keying state off the element can still tell the two apart. The same goes for the margin box around an `m-*` element, which is handed the layout props it carries with `marginBox: true`. The argument is optional and additive: a driver written against the three-argument shape keeps working and simply tweens the helper as it would any other instance.
 
 Because a JSON config cannot hold a function, `vela.config.json` states the resolved result instead:
 

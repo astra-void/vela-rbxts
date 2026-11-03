@@ -849,6 +849,13 @@ export function createVelaRuntimeHost(
 			const lastGoal = __VelaReact.useRef<RuntimePropMap | undefined>(
 				undefined,
 			);
+			const wrapperRef = __VelaReact.useRef<Instance | undefined>(undefined);
+			const heldWrapperProps = __VelaReact.useRef<RuntimePropMap | undefined>(
+				undefined,
+			);
+			const lastWrapperGoal = __VelaReact.useRef<RuntimePropMap | undefined>(
+				undefined,
+			);
 			// A helper is an instance of its own, so tweening one needs its ref
 			// and its own held values, the same two the element itself needs.
 			const helperRefs = __VelaReact.useRef(new Map<string, Instance>());
@@ -1020,38 +1027,41 @@ export function createVelaRuntimeHost(
 			// arrives as a plain prop. Seeding from the resolution alone first sees
 			// the prop on the render a variant introduces it, holds that new value,
 			// and leaves the tween nothing to travel from.
-			const tweenGoal: RuntimePropMap = {};
+			//
+			// The margin box takes the layout props first, so each instance holds
+			// and tweens its own share, the box's `Size` margin included.
+			const wrapperProps =
+				margin !== undefined
+					? __VelaMarginCore.prepareMarginWrapper(margin, hostProps)
+					: undefined;
+			let tweenGoal: RuntimePropMap = {};
+			let wrapperGoal: RuntimePropMap | undefined;
 			if (transition !== undefined) {
 				if (heldProps.current === undefined) {
 					heldProps.current = {};
 				}
-				const held = heldProps.current;
-				for (const [name, value] of pairs(hostProps)) {
-					if (!__VelaMotion.isTweenableValue(value)) {
-						continue;
-					}
-					// Layout props move to the margin wrapper, which the inner
-					// instance ref cannot tween; they apply instantly instead.
-					if (
-						margin !== undefined &&
-						__VelaMarginCore.isMarginWrapperProp(name as string)
-					) {
-						continue;
-					}
-					if (
-						!__VelaMotion.transitionCoversProp(
-							transition.property,
-							name as string,
-						)
-					) {
-						continue;
-					}
-					tweenGoal[name as string] = value;
-					if (held[name as string] === undefined) {
-						held[name as string] = value;
-					}
-					hostProps[name as string] = held[name as string];
+				tweenGoal = __VelaMotion.holdTweenGoal(
+					hostProps,
+					heldProps.current,
+					transition.property,
+				);
+			}
+			if (transition !== undefined && wrapperProps !== undefined) {
+				if (heldWrapperProps.current === undefined) {
+					heldWrapperProps.current = {};
 				}
+				wrapperGoal = __VelaMotion.holdTweenGoal(
+					wrapperProps,
+					heldWrapperProps.current,
+					transition.property,
+					__VelaMarginCore.isMarginWrapperProp,
+				);
+				wrapperProps.ref = (instance: Instance | undefined) => {
+					wrapperRef.current = instance;
+				};
+			} else {
+				// A box that comes back is a new instance with nothing to tween from.
+				heldWrapperProps.current = undefined;
 			}
 			if (transition !== undefined || animationActive || observesHost) {
 				hostProps.ref = (instance: Instance | undefined) => {
@@ -1091,20 +1101,37 @@ export function createVelaRuntimeHost(
 					return;
 				}
 
-				const changed: Record<string, RuntimePropValue> = {};
-				let hasChanged = false;
-				for (const [name, value] of pairs(tweenGoal)) {
-					if (previous[name as string] !== value) {
-						changed[name as string] = value;
-						hasChanged = true;
-					}
-				}
-				if (!hasChanged) {
+				const changed = __VelaMotion.changedGoal(previous, tweenGoal);
+				if (changed === undefined) {
 					return;
 				}
 
 				__VelaMotion.playTransition(instance, changed, transition, {
 					owner: instance,
+				});
+			});
+
+			__VelaReact.useEffect(() => {
+				const previous = lastWrapperGoal.current;
+				lastWrapperGoal.current = wrapperGoal;
+				const instance = wrapperRef.current;
+				if (
+					transition === undefined ||
+					wrapperGoal === undefined ||
+					previous === undefined ||
+					instance === undefined
+				) {
+					return;
+				}
+
+				const changed = __VelaMotion.changedGoal(previous, wrapperGoal);
+				if (changed === undefined) {
+					return;
+				}
+
+				__VelaMotion.playTransition(instance, changed, transition, {
+					owner: instanceRef.current ?? instance,
+					marginBox: true,
 				});
 			});
 			__VelaApply.applyHelperDefaults(resolution.helpers);
@@ -1169,15 +1196,8 @@ export function createVelaRuntimeHost(
 						continue;
 					}
 
-					const changed: Record<string, RuntimePropValue> = {};
-					let hasChanged = false;
-					for (const [name, value] of pairs(goal)) {
-						if (before[name as string] !== value) {
-							changed[name as string] = value;
-							hasChanged = true;
-						}
-					}
-					if (!hasChanged) {
+					const changed = __VelaMotion.changedGoal(before, goal);
+					if (changed === undefined) {
 						continue;
 					}
 
@@ -1242,11 +1262,6 @@ export function createVelaRuntimeHost(
 					allChildren.push(child);
 				}
 			}
-
-			const wrapperProps =
-				margin !== undefined
-					? __VelaMarginCore.prepareMarginWrapper(margin, hostProps)
-					: undefined;
 
 			// React renders a component reference the same way it renders a host tag.
 			const element = __VelaReact.createElement(

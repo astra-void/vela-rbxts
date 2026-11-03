@@ -244,7 +244,11 @@ const requiredRuntimeFragments = [
 	// Held tween values seed from the merged props. Narrowing this back to
 	// resolution.props loses every statically lowered base value, and a
 	// variant then has nothing to tween from.
-	"for name, value in pairs(hostProps) do",
+	"__VelaMotion.holdTweenGoal(hostProps, heldProps.current,",
+	// The margin box carries the layout props, so it holds and tweens them
+	// itself instead of letting them snap.
+	"__VelaMotion.holdTweenGoal(wrapperProps, heldWrapperProps.current,",
+	"marginBox = true",
 	"__VelaMotion.setDriver(motionDriver)",
 	// A driver's methods carry an implicit `self`, so the call has to stay a
 	// method call — detached, every argument lands one place to the left.

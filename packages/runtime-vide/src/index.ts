@@ -1176,20 +1176,21 @@ function writeResolvedProps(writer: ResolvedPropWriter) {
 	}
 
 	function write(name: string, final: unknown, update: boolean) {
-		const target = routed(name) ? (wrapper as Instance) : element;
+		const boxed = routed(name);
+		const target = boxed ? (wrapper as Instance) : element;
 
-		// The wrapper is the margin box rather than this element, so a tween on
-		// it would move a property that is not the element's own.
 		if (
 			update &&
 			transition !== undefined &&
-			target === element &&
 			__VelaMotion.transitionCoversProp(transition.property, name) &&
 			__VelaMotion.isTweenableValue(final)
 		) {
-			__VelaMotion.playTransition(element, { [name]: final }, transition, {
-				owner: element,
-			});
+			__VelaMotion.playTransition(
+				target,
+				{ [name]: final },
+				transition,
+				boxed ? { owner: element, marginBox: true } : { owner: element },
+			);
 			return;
 		}
 

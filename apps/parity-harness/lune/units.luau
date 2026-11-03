@@ -3,6 +3,7 @@
 -- same compiled output the differential suites load.
 
 local process = require("@lune/process")
+local roblox = require("@lune/roblox") :: any
 local task = require("@lune/task")
 
 local shim = require("./rbxts-shim")
@@ -450,6 +451,50 @@ do
 	check("a plugin body's peer is watched", needs.peers[1] == "", `{#needs.peers} peers`)
 	local names = core.__VelaResolution.attributeNames(theme, {}, "md:card")
 	check("a plugin body's attribute is watched", names[1] == "Selected", `{#names} names`)
+end
+
+-- A margin box carries the layout props, so a transition holds and tweens each
+-- instance's share on its own, the box's margin included in its Size.
+do
+	local motion, margin = core.__VelaMotion, core.__VelaMargin
+	local UDim2, Color3 = roblox.UDim2, roblox.Color3
+	local spacing = { top = 16, right = 16, bottom = 16, left = 16 }
+	local red = Color3.new(1, 0, 0)
+	local function render(width: number): ({ [string]: any }, { [string]: any })
+		local props: { [string]: any } = {
+			Size = UDim2.fromOffset(width, 40),
+			Position = UDim2.fromOffset(10, 0),
+			BackgroundColor3 = red,
+			BackgroundTransparency = 0.5,
+		}
+		return props, margin.prepareMarginWrapper(spacing, props)
+	end
+
+	local held, heldBox = {}, {}
+	local props, box = render(80)
+	local goal = motion.holdTweenGoal(props, held, "all")
+	local boxGoal = motion.holdTweenGoal(box, heldBox, "all", margin.isMarginWrapperProp)
+	check("the box tweens its size with the margin", boxGoal.Size == UDim2.fromOffset(112, 72))
+	check("the box tweens its position", boxGoal.Position == UDim2.fromOffset(10, 0))
+	check("the box keeps its own transparency out of the tween", boxGoal.BackgroundTransparency == nil)
+	check("the element keeps what stayed on it", goal.BackgroundColor3 == red and goal.BackgroundTransparency == 0.5)
+	check("the element leaves the layout props to the box", goal.Position == nil and goal.Size == UDim2.fromScale(1, 1))
+
+	local _, wider = render(160)
+	local widerGoal = motion.holdTweenGoal(wider, heldBox, "all", margin.isMarginWrapperProp)
+	check("the box renders the held size while the tween runs", wider.Size == UDim2.fromOffset(112, 72))
+	local changed = motion.changedGoal(boxGoal, widerGoal)
+	check(
+		"only the box's size moves",
+		changed ~= nil and changed.Size == UDim2.fromOffset(192, 72) and changed.Position == nil
+	)
+	check("a goal that did not move changes nothing", motion.changedGoal(widerGoal, widerGoal) == nil)
+
+	local _, colored = render(80)
+	check(
+		"a colour transition leaves the box alone",
+		next(motion.holdTweenGoal(colored, {}, "colors", margin.isMarginWrapperProp)) == nil
+	)
 end
 
 if failures > 0 then

@@ -1,7 +1,13 @@
+import { readFileSync } from "node:fs";
 import { transform } from "@vela-rbxts/compiler";
 import { expect, test } from "vitest";
 import { defineConfig, plugin } from "../../../config/src/index";
 import { runtimeSource } from "./helpers";
+
+const videRuntimeSource = readFileSync(
+	new URL("../../../runtime-vide/src/index.ts", import.meta.url),
+	"utf8",
+);
 
 test("attaches a transition config to the runtime host", () => {
 	const result = transform(
@@ -250,4 +256,21 @@ test("the motion driver is told which helper a tween belongs to", () => {
 	expect(runtimeSource).toContain("VelaMotionTarget");
 	expect(runtimeSource).toContain("helper?: string");
 	expect(runtimeSource).toContain("driver.transition(instance, goal, spec,");
+});
+
+// The margin box carries the layout props, so a width a hover widens has to
+// tween on the box or it snaps.
+test("a margined element tweens its layout props on the margin box", () => {
+	const result = transform(
+		`export const A = () => <frame className="m-4 w-20 h-10 transition-all hover:w-40" />;`,
+		null,
+	);
+
+	expect(result.diagnostics).toEqual([]);
+	expect(result.code).toContain("__velaMargin={");
+	expect(result.code).toContain("__velaTransition={");
+	expect(runtimeSource).toContain("marginBox?: boolean");
+	expect(runtimeSource).toContain("__VelaMarginCore.isMarginWrapperProp,");
+	expect(runtimeSource).toContain("marginBox: true");
+	expect(videRuntimeSource).toContain("{ owner: element, marginBox: true }");
 });

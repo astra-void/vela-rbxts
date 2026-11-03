@@ -1,6 +1,7 @@
 import { TweenService as __VelaTweenService } from "@rbxts/services";
 import { __VelaLua } from "./lua";
 import type {
+	RuntimePropMap,
 	RuntimePropValue,
 	RuntimeResolution,
 	RuntimeTransition,
@@ -179,6 +180,55 @@ export namespace __VelaMotion {
 			typeIs(value, "UDim2") ||
 			typeIs(value, "Vector2")
 		);
+	}
+
+	/// Pins every tweenable prop the group covers to the value first seen for
+	/// it, so a reconciler never rewrites the instance, and returns the values
+	/// the tween moves it to instead. `accepts` narrows it to the props one
+	/// instance owns when the element's props are split over two.
+	export function holdTweenGoal(
+		props: Record<string, unknown>,
+		held: RuntimePropMap,
+		property: string,
+		accepts?: (name: string) => boolean,
+	): RuntimePropMap {
+		const goal: RuntimePropMap = {};
+		for (const [key, value] of pairs(props)) {
+			const name = key as string;
+			if (
+				!isTweenableValue(value) ||
+				(accepts !== undefined && !accepts(name)) ||
+				!transitionCoversProp(property, name)
+			) {
+				continue;
+			}
+
+			goal[name] = value;
+			if (held[name] === undefined) {
+				held[name] = value;
+			}
+			props[name] = held[name];
+		}
+
+		return goal;
+	}
+
+	/// The part of `goal` that differs from the one before it, or nothing when
+	/// no prop moved.
+	export function changedGoal(
+		previous: RuntimePropMap,
+		goal: RuntimePropMap,
+	): RuntimePropMap | undefined {
+		const changed: RuntimePropMap = {};
+		let hasChanged = false;
+		for (const [name, value] of pairs(goal)) {
+			if (previous[name as string] !== value) {
+				changed[name as string] = value;
+				hasChanged = true;
+			}
+		}
+
+		return hasChanged ? changed : undefined;
 	}
 
 	function parseEasingStyle(name: string): Enum.EasingStyle {

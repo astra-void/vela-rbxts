@@ -291,13 +291,16 @@ export type VelaMotionSpec = RuntimeTransition;
 /**
  * What the tweening properties belong to. `helper` names the UI* child a
  * property lives on (`"uicorner"`, `"uistroke"`, `"uishadow"`, `"uiscale"`),
- * and is absent when the target is the styled GuiObject itself. `owner` is
- * always that GuiObject, so a driver can key its state off the element even
- * while it moves a helper.
+ * and is absent when the target is the styled GuiObject itself. `marginBox`
+ * is set when the target is the frame an `m-*` wraps the element in, which
+ * carries its `Size`, `Position`, `AnchorPoint`, `LayoutOrder` and `ZIndex`.
+ * `owner` is always that GuiObject, so a driver can key its state off the
+ * element even while it moves a helper or the box.
  */
 export type VelaMotionTarget = {
 	owner: Instance;
 	helper?: string;
+	marginBox?: boolean;
 };
 
 /**
@@ -322,7 +325,8 @@ export type VelaMotionDriver = {
 		spec: VelaMotionSpec,
 		/// Added in 0.13, and optional so a driver written against the older
 		/// three-argument shape keeps working. It says what `instance` is: the
-		/// styled GuiObject, or one of the UI* helpers vela renders under it.
+		/// styled GuiObject, one of the UI* helpers vela renders under it, or
+		/// the margin box around it.
 		target?: VelaMotionTarget,
 	): void;
 	animate?(instance: Instance, animation: string): (() => void) | undefined;

@@ -1,8 +1,7 @@
 # Phase 4 design review — structural transform utilities (`m-*`, `divide-*`)
 
-> **Status**: 4.1 (margin, option C) is implemented. When it overlaps with
-> transitions, layout props routed to the wrapper apply immediately without a tween
-> in v1 (wrapper-ref tweens come later).
+> **Status**: 4.1 (margin, option C) is implemented. Under a transition, the
+> layout props routed to the wrapper tween on the wrapper itself, on both hosts.
 > 4.2 (divide) is implemented too. It now ranks children by their `LayoutOrder`
 > (section 2), so the only constraint left is the gap approximation.
 
@@ -90,7 +89,12 @@ is pure addition. Scale margins do not exist, so there is no case explosion.
 - forwardRef/`instanceRef` (the tween/animate target) points at the **inner element**.
   However, props that a transition tweens but which route to the wrapper
   (Position/Size) have to tween the wrapper instance, so a separate wrapper ref is
-  captured too — `splitTweenGoal` is split in two along the routing table.
+  captured too and the tween goal is split in two along the routing table. React
+  runs `prepareMarginWrapper` before holding tween values, so
+  `__VelaMotion.holdTweenGoal` holds each instance's share separately (the
+  wrapper's narrowed by `isMarginWrapperProp`, its `Size` with the margin added).
+  The Vide writer tweens a routed prop on the wrapper it already writes to. A
+  motion driver sees `{ owner, marginBox: true }` for those tweens.
 - `mx-auto` + `m-*` combined: the centering (AnchorPoint/Position) applies to the
   wrapper.
 - Component elements (`<Switch.Root className="m-4">`) work as well: the host creates
