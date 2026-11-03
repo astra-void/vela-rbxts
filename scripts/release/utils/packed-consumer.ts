@@ -324,11 +324,13 @@ function buildPackedConsumerPackageJson(
 
 // pnpm 11 ignores package.json "pnpm.overrides"; both files are written so either version resolves the tarballs.
 function buildPackedConsumerWorkspaceYaml(overrides: Record<string, string>) {
-	// roblox-ts and Rojo walk real directories, and the runtime arrives as a
-	// transitive dependency of vela-rbxts — the symlinked default layout would
-	// leave it out of the consumer's own `node_modules/@rbxts`, which is the
-	// only place either of them looks.
-	const lines = ["packages: []", "nodeLinker: hoisted", "overrides:"];
+	// The README's pnpm setting: the default linker leaves the transitive runtimes out of `node_modules/@rbxts`.
+	const lines = [
+		"packages: []",
+		"publicHoistPattern:",
+		'  - "*@rbxts*"',
+		"overrides:",
+	];
 	for (const [name, specifier] of Object.entries(overrides)) {
 		lines.push(`  ${JSON.stringify(name)}: ${JSON.stringify(specifier)}`);
 	}

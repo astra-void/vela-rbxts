@@ -11,6 +11,16 @@ pnpm add vela-rbxts @rbxts/react @rbxts/react-roblox @rbxts/services
 pnpm add -D @rbxts/compiler-types @rbxts/types roblox-ts typescript
 ```
 
+The runtime (`@rbxts/vela-runtime` and the `@rbxts/vela-runtime-core` it builds on) arrives as a dependency of `vela-rbxts` and has to land in `node_modules/@rbxts`, the folder Rojo maps into the place. npm and Yarn's classic linker put it there. pnpm's default linker does not, so a pnpm project hoists the scope first, as `@rbxts/react` already asks:
+
+```yaml
+# pnpm-workspace.yaml
+publicHoistPattern:
+  - "*@rbxts*"
+```
+
+Without it the build fails with `runtime-not-installed` instead of producing a place that cannot find the runtime on play.
+
 ## Setup
 
 Register the transformer in `tsconfig.json`:

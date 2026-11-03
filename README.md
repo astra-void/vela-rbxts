@@ -64,6 +64,16 @@ pnpm add -D @rbxts/compiler-types @rbxts/types roblox-ts typescript
 
 Both host runtimes arrive with `vela-rbxts`, so neither has to be named by hand. Each one declares its UI library as an *optional* peer, which is what keeps a Vide project from installing React — Rojo maps the whole `node_modules/@rbxts` directory into the place, and `@rbxts/react` is not something a Vide place should be carrying. The host you do not emit for is one inert ModuleScript.
 
+With pnpm, hoist the `@rbxts` scope before installing. pnpm's default linker puts only a project's direct dependencies in `node_modules/@rbxts`, and that folder is all Rojo maps into the place, so the runtimes `vela-rbxts` brings (and `@rbxts/vela-runtime-core` beneath them) would never reach it. `@rbxts/react` asks pnpm projects for the same setting:
+
+```yaml
+# pnpm-workspace.yaml
+publicHoistPattern:
+  - "*@rbxts*"
+```
+
+pnpm 10 also reads it from `.npmrc` as `public-hoist-pattern[]=*@rbxts*`, the form older pnpm versions need; pnpm 12 reads it only from `pnpm-workspace.yaml`. npm and Yarn's classic linker install flat and need nothing. A project that skips it fails to build with [`runtime-not-installed`](#build-failures), naming what is missing from `node_modules/@rbxts`, rather than building a place that stops on play with "Could not find module". Installing the runtimes as direct dependencies works too, but they then have to be kept at the version of `vela-rbxts` by hand, and the build fails while they are not.
+
 If you are starting from an existing roblox-ts project, keep your current workspace tooling and add only the missing packages.
 
 ### 2. Configure `tsconfig.json`
@@ -175,7 +185,7 @@ Do not name it `src/vela-rbxts.d.ts`. A roblox-ts project sets `baseUrl` to `src
 ### 5. Serve the project
 
 Use your normal Rojo project setup and serve the compiled roblox-ts output as usual.
-Vela needs no generated folder and no Vela-specific Rojo mapping. Its runtime, `@rbxts/vela-runtime`, installs as a dependency of `vela-rbxts`, so it lands in the `node_modules/@rbxts` folder a roblox-ts project already maps and already lists in `typeRoots`.
+Vela needs no generated folder and no Vela-specific Rojo mapping. Its runtime, `@rbxts/vela-runtime`, installs as a dependency of `vela-rbxts`, so it lands in the `node_modules/@rbxts` folder a roblox-ts project already maps and already lists in `typeRoots` (under pnpm, once the scope is [hoisted](#1-install-the-packages)).
 
 The one thing your Rojo project does need is the `node_modules/@rbxts` mapping every roblox-ts template already ships — that is where the runtime lands, the same as `@rbxts/react`.
 
@@ -784,6 +794,7 @@ A Vela failure fails the build; a recognized utility that Vela cannot lower does
 | the native compiler cannot load (`compiler-unavailable`) or throws | error | every file with a `className` fails |
 | `configJson` the compiler cannot read (`invalid-config-json`), a TSX parse or emit failure | error | the file is not emitted |
 | a lowered file that no longer parses (`transformed-source-invalid`) | error | the file is not emitted |
+| a lowered file imports a runtime that the project's `node_modules/@rbxts` does not hold whole, or holds at another version than the compiler's (`runtime-not-installed`) | error | the file is not emitted |
 | `explicit-prop-overrides-class`, `explicit-helper-overrides-class`, `possible-duplicate-helper` | warning | the declared prop or written helper wins |
 | an unknown utility, theme key or variant | warning | the class is dropped, as before |
 
