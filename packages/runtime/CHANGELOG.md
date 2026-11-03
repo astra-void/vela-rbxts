@@ -1,5 +1,35 @@
 # @vela-rbxts/runtime
 
+## 0.14.0
+
+### Minor Changes
+
+- 93b86f2: Let a prop written on an element outrank every class that names it, under every condition. The compiler no longer emits a class's copy beside a declared prop, where JSX let the class's later attribute win and replace a reactive binding: it drops the prop from the base, from variants and from class branches, and warns `explicit-prop-overrides-class` naming the class and the prop, in builds and in the editor. A class value resolved at render time is handed the declared names as `__velaOwn`, and both runtime hosts leave those props standing. A helper written as a child, a fragment's child included, outranks the class's (`explicit-helper-overrides-class`), except a `UIShadow` layer; a conditional child or a helper a variant changes is kept and reported as `possible-duplicate-helper`. Beside a spread, what a class lowers to now takes the `className`'s place and preflight's defaults go first, so `<frame className="bg-slate-700" {...props} />` lets `props` win and a spread can paint over preflight; move the `className` after the spread to keep the class winning.
+- c3916fb: Space a divided list's items `gap + thickness` apart, as CSS does, instead of `2 * gap + thickness`. The separators were list items, so the list's `Padding` opened on both sides of each one. Now the host sets that `Padding` to 0 and each separator takes the gap itself: a transparent slot `thickness + gap` long holding a `Line` frame at its start, against the item before as Tailwind's border is. `gap-*`, `space-*`, a variant gap such as `hover:gap-4` and a gap from a runtime class value all move this way on both hosts. A gap stays on the list when the separators cross it, and a `Padding` written on your own `<uilistlayout>` is left as written. To make that possible the compiler emits the `uilistlayout` of an element a divide can reach as an unconditional rule rather than a child. In `@rbxts/vela-runtime-core`, `__VelaDivide.separatorSize` now returns the slot, `__VelaDivide.separatorLineSize` returns the line, and `__VelaDivide.absorbListGap` moves the gap.
+- d8e292e: Rank the children of a `divide-*` list by their `LayoutOrder` or static `order-*` so the separators follow the sorted order on both hosts, fade the separators with `opacity-*`, keep the separators of a divided list whose value children sit under a fade, and make `divide-x-0`/`divide-y-0` remove them. The compiler warns when divide has no list layout, sits beside `grid`, or has a child whose `order-*` the React parent cannot read. Add `isolate`, which builds a `frame` as a `canvasgroup` so `opacity-*` fades its subtree as one layer; it has to be static and unconditional. `@rbxts/vela-runtime-core` gains `__VelaDivide.planDivideOrder` and `__VelaDivide.separatorTransparency`.
+- d8e292e: Add `group-hover:`, `group-active:`, `group-focus:` and the matching `peer-*` variants, each with an optional `/name`, and the `group`, `group/name`, `peer` and `peer/name` markers. A marker lowers to a CollectionService tag (`VelaGroup`, `VelaPeer/name`), carried by `Tag` on a static React element and placed by the host on Vide, and a shared runtime-core observer finds the nearest marked ancestor or any marked sibling and reports its hover, press and focus. Peers ignore sibling order, which Roblox does not keep, and look past the `VelaMarginBox` frame an `m-*` element is wrapped in. `group-md:` and other unread states warn `unsupported-relational-variant`, and a conditional marker or one on a component element warns too. `group`, `peer`, `group-*` and `peer-*` are now reserved variant names.
+- 632d260: Lower `backdrop-blur-*` to Roblox's `UIBlur`, mapping Tailwind's sizes onto its three strengths, and name `UIShadow` and `UIBlur` by their real class on the static React path so a statically lowered shadow no longer fails `Instance.new` on its lowercase tag.
+- bf73f20: Lower `inset-shadow-*`, `shadow-inner` and `text-shadow-*` to Roblox's upgraded `UIShadow`, each as its own instance so a drop, an inset and a text shadow can sit on one element together.
+
+### Patch Changes
+
+- 474e567: A transparency written on an element now survives a fade that arrives at runtime, as it already did under a fade the compiler could see. `<frame BackgroundTransparency={0.2} />` inside a component rendered with `opacity-50` kept its 0.2 when the fade was composed statically, but became 0.6 when the same fade crossed the component boundary through the opacity context, because the runtime could not tell a prop the author wrote from one Vela lowered. The compiler now wraps such an element in `__VelaOpacity.own(element, names)` and hands a runtime host the names as `__velaOwn`, and both the React and the Vide consumer leave those props standing. A literal `1` is left unwrapped, since a fade composes it to itself.
+- 83b2584: Tween the layout props an `m-*` element's margin box carries instead of snapping them, so `<frame className="m-4 w-20 transition-all hover:w-40" />` widens the box, margin included, on both hosts. A motion driver receives those tweens with `{ owner, marginBox: true }` as its fourth argument. `@rbxts/vela-runtime-core` gains `__VelaMotion.holdTweenGoal` and `__VelaMotion.changedGoal`.
+- d8e292e: Keep one environment store for the whole place in `@rbxts/vela-runtime-core`, read with `__VelaEnv.currentEnvironment()` and `__VelaEnv.subscribeEnvironment()`, so every runtime host shares one set of viewport, input, `LocalPlayer` and color scheme connections instead of connecting its own, and subscribers hear only changes that move a field resolution reads. The Vide host now follows input mode, the `VelaColorScheme` attribute and a `LocalPlayer` that arrives late, live, where it used to decide them at mount.
+- Updated dependencies [c3916fb]
+- Updated dependencies [d8e292e]
+- Updated dependencies [94f1bdc]
+- Updated dependencies [d8e292e]
+- Updated dependencies [83b2584]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d8e292e]
+- Updated dependencies [632d260]
+- Updated dependencies [bf73f20]
+- Updated dependencies [d8e292e]
+  - @rbxts/vela-runtime-core@0.14.0
+
 ## 0.13.1
 
 ### Patch Changes

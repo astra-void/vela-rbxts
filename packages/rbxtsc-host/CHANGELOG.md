@@ -1,5 +1,37 @@
 # @vela-rbxts/rbxtsc-host
 
+## 0.14.0
+
+### Minor Changes
+
+- d8e292e: The CLI writes a source map for every lowered file under `.vela/maps`, and `vela rbxtsc` and `vela remap` rewrite rbxtsc diagnostics against `.vela/src` so they point at the line and column in `src` where the code was written, with the code frame re-rendered from the original line. The compiler takes a `sourceMap` option and returns the mappings it recorded, and a file the compiler leaves unchanged is now copied through as written instead of reprinted.
+- 78b1d68: Fail the build when Vela fails, instead of shipping the file unlowered. A host result now carries `fatal`, set whenever a diagnostic is an error, and neither the `rbxtsc` plugin nor `vela build` emits such a file: the plugin keeps the original out of the program and reports the error, and the CLI writes nothing to `.vela/src` and removes what an earlier run wrote there. The plugin also checks the config of every file it would lower on every build, so a config that broke after the last incremental `rbxtsc` build fails with `config-resolution-failed` even when no file changed, and `vela-rbxts/transformer` loads the compiler itself, so a native compiler that cannot load fails each styled file with `compiler-unavailable` where `rbxtsc` used to downgrade the plugin to a warning and compile `className` raw. A lowered file that no longer parses fails with `transformed-source-invalid`, and a host without `context.addDiagnostic` gets an exception for an error rather than nothing.
+- d2a974d: Configure a project from a `vela.css`. `@theme` declares tokens with CSS values (`--color-brand-500: #3b82f6`, `--spacing-4: 16px`), `@custom-variant selected (Selected = true)` registers an attribute-backed variant, `.btn { @apply … }` and `.panel { BackgroundTransparency: 0.5 }` register plugin utilities, and `@import "./tokens.css"` folds a sibling stylesheet in as a preset of the file that named it. The stylesheet only ever extends, so it resolves on top of a `vela.config.ts` when a project has both, and a project that has only the stylesheet needs no config file at all. What the dialect does not have is a cascade: combinators, pseudo-classes, `@media`, and CSS properties are diagnosed with the vela equivalent rather than silently accepted.
+- d8e292e: `vela watch` rebuilds when a stylesheet pulled in with `@import` changes, wherever it lives, outside the project root and `src` included, and follows an import added while the watch runs. It polls a directory it cannot watch. `@vela-rbxts/rbxtsc-host` exports `projectConfigDependencies`, the files a project's config was folded from.
+
+### Patch Changes
+
+- 3382d02: Fail the build when the runtime a lowered file imports cannot load from the project's `node_modules/@rbxts`, instead of building a place that stops on play with "Could not find module: vela-runtime-core". The runtimes are dependencies of `vela-rbxts`, and pnpm's default linker keeps a dependency's own dependencies out of that folder, which is all Rojo maps into the place. Both the `rbxtsc` plugin and `vela build` now walk the imported runtime's `@rbxts` dependencies from the nearest `package.json` and fail the file with `runtime-not-installed`, naming each missing package and the package that needs it, or a runtime package installed at another version than the compiler emits for. Before, the default pnpm install failed with a bare `Cannot find module '@rbxts/vela-runtime'`, and adding that package by hand compiled a place without its core. The README now gives pnpm projects `publicHoistPattern: ["*@rbxts*"]` in `pnpm-workspace.yaml`, the setting `@rbxts/react` already asks them for.
+- Updated dependencies [d8e292e]
+- Updated dependencies [d52a004]
+- Updated dependencies [93b86f2]
+- Updated dependencies [474e567]
+- Updated dependencies [c3916fb]
+- Updated dependencies [d8e292e]
+- Updated dependencies [94f1bdc]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d8e292e]
+- Updated dependencies [632d260]
+- Updated dependencies [bf73f20]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d2a974d]
+- Updated dependencies [e88edf5]
+  - @vela-rbxts/compiler@0.14.0
+  - @vela-rbxts/config@0.14.0
+  - @vela-rbxts/ir@0.14.0
+
 ## 0.13.1
 
 ### Patch Changes

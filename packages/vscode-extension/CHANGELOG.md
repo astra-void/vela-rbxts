@@ -1,5 +1,19 @@
 # vela-rbxts-lsp
 
+## 0.14.0
+
+### Patch Changes
+
+- Updated dependencies [93b86f2]
+- Updated dependencies [d8e292e]
+- Updated dependencies [94f1bdc]
+- Updated dependencies [d8e292e]
+- Updated dependencies [3e6cc65]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d8e292e]
+  - @vela-rbxts/lsp@0.14.0
+
 ## 0.13.1
 
 ### Patch Changes

@@ -1,5 +1,46 @@
 # vela-rbxts
 
+## 0.14.0
+
+### Minor Changes
+
+- d8e292e: The CLI writes a source map for every lowered file under `.vela/maps`, and `vela rbxtsc` and `vela remap` rewrite rbxtsc diagnostics against `.vela/src` so they point at the line and column in `src` where the code was written, with the code frame re-rendered from the original line. The compiler takes a `sourceMap` option and returns the mappings it recorded, and a file the compiler leaves unchanged is now copied through as written instead of reprinted.
+- c3916fb: Space a divided list's items `gap + thickness` apart, as CSS does, instead of `2 * gap + thickness`. The separators were list items, so the list's `Padding` opened on both sides of each one. Now the host sets that `Padding` to 0 and each separator takes the gap itself: a transparent slot `thickness + gap` long holding a `Line` frame at its start, against the item before as Tailwind's border is. `gap-*`, `space-*`, a variant gap such as `hover:gap-4` and a gap from a runtime class value all move this way on both hosts. A gap stays on the list when the separators cross it, and a `Padding` written on your own `<uilistlayout>` is left as written. To make that possible the compiler emits the `uilistlayout` of an element a divide can reach as an unconditional rule rather than a child. In `@rbxts/vela-runtime-core`, `__VelaDivide.separatorSize` now returns the slot, `__VelaDivide.separatorLineSize` returns the line, and `__VelaDivide.absorbListGap` moves the gap.
+- d8e292e: Rank the children of a `divide-*` list by their `LayoutOrder` or static `order-*` so the separators follow the sorted order on both hosts, fade the separators with `opacity-*`, keep the separators of a divided list whose value children sit under a fade, and make `divide-x-0`/`divide-y-0` remove them. The compiler warns when divide has no list layout, sits beside `grid`, or has a child whose `order-*` the React parent cannot read. Add `isolate`, which builds a `frame` as a `canvasgroup` so `opacity-*` fades its subtree as one layer; it has to be static and unconditional. `@rbxts/vela-runtime-core` gains `__VelaDivide.planDivideOrder` and `__VelaDivide.separatorTransparency`.
+- 78b1d68: Fail the build when Vela fails, instead of shipping the file unlowered. A host result now carries `fatal`, set whenever a diagnostic is an error, and neither the `rbxtsc` plugin nor `vela build` emits such a file: the plugin keeps the original out of the program and reports the error, and the CLI writes nothing to `.vela/src` and removes what an earlier run wrote there. The plugin also checks the config of every file it would lower on every build, so a config that broke after the last incremental `rbxtsc` build fails with `config-resolution-failed` even when no file changed, and `vela-rbxts/transformer` loads the compiler itself, so a native compiler that cannot load fails each styled file with `compiler-unavailable` where `rbxtsc` used to downgrade the plugin to a warning and compile `className` raw. A lowered file that no longer parses fails with `transformed-source-invalid`, and a host without `context.addDiagnostic` gets an exception for an error rather than nothing.
+- 632d260: Lower `backdrop-blur-*` to Roblox's `UIBlur`, mapping Tailwind's sizes onto its three strengths, and name `UIShadow` and `UIBlur` by their real class on the static React path so a statically lowered shadow no longer fails `Instance.new` on its lowercase tag.
+- bf73f20: Lower `inset-shadow-*`, `shadow-inner` and `text-shadow-*` to Roblox's upgraded `UIShadow`, each as its own instance so a drop, an inset and a text shadow can sit on one element together.
+- d2a974d: Configure a project from a `vela.css`. `@theme` declares tokens with CSS values (`--color-brand-500: #3b82f6`, `--spacing-4: 16px`), `@custom-variant selected (Selected = true)` registers an attribute-backed variant, `.btn { @apply … }` and `.panel { BackgroundTransparency: 0.5 }` register plugin utilities, and `@import "./tokens.css"` folds a sibling stylesheet in as a preset of the file that named it. The stylesheet only ever extends, so it resolves on top of a `vela.config.ts` when a project has both, and a project that has only the stylesheet needs no config file at all. What the dialect does not have is a cascade: combinators, pseudo-classes, `@media`, and CSS properties are diagnosed with the vela equivalent rather than silently accepted.
+- d8e292e: `vela watch` rebuilds when a stylesheet pulled in with `@import` changes, wherever it lives, outside the project root and `src` included, and follows an import added while the watch runs. It polls a directory it cannot watch. `@vela-rbxts/rbxtsc-host` exports `projectConfigDependencies`, the files a project's config was folded from.
+
+### Patch Changes
+
+- 3382d02: Fail the build when the runtime a lowered file imports cannot load from the project's `node_modules/@rbxts`, instead of building a place that stops on play with "Could not find module: vela-runtime-core". The runtimes are dependencies of `vela-rbxts`, and pnpm's default linker keeps a dependency's own dependencies out of that folder, which is all Rojo maps into the place. Both the `rbxtsc` plugin and `vela build` now walk the imported runtime's `@rbxts` dependencies from the nearest `package.json` and fail the file with `runtime-not-installed`, naming each missing package and the package that needs it, or a runtime package installed at another version than the compiler emits for. Before, the default pnpm install failed with a bare `Cannot find module '@rbxts/vela-runtime'`, and adding that package by hand compiled a place without its core. The README now gives pnpm projects `publicHoistPattern: ["*@rbxts*"]` in `pnpm-workspace.yaml`, the setting `@rbxts/react` already asks them for.
+- Updated dependencies [d8e292e]
+- Updated dependencies [3382d02]
+- Updated dependencies [93b86f2]
+- Updated dependencies [474e567]
+- Updated dependencies [c3916fb]
+- Updated dependencies [d8e292e]
+- Updated dependencies [78b1d68]
+- Updated dependencies [d8e292e]
+- Updated dependencies [83b2584]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d8e292e]
+- Updated dependencies [632d260]
+- Updated dependencies [bf73f20]
+- Updated dependencies [d8e292e]
+- Updated dependencies [d2a974d]
+- Updated dependencies [c30efc8]
+- Updated dependencies [e88edf5]
+- Updated dependencies [d8e292e]
+  - @vela-rbxts/rbxtsc-host@0.14.0
+  - @rbxts/vela-runtime@0.14.0
+  - @rbxts/vela-runtime-vide@0.14.0
+  - @vela-rbxts/config@0.14.0
+  - @vela-rbxts/types@0.14.0
+
 ## 0.13.1
 
 ### Patch Changes

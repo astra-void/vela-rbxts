@@ -1,5 +1,14 @@
 # @vela-rbxts/core
 
+## 0.14.0
+
+### Patch Changes
+
+- Updated dependencies [d8e292e]
+- Updated dependencies [d2a974d]
+  - @vela-rbxts/config@0.14.0
+  - @vela-rbxts/ir@0.14.0
+
 ## 0.13.1
 
 ### Patch Changes

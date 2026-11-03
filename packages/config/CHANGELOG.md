@@ -1,5 +1,12 @@
 # @vela-rbxts/config
 
+## 0.14.0
+
+### Minor Changes
+
+- d8e292e: Add `group-hover:`, `group-active:`, `group-focus:` and the matching `peer-*` variants, each with an optional `/name`, and the `group`, `group/name`, `peer` and `peer/name` markers. A marker lowers to a CollectionService tag (`VelaGroup`, `VelaPeer/name`), carried by `Tag` on a static React element and placed by the host on Vide, and a shared runtime-core observer finds the nearest marked ancestor or any marked sibling and reports its hover, press and focus. Peers ignore sibling order, which Roblox does not keep, and look past the `VelaMarginBox` frame an `m-*` element is wrapped in. `group-md:` and other unread states warn `unsupported-relational-variant`, and a conditional marker or one on a component element warns too. `group`, `peer`, `group-*` and `peer-*` are now reserved variant names.
+- d2a974d: Configure a project from a `vela.css`. `@theme` declares tokens with CSS values (`--color-brand-500: #3b82f6`, `--spacing-4: 16px`), `@custom-variant selected (Selected = true)` registers an attribute-backed variant, `.btn { @apply … }` and `.panel { BackgroundTransparency: 0.5 }` register plugin utilities, and `@import "./tokens.css"` folds a sibling stylesheet in as a preset of the file that named it. The stylesheet only ever extends, so it resolves on top of a `vela.config.ts` when a project has both, and a project that has only the stylesheet needs no config file at all. What the dialect does not have is a cascade: combinators, pseudo-classes, `@media`, and CSS properties are diagnosed with the vela equivalent rather than silently accepted.
+
 ## 0.13.1
 
 ## 0.13.0
