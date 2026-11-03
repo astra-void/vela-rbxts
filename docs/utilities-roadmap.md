@@ -223,9 +223,9 @@ Each child needs a UIStroke/frame injected → the parent has to rebuild its chi
 list. With dynamic JSX children this is impossible at compile time and the runtime
 host has to walk the children. **Implemented** by having the runtime host insert
 separator frames between content children only, ranking every child by its
-`LayoutOrder` (or static `order-*`) so the separators follow the sorted order. Gap
-applies on both sides of a separator, which is a documented approximation. See
-`phase4-structural-review.md` for the ordering contract.
+`LayoutOrder` (or static `order-*`) so the separators follow the sorted order. A
+divided list hands its gap to the separators, so items sit `gap + thickness` apart
+as in CSS. See `phase4-structural-review.md` for the ordering contract and the gap.
 
 ### `group-*` / `peer-*`: state read from another element
 

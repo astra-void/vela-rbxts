@@ -444,8 +444,13 @@ namespace __VelaDivideOrder {
 			const held = spares.get(index) ?? [];
 			while (held.size() < count) {
 				const separator = new Instance("Frame");
+				separator.BackgroundTransparency = 1;
 				separator.BorderSizePixel = 0;
 				separator.Visible = false;
+				const line = new Instance("Frame");
+				line.Name = "Line";
+				line.BorderSizePixel = 0;
+				line.Parent = separator;
 				held.push(separator);
 			}
 			while (held.size() > count) {
@@ -786,6 +791,7 @@ export function createVelaRuntimeHost(
 			for (const name of ownProps) {
 				delete current.props[name];
 			}
+			__VelaDivide.absorbListGap(current, props.__velaDivide);
 
 			return current;
 		});
@@ -1422,11 +1428,17 @@ function buildSeparators(
 	for (let index = 0; index < count; index += 1) {
 		separators.push(
 			videJsx("frame", {
-				BackgroundColor3: () => __VelaDivide.separatorColor(divide()),
-				BackgroundTransparency: () =>
-					__VelaDivide.separatorTransparency(divide(), alpha()),
+				BackgroundTransparency: 1,
 				BorderSizePixel: 0,
 				Size: () => __VelaDivide.separatorSize(divide()),
+				1: videJsx("frame", {
+					Name: "Line",
+					BackgroundColor3: () => __VelaDivide.separatorColor(divide()),
+					BackgroundTransparency: () =>
+						__VelaDivide.separatorTransparency(divide(), alpha()),
+					BorderSizePixel: 0,
+					Size: () => __VelaDivide.separatorLineSize(divide()),
+				}),
 			}) as defined,
 		);
 	}
@@ -1439,12 +1451,17 @@ function styleSeparator(
 	divide: RuntimeDivide | undefined,
 	alpha: number,
 ) {
-	separator.BackgroundColor3 = __VelaDivide.separatorColor(divide);
-	separator.BackgroundTransparency = __VelaDivide.separatorTransparency(
+	separator.Size = __VelaDivide.separatorSize(divide);
+	const line = separator.FindFirstChild("Line") as Frame | undefined;
+	if (line === undefined) {
+		return;
+	}
+	line.BackgroundColor3 = __VelaDivide.separatorColor(divide);
+	line.BackgroundTransparency = __VelaDivide.separatorTransparency(
 		divide,
 		alpha,
 	);
-	separator.Size = __VelaDivide.separatorSize(divide);
+	line.Size = __VelaDivide.separatorLineSize(divide);
 }
 
 function countContentChildren(children: readonly defined[]): number {

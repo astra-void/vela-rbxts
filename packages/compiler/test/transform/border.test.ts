@@ -173,7 +173,7 @@ test("promotes divided containers to the runtime host with a divide spec", () =>
 test("divide separators step over helper elements lowered as children", () => {
 	const result = transform(
 		`export const A = () => (
-			<frame className="flex-col divide-y-2 divide-slate-500">
+			<frame className="flex-col divide-y-2 divide-slate-500 rounded-md">
 				<frame />
 				<frame />
 			</frame>
@@ -182,9 +182,9 @@ test("divide separators step over helper elements lowered as children", () => {
 	);
 
 	expect(result.diagnostics).toEqual([]);
-	// flex-col lowers a uilistlayout into the same children list, so counting
+	// rounded-md lowers a uicorner into the same children list, so counting
 	// raw positions puts a separator above the first real child.
-	expect(result.code).toContain("<uilistlayout");
+	expect(result.code).toContain("<uicorner");
 	expect(runtimeSource).toMatch(/if \(isModifierChild\(child\)\) \{/);
 	expect(runtimeSource).toMatch(
 		/function isModifierChild[\s\S]*?!LAYOUT_TAGS\.has\(elementType\.lower\(\)\)/,

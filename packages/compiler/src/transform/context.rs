@@ -627,7 +627,10 @@ impl VelaTransformer {
 
         self.changed = true;
         if lowered.needs_runtime_host {
-            crate::transform::branch::hoist_helpers_shared_with_rules(&mut lowered.style_ir);
+            crate::transform::branch::hoist_helpers_shared_with_rules(
+                &mut lowered.style_ir,
+                lowered.may_divide,
+            );
         }
         crate::transform::runtime::normalize_directional_corner_radii(&mut lowered.style_ir);
         self.ir.push(lowered.style_ir.clone());

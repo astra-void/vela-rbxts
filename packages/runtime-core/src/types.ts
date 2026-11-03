@@ -342,6 +342,8 @@ export type RuntimeDivide = {
 	thickness: number;
 	color?: string;
 	transparency?: number;
+	/// The list `Padding` each separator spans in place of the list.
+	gap?: UDim;
 };
 
 /// `child[i]` is the `LayoutOrder` of the i-th content child; `separator[k]`
@@ -356,6 +358,7 @@ export type RuntimeDivideState = {
 	thickness?: number;
 	color?: string;
 	transparency?: number;
+	gap?: UDim;
 };
 
 export type RuntimeMargin = {

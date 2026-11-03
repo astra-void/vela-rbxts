@@ -470,6 +470,7 @@ namespace __VelaDivide {
 	): defined[] {
 		const color = __VelaDivideCore.separatorColor(divide);
 		const size = __VelaDivideCore.separatorSize(divide);
+		const lineSize = __VelaDivideCore.separatorLineSize(divide);
 
 		const result: defined[] = [];
 		const content: ContentSlot[] = [];
@@ -506,14 +507,23 @@ namespace __VelaDivide {
 		// provider around them, so they start from the divide's own value.
 		plan.separator.forEach((order, index) => {
 			result.push(
-				__VelaReact.createElement("frame", {
-					key: `__velaDivide${index}`,
-					BackgroundColor3: color,
-					BackgroundTransparency: divide.transparency ?? 0,
-					BorderSizePixel: 0,
-					LayoutOrder: order,
-					Size: size,
-				} as never),
+				__VelaReact.createElement(
+					"frame",
+					{
+						key: `__velaDivide${index}`,
+						BackgroundTransparency: 1,
+						BorderSizePixel: 0,
+						LayoutOrder: order,
+						Size: size,
+					} as never,
+					__VelaReact.createElement("frame", {
+						key: "Line",
+						BackgroundColor3: color,
+						BackgroundTransparency: divide.transparency ?? 0,
+						BorderSizePixel: 0,
+						Size: lineSize,
+					} as never),
+				),
 			);
 		});
 		return result;
@@ -835,6 +845,7 @@ export function createVelaRuntimeHost(
 				resolution.margin,
 				resolution.remRatio ?? 1,
 			);
+			__VelaDivideCore.absorbListGap(resolution, props.__velaDivide);
 			const divide = __VelaDivideCore.resolveDivideConfig(
 				props.__velaDivide,
 				resolution.divide,

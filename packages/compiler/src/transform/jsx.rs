@@ -33,6 +33,9 @@ pub(crate) struct LoweredClassName {
     /// resolve. The box one needs is an instance above the element, so a target
     /// that builds its tree bottom-up has to be told before the element exists.
     pub(crate) runtime_margin: bool,
+    /// Whether a divide can reach the element, which then has to hand its list
+    /// gap to the separators at render time.
+    pub(crate) may_divide: bool,
     /// Where the `className` was written, for what is synthesized in its place.
     pub(crate) class_name_span: Span,
     /// How many of `preserved_attrs` were written before the `className`, which
@@ -120,6 +123,7 @@ pub(crate) fn lower_class_name(
             // A margin the literal resolved is handed over whole; one forwarded
             // with a variant is only known to be coming.
             let runtime_margin = forwards_margin(&style, config);
+            let may_divide = style.divide.is_some() || forwards_divide(&style, config);
 
             Some(LoweredClassName {
                 style_ir: style,
@@ -128,6 +132,7 @@ pub(crate) fn lower_class_name(
                 needs_runtime_host,
                 tests: Vec::new(),
                 runtime_margin,
+                may_divide,
                 class_name_span: class_name_attr.span,
                 class_name_index,
                 tokens: spans,
@@ -145,6 +150,7 @@ pub(crate) fn lower_class_name(
                     needs_runtime_host: true,
                     tests: Vec::new(),
                     runtime_margin: false,
+                    may_divide: true,
                     class_name_span: class_name_attr.span,
                     class_name_index,
                     tokens: Vec::new(),
@@ -240,6 +246,9 @@ pub(crate) fn lower_class_name(
                 || style.animation.is_some()
                 || style.margin.is_some()
                 || style.divide.is_some();
+            let may_divide = style.divide.is_some()
+                || forwards_divide(&style, config)
+                || collapse.dynamic_expr.is_some();
             let forwarded = (!style.runtime_classes.is_empty()).then(|| forwarded_classes(&style));
             let leftover = match (forwarded, collapse.dynamic_expr) {
                 (Some(forwarded), Some(leftover)) => Some(Box::new(Expr::Array(ArrayLit {
@@ -282,6 +291,7 @@ pub(crate) fn lower_class_name(
                 needs_runtime_host,
                 tests,
                 runtime_margin,
+                may_divide,
                 class_name_span: class_name_attr.span,
                 class_name_index,
                 tokens,
@@ -298,6 +308,7 @@ pub(crate) fn lower_class_name(
             tests: Vec::new(),
             // Nothing here was readable, so nothing can be said about a margin.
             runtime_margin: false,
+            may_divide: true,
             class_name_span: class_name_attr.span,
             class_name_index,
             tokens: Vec::new(),
@@ -340,6 +351,16 @@ fn forwards_margin(style: &StyleIr, config: &crate::config::model::TailwindConfi
     style.runtime_classes.iter().any(|token| {
         let analysis = analyze_class_token(token, &variants);
         matches!(analysis.utility, UtilityKind::Margin(_)) && !analysis.is_negative()
+    })
+}
+
+fn forwards_divide(style: &StyleIr, config: &crate::config::model::TailwindConfig) -> bool {
+    let variants = VariantRegistry::new(config);
+    style.runtime_classes.iter().any(|token| {
+        matches!(
+            analyze_class_token(token, &variants).utility,
+            UtilityKind::DivideX | UtilityKind::DivideY
+        )
     })
 }
 

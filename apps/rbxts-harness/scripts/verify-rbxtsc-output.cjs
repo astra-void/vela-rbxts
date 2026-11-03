@@ -262,6 +262,9 @@ const requiredRuntimeFragments = [
 	"prepareMarginWrapper",
 	"renderMarginWrapper",
 	"interleaveDivideSeparators",
+	// A divided list hands its gap to the separators instead of opening it
+	// on both sides of each.
+	"absorbListGap",
 	// A component was compiled against the viewport in a file of its own, so
 	// the pin it was rendered under is read at its root and the bindings it
 	// already built are handed back the offsets they were written with.

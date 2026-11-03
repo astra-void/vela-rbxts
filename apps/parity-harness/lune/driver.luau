@@ -258,6 +258,15 @@ local function staticSide(ir: any): Side
 	for _, helper in ir.base.helpers do
 		helpers[helper.tag] = staticProps(helper.props)
 	end
+	-- A divided list's layout reaches the host as an unconditional rule, which
+	-- is still the base.
+	for _, rule in ir.runtimeRules do
+		if rule.condition.kind == "all" and #rule.condition.conditions == 0 then
+			for _, helper in rule.effects.helpers do
+				helpers[helper.tag] = staticProps(helper.props)
+			end
+		end
+	end
 	local text = ir.text or {}
 	return {
 		props = serializeProps(staticProps(ir.base.props)),

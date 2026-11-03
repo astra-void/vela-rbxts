@@ -374,6 +374,39 @@ test("ranks divided children by the LayoutOrder each one declares", () => {
 	);
 });
 
+test("hands a divided list's gap to the host that inserts the separators", () => {
+	const listPadding = (ir: string | undefined) =>
+		JSON.parse(ir ?? "{}")
+			.runtimeRules?.[0]?.effects.helpers.find(
+				(helper: { tag: string }) => helper.tag === "uilistlayout",
+			)
+			?.props.find((prop: { name: string }) => prop.name === "Padding")?.value;
+
+	for (const source of [
+		`export const A = () => <frame className="flex-col gap-2 divide-y"><frame /><frame /></frame>;`,
+		`export const A = () => <frame className="flex-col gap-2 hover:divide-y"><frame /><frame /></frame>;`,
+		`export const A = (p: { x: string }) => <frame className={["flex-col gap-2", p.x]}><frame /><frame /></frame>;`,
+	]) {
+		const result = transform(source, null);
+
+		expect(result.diagnostics).toEqual([]);
+		expect(emitted(result.code)).not.toContain("<uilistlayout");
+		expect(listPadding(result.ir[0])).toBe("new UDim(0, 8)");
+	}
+
+	// Nothing here can divide, so the list stays a static child.
+	const undivided = transform(
+		`export const A = () => <frame className="flex-col gap-2 hover:mt-2"><frame /><frame /></frame>;`,
+		null,
+	);
+	expect(emitted(undivided.code)).toContain("<uilistlayout");
+
+	expect(runtimeSource).toMatch(
+		/absorbListGap\(resolution, props\.__velaDivide\)/,
+	);
+	expect(runtimeSource).toMatch(/padding\.value = new UDim\(0, 0\)/);
+});
+
 test("divide-x-0 and divide-y-0 insert no separators", () => {
 	for (const token of ["divide-x-0", "divide-y-0", "divide-y divide-y-0"]) {
 		const result = transform(

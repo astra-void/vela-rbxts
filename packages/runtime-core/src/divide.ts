@@ -5,6 +5,7 @@ import type {
 	RuntimeDivide,
 	RuntimeDividePlan,
 	RuntimeDivideState,
+	RuntimeHelperProp,
 	RuntimeResolution,
 	RuntimeTheme,
 } from "./types";
@@ -94,8 +95,7 @@ export namespace __VelaDivide {
 			return undefined;
 		}
 
-		// CSS draws no border at zero width, and a zero-size separator would
-		// still take the gap twice.
+		// CSS draws no border at zero width.
 		const thickness = dynamic?.thickness ?? base?.thickness ?? 1;
 		if (thickness === 0) {
 			return undefined;
@@ -115,7 +115,47 @@ export namespace __VelaDivide {
 			thickness: thickness * remRatio,
 			color: dynamic?.color ?? base?.color,
 			transparency,
+			gap: dynamic?.gap,
 		};
+	}
+
+	/// A separator is a list item, so the list's `Padding` would open on both
+	/// sides of it. The list closes up and each separator spans the gap
+	/// instead, spacing two items `gap + thickness` apart as CSS does.
+	export function absorbListGap(
+		resolution: RuntimeResolution,
+		base: RuntimeDivide | undefined,
+	) {
+		const divide = resolveDivideConfig(base, resolution.divide, 1);
+		if (divide === undefined || divide.gap !== undefined) {
+			return;
+		}
+
+		const list = resolution.helpers.find(
+			(helper) => helper.tag === "uilistlayout",
+		);
+		const padding = list?.props.find((prop) => prop.name === "Padding");
+		if (
+			list === undefined ||
+			padding === undefined ||
+			!typeIs(padding.value, "UDim") ||
+			!runsAlong(list.props, divide.axis)
+		) {
+			return;
+		}
+
+		divideState(resolution).gap = padding.value;
+		padding.value = new UDim(0, 0);
+	}
+
+	// A separator crossing the list is no step between its items, so the gap
+	// stays where it is.
+	function runsAlong(props: RuntimeHelperProp[], axis: string): boolean {
+		const direction = props.find(
+			(prop) => prop.name === "FillDirection",
+		)?.value;
+		const horizontal = direction === Enum.FillDirection.Horizontal;
+		return axis === "x" ? horizontal : !horizontal;
 	}
 
 	/// What a separator paints at under the fade its host hands its children.
@@ -165,7 +205,21 @@ export namespace __VelaDivide {
 		);
 	}
 
+	/// The slot a separator takes in the list: its line, then the gap. CSS
+	/// draws the border on the item before, so the line sits at the start.
 	export function separatorSize(divide: RuntimeDivide | undefined): UDim2 {
+		if (divide === undefined) {
+			return UDim2.fromOffset(0, 0);
+		}
+
+		const scale = divide.gap?.Scale ?? 0;
+		const offset = divide.thickness + (divide.gap?.Offset ?? 0);
+		return divide.axis === "x"
+			? new UDim2(scale, offset, 1, 0)
+			: new UDim2(1, 0, scale, offset);
+	}
+
+	export function separatorLineSize(divide: RuntimeDivide | undefined): UDim2 {
 		if (divide === undefined) {
 			return UDim2.fromOffset(0, 0);
 		}

@@ -2,8 +2,8 @@
 
 > **Status**: 4.1 (margin, option C) is implemented. Under a transition, the
 > layout props routed to the wrapper tween on the wrapper itself, on both hosts.
-> 4.2 (divide) is implemented too. It now ranks children by their `LayoutOrder`
-> (section 2), so the only constraint left is the gap approximation.
+> 4.2 (divide) is implemented too. It ranks children by their `LayoutOrder` and
+> hands the list's gap to its separators (section 2).
 
 Phase 4 covers the utilities that do not change one element's properties but
 **have to change the render tree itself**. This review compares implementation
@@ -180,12 +180,24 @@ child, whether or not any of them declares an order:
   UIListLayout (`flex`, `flex-col`, `space-*` or a written `<uilistlayout>`), and
   `divide-with-grid` under `grid`, where each separator would take a cell.
 
-### Constraint (documented)
+### Gap
 
-- Separators are list items too, so `gap` applies on both sides of each separator,
-  unlike CSS (where divide is a border and independent of gap). Item to item, Vela
-  spaces `2 * gap + thickness` against CSS's `gap + thickness`. This is kept as a
-  documented approximation; no gap compensation is applied.
+- Separators are list items too, so a list `Padding` would open on both sides of
+  each one and space items `2 * gap + thickness` apart, where CSS (divide is a
+  border) gives `gap + thickness`. When the element is divided, the host sets the
+  UIListLayout `Padding` to 0 and each separator takes the gap instead: a
+  transparent slot `thickness + gap` long on the divide axis, holding a `Line`
+  frame `thickness` long at its start. CSS draws the border on the item before
+  (`:not(:last-child)`), so the line sits against the preceding item and the gap
+  follows it. A scale gap keeps its scale on the slot.
+- The host can only take a `Padding` it resolves itself, so the compiler moves the
+  `uilistlayout` helper of any element a divide can reach (a static `divide-*`, one
+  under a variant, or a class value only the host reads) into an unconditional rule
+  instead of emitting it as a child. `gap-*` and `space-*` both write that
+  `Padding`, so both are handed over, and a variant gap (`hover:gap-4`) resizes the
+  separators. A `Padding` written on your own `<uilistlayout>` is left alone.
+- The gap stays on the list when the separators cross it (`divide-y` in a
+  horizontal list), and with `divide-{x,y}-0`, where there are no separators.
 
 ### Judgment
 

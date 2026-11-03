@@ -83,12 +83,17 @@ pub(crate) fn lower_branches(
 /// to alongside the children it was handed. A base helper a rule also names
 /// would arrive twice — as a child here and as a resolved helper there — so it
 /// joins the resolution instead, where the two merge by tag.
-pub(crate) fn hoist_helpers_shared_with_rules(style: &mut StyleIr) {
-    let touched: Vec<&'static str> = style
+pub(crate) fn hoist_helpers_shared_with_rules(style: &mut StyleIr, may_divide: bool) {
+    let mut touched: Vec<&'static str> = style
         .runtime_rules
         .iter()
         .flat_map(|rule| rule.effects.helpers.iter().map(|helper| helper.tag))
         .collect();
+    // A divided list hands its `Padding` to the separators, which only the host
+    // that inserts them can do.
+    if may_divide {
+        touched.push("uilistlayout");
+    }
 
     if touched.is_empty() {
         return;

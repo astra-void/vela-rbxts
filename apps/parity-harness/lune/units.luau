@@ -111,6 +111,41 @@ check(
 )
 check("separators fade with the subtree", math.abs(divide.separatorTransparency({ transparency = 0.5 }, 0.5) - 0.75) < 1e-9)
 
+local roblox = require("@lune/roblox") :: any
+local UDim, UDim2, Enum = roblox.UDim, roblox.UDim2, shim.Enum
+
+local function listResolution(fill: any?, divideState: any?): any
+	local props = { { name = "Padding", value = UDim.new(0, 8) } }
+	if fill ~= nil then
+		table.insert(props, { name = "FillDirection", value = fill })
+	end
+	return { props = {}, helpers = { { tag = "uilistlayout", props = props } }, divide = divideState }
+end
+
+local absorbed = listResolution(nil)
+divide.absorbListGap(absorbed, { axis = "y", thickness = 1 })
+divide.absorbListGap(absorbed, { axis = "y", thickness = 1 })
+local spanned = divide.resolveDivideConfig({ axis = "y", thickness = 1 }, absorbed.divide, 1)
+check(
+	"a divided list hands its gap to the separators",
+	absorbed.helpers[1].props[1].value == UDim.new(0, 0)
+		and spanned ~= nil
+		and divide.separatorSize(spanned) == UDim2.new(1, 0, 0, 9)
+		and divide.separatorLineSize(spanned) == UDim2.new(1, 0, 0, 1)
+)
+local across = listResolution(Enum.FillDirection.Horizontal)
+divide.absorbListGap(across, { axis = "y", thickness = 1 })
+check("a separator across the list leaves the gap", across.helpers[1].props[1].value == UDim.new(0, 8))
+local undivided = listResolution(nil, { thickness = 0 })
+divide.absorbListGap(undivided, { axis = "y", thickness = 1 })
+check("divide-y-0 leaves the gap", undivided.helpers[1].props[1].value == UDim.new(0, 8))
+local horizontal = listResolution(Enum.FillDirection.Horizontal, { axis = "x" })
+divide.absorbListGap(horizontal, nil)
+check(
+	"a dynamic divide-x takes a horizontal gap",
+	divide.separatorSize(divide.resolveDivideConfig(nil, horizontal.divide, 1)) == UDim2.new(0, 9, 1, 0)
+)
+
 local SIGNALS = {
 	"MouseEnter",
 	"MouseLeave",
