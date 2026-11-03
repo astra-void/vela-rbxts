@@ -30,6 +30,31 @@ function mountSettled(
 	return mounted;
 }
 
+function mountRelational(container: Instance): () => void {
+	const root = ReactRoblox.createLegacyRoot(container);
+	root.render(relationalTree());
+
+	return () => root.unmount();
+}
+
+function relationalMounted(
+	container: Instance,
+	metrics: VelaBench.Metrics,
+): Instance {
+	VelaBench.waitUntil(
+		metrics,
+		"mount",
+		() =>
+			container
+				.FindFirstChild("relational")
+				?.FindFirstChild("pair")
+				?.FindFirstChild("hint") !== undefined,
+	);
+	VelaBench.settle();
+
+	return container.FindFirstChild("relational") as Instance;
+}
+
 /// What the visual order of a list's slot-taking children reads as.
 function slotOrder(list: Instance): {
 	names: string[];
@@ -38,7 +63,12 @@ function slotOrder(list: Instance): {
 	const slots = list
 		.GetChildren()
 		.filter((child): child is GuiObject => child.IsA("GuiObject"));
-	slots.sort((a, b) => a.AbsolutePosition.Y < b.AbsolutePosition.Y);
+	// A server lays nothing out, so there the order is what a LayoutOrder sort would give.
+	if (VelaBench.hasClient()) {
+		slots.sort((a, b) => a.AbsolutePosition.Y < b.AbsolutePosition.Y);
+	} else {
+		slots.sort((a, b) => a.LayoutOrder < b.LayoutOrder);
+	}
 
 	return {
 		names: slots.map((slot) =>
@@ -201,30 +231,17 @@ export const specs: VelaBench.Spec[] = [
 		},
 	},
 	{
-		name: "group/peer: state propagates to marked descendants",
+		name: "group/peer: marks are tagged and their scopes released on unmount",
 		run: (container) => {
 			const baseline = VelaBench.observedScopeCount();
 			const followedBaseline = VelaBench.followedTagCount();
-			const root = ReactRoblox.createLegacyRoot(container);
-			root.render(relationalTree());
+			const unmountTree = mountRelational(container);
 			const metrics: VelaBench.Metrics = {};
 			try {
-				VelaBench.waitUntil(
-					metrics,
-					"mount",
-					() =>
-						container
-							.FindFirstChild("relational")
-							?.FindFirstChild("pair")
-							?.FindFirstChild("hint") !== undefined,
-				);
-				VelaBench.settle();
-				const tree = container.FindFirstChild("relational") as Instance;
+				const tree = relationalMounted(container, metrics);
 				const group = tree.FindFirstChild("group") as TextBox;
-				const member = group.FindFirstChild("member") as Frame;
 				const pair = tree.FindFirstChild("pair") as Instance;
 				const field = pair.FindFirstChild("field") as TextBox;
-				const hint = pair.FindFirstChild("hint") as Frame;
 				VelaBench.assertEqual(group.HasTag("VelaGroup"), true, "group tag");
 				VelaBench.assertEqual(field.HasTag("VelaPeer/field"), true, "peer tag");
 				const marginPair = tree.FindFirstChild("marginPair") as Instance;
@@ -232,10 +249,6 @@ export const specs: VelaBench.Spec[] = [
 					"TextBox",
 					true,
 				) as TextBox;
-				const marginHint = marginPair.FindFirstChildWhichIsA(
-					"TextLabel",
-					true,
-				) as TextLabel;
 				VelaBench.assertEqual(
 					marginField.Parent?.HasTag("VelaMarginBox"),
 					true,
@@ -251,6 +264,50 @@ export const specs: VelaBench.Spec[] = [
 					2,
 					"followed tags",
 				);
+			} finally {
+				unmountTree();
+			}
+
+			VelaBench.settle();
+			VelaBench.assertEqual(
+				VelaBench.observedScopeCount(),
+				baseline,
+				"observed scopes after unmount",
+			);
+			VelaBench.assertEqual(
+				VelaBench.followedTagCount(),
+				followedBaseline,
+				"followed tags after unmount",
+			);
+
+			return metrics;
+		},
+	},
+	{
+		name: "group/peer: focus propagates to marked descendants",
+		run: (container) => {
+			if (!VelaBench.hasClient()) {
+				VelaBench.skip("TextBox focus needs a client");
+			}
+
+			const unmountTree = mountRelational(container);
+			const metrics: VelaBench.Metrics = {};
+			try {
+				const tree = relationalMounted(container, metrics);
+				const group = tree.FindFirstChild("group") as TextBox;
+				const member = group.FindFirstChild("member") as Frame;
+				const pair = tree.FindFirstChild("pair") as Instance;
+				const field = pair.FindFirstChild("field") as TextBox;
+				const hint = pair.FindFirstChild("hint") as Frame;
+				const marginPair = tree.FindFirstChild("marginPair") as Instance;
+				const marginField = marginPair.FindFirstChildWhichIsA(
+					"TextBox",
+					true,
+				) as TextBox;
+				const marginHint = marginPair.FindFirstChildWhichIsA(
+					"TextLabel",
+					true,
+				) as TextLabel;
 
 				group.CaptureFocus();
 				VelaBench.waitUntil(metrics, "groupFocus", () =>
@@ -283,20 +340,8 @@ export const specs: VelaBench.Spec[] = [
 					() => marginHint.BackgroundColor3.ToHex() === SLATE_700,
 				);
 			} finally {
-				root.unmount();
+				unmountTree();
 			}
-
-			VelaBench.settle();
-			VelaBench.assertEqual(
-				VelaBench.observedScopeCount(),
-				baseline,
-				"observed scopes after unmount",
-			);
-			VelaBench.assertEqual(
-				VelaBench.followedTagCount(),
-				followedBaseline,
-				"followed tags after unmount",
-			);
 
 			return metrics;
 		},

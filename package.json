@@ -14,6 +14,7 @@
     "bench:compiler": "cargo bench --manifest-path packages/compiler/Cargo.toml --bench transform",
     "bench:host": "pnpm --filter @vela-rbxts/compiler run build:native:release && pnpm --filter @vela-rbxts/rbxtsc-host run bench",
     "bench:build": "tsx ./scripts/bench/rbxtsc-build.ts",
+    "bench:cloud": "tsx ./scripts/bench/open-cloud-specs.ts",
     "typecheck": "turbo run typecheck",
     "clean": "turbo run clean",
     "changeset:add": "changeset",

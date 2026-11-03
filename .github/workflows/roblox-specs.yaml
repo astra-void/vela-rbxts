@@ -1,0 +1,122 @@
+name: Roblox specs
+
+# No pull_request trigger: the Open Cloud secrets never reach fork PRs, and a
+# PR from a branch could publish arbitrary code to the test place.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 24
+  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+# Every run saves versions of the one test place, so runs queue instead of racing.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: gate
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.secrets.outputs.enabled }}
+    steps:
+      - name: Check the Open Cloud secrets
+        id: secrets
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          ROBLOX_UNIVERSE_ID: ${{ secrets.ROBLOX_UNIVERSE_ID }}
+          ROBLOX_PLACE_ID: ${{ secrets.ROBLOX_PLACE_ID }}
+        run: |
+          if [ -n "$ROBLOX_API_KEY" ] && [ -n "$ROBLOX_UNIVERSE_ID" ] && [ -n "$ROBLOX_PLACE_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::ROBLOX_API_KEY, ROBLOX_UNIVERSE_ID and ROBLOX_PLACE_ID are not all set, so the Open Cloud specs are skipped. See docs/benchmarks.md."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  specs:
+    name: specs
+    needs: gate
+    if: needs.gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            packages/compiler
+            packages/lsp
+
+      # Pinned to the Rojo release both harness rokit.toml files name.
+      - name: Install Rojo
+        env:
+          ROJO_VERSION: 7.7.0
+          ROJO_SHA256: 22503e5839864f9d7c2171c48b536fc229f2cc4d8774c9cc149f60941d864073
+        run: |
+          grep -q "rojo-rbx/rojo@$ROJO_VERSION\"" apps/rbxts-harness/rokit.toml
+          grep -q "rojo-rbx/rojo@$ROJO_VERSION\"" apps/vide-harness/rokit.toml
+          curl -fsSL -o "$RUNNER_TEMP/rojo.zip" \
+            "https://github.com/rojo-rbx/rojo/releases/download/v$ROJO_VERSION/rojo-$ROJO_VERSION-linux-x86_64.zip"
+          echo "$ROJO_SHA256  $RUNNER_TEMP/rojo.zip" | sha256sum --check -
+          unzip -q "$RUNNER_TEMP/rojo.zip" -d "$RUNNER_TEMP/rojo"
+          rojo="$(find "$RUNNER_TEMP/rojo" -type f -name rojo | head -n 1)"
+          chmod +x "$rojo"
+          "$rojo" --version
+          dirname "$rojo" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Build the bench places
+        run: |
+          pnpm --filter rbxts-harness run bench:place
+          pnpm --filter vide-harness run bench:place
+
+      - name: Run the specs through Open Cloud
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          ROBLOX_UNIVERSE_ID: ${{ secrets.ROBLOX_UNIVERSE_ID }}
+          ROBLOX_PLACE_ID: ${{ secrets.ROBLOX_PLACE_ID }}
+        run: pnpm run bench:cloud
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: roblox-specs-${{ github.sha }}
+          path: artifacts/bench/open-cloud-*.json
+          if-no-files-found: warn

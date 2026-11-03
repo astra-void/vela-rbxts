@@ -42,7 +42,7 @@ export namespace VelaBench {
 		run: (container: Instance) => object | undefined;
 	};
 
-	type Request = {
+	export type Request = {
 		id?: string;
 		kind?: "bench" | "spec";
 		scenarios?: string[];
@@ -163,6 +163,11 @@ export namespace VelaBench {
 		frame.Parent = parent;
 
 		return frame;
+	}
+
+	/// The Open Cloud Luau execution task is a server: no layout, focus or local player.
+	export function hasClient(): boolean {
+		return RunService.IsClient();
 	}
 
 	export function colorScheme(): unknown {
@@ -289,6 +294,37 @@ export namespace VelaBench {
 		return gui;
 	}
 
+	export type Report = Record<string, unknown> & { ok: boolean };
+
+	export function run(
+		framework: string,
+		scenarios: Scenario[],
+		specs: Spec[],
+		request: Request,
+		settings?: Metrics,
+	): Report {
+		const root = benchRoot();
+		const started = os.clock();
+		const [ok, payload] = pcall(() => {
+			const kind = request.kind ?? "bench";
+			const body =
+				kind === "spec"
+					? runSpecs(root, specs, request)
+					: { results: runBench(root, scenarios, request) };
+
+			return { id: request.id, kind, framework, settings, ...body };
+		});
+		root.Destroy();
+
+		return ok
+			? {
+					...(payload as object),
+					ok: true,
+					elapsedMs: (os.clock() - started) * 1000,
+				}
+			: { id: request.id, framework, ok: false, error: tostring(payload) };
+	}
+
 	export function serve(
 		framework: string,
 		scenarios: Scenario[],
@@ -298,7 +334,6 @@ export namespace VelaBench {
 		const result = new Instance("StringValue");
 		result.Name = RESULT_NAME;
 		result.Parent = ReplicatedStorage;
-		const root = benchRoot();
 		let busy = false;
 
 		function handle() {
@@ -309,27 +344,18 @@ export namespace VelaBench {
 
 			busy = true;
 			ReplicatedStorage.SetAttribute(STATUS_ATTRIBUTE, "running");
-			const started = os.clock();
-			const [ok, payload] = pcall(() => {
-				const request = HttpService.JSONDecode(raw) as Request;
-				const kind = request.kind ?? "bench";
-				const body =
-					kind === "spec"
-						? runSpecs(root, specs, request)
-						: { results: runBench(root, scenarios, request) };
-
-				return { id: request.id, kind, framework, settings, ...body };
-			});
-			const report = ok
-				? {
-						...(payload as object),
-						ok: true,
-						elapsedMs: (os.clock() - started) * 1000,
-					}
-				: { framework, ok: false, error: tostring(payload) };
+			const [decoded, request] = pcall(
+				() => HttpService.JSONDecode(raw) as Request,
+			);
+			const report = decoded
+				? run(framework, scenarios, specs, request as Request, settings)
+				: { framework, ok: false, error: tostring(request) };
 			const json = HttpService.JSONEncode(report);
 			result.Value = json;
-			ReplicatedStorage.SetAttribute(STATUS_ATTRIBUTE, ok ? "done" : "error");
+			ReplicatedStorage.SetAttribute(
+				STATUS_ATTRIBUTE,
+				report.ok ? "done" : "error",
+			);
 			print(`${LOG_PREFIX} ${json}`);
 			busy = false;
 		}

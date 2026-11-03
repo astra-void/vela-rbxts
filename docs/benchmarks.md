@@ -7,7 +7,7 @@ Four layers are measured, from the compiler crate out to a running place:
 | Compiler crate (criterion) | `pnpm run bench:compiler` | CI runs each bench once on every PR; full runs on `main` and dispatch |
 | napi and the rbxtsc host (vitest bench) | `pnpm run bench:host` | `main` and dispatch, locally |
 | End-to-end `rbxtsc` overhead | `pnpm run bench:build` | `main` and dispatch, locally |
-| Runtime in Studio (bench place plus specs) | `pnpm --filter rbxts-harness run bench:serve` | Local only; CI builds the place |
+| Runtime in Studio (bench place plus specs) | `pnpm --filter rbxts-harness run bench:serve` | Local; the server-safe specs also run on `main` through Open Cloud |
 
 None of these gate a merge. Shared GitHub runners vary by 10 to 30% between runs, so
 the numbers the `Bench` workflow uploads are for reading trends, not for asserting on.
@@ -90,6 +90,7 @@ emitted motion driver import (`script.Parent.Parent.Client.motion`) looks. `App`
 | `scenarios.tsx` | The scenarios, written against React or Vide |
 | `specs.tsx` | The specs |
 | `main.client.ts` | `VelaBench.serve("react" \| "vide", scenarios, specs)` |
+| `cloud.ts` | A function from a request to a report, which the Open Cloud task requires since no LocalScript runs there |
 
 ```sh
 PATH="$HOME/.cargo/bin:$PATH" pnpm build          # root build first, see below
@@ -213,11 +214,14 @@ The result has `passed`, `failed`, `skipped` and one entry per spec.
 | env store | Vide: the listener count is unchanged with 100 and 1000 hosts mounted. React: exactly one listener per host at 100 and at 1000, and back to the baseline after each unmount |
 | `dark:` | A host turns slate-900 when `VelaColorScheme` is `dark` and back when it is `light` |
 | `selected:` | A host follows its `Selected` attribute both ways |
-| divide | Children of a `divide-y-2` list sit in declared order with one separator between each pair, and the runtime ranks them exactly `0..6`: item r at `2r`, the separator after it at `2r+1` |
+| divide | Children of a `divide-y-2` list sit in declared order with one separator between each pair, and the runtime ranks them exactly `0..6`: item r at `2r`, the separator after it at `2r+1`. A server lays nothing out, so there the order is read off `LayoutOrder` instead of `AbsolutePosition` |
 | divide, reversed | The same list with each child declaring a descending `LayoutOrder` renders `item-3..item-0`, still ranked `0..6` |
-| group/peer | A `group` TextBox and two `peer/field` TextBoxes, one of them with its reader in margin boxes, carry their tags; the margin box carries `VelaMarginBox`; focusing each turns its reader rose-500 and blurring it turns it back; exactly three instances are observed and two tags followed while mounted, and none of either after unmount |
+| group/peer marks | A `group` TextBox and two `peer/field` TextBoxes, one of them with its reader in margin boxes, carry their tags; the margin box carries `VelaMarginBox`; exactly three instances are observed and two tags followed while mounted, and none of either after unmount |
+| group/peer focus | Focusing each TextBox turns its reader rose-500 and blurring it turns it back |
 
-Without a local player (a server context), the color scheme cases skip.
+Without a client (a server context, such as an Open Cloud task), `dark:` skips because the
+color scheme lives on the local player, and group/peer focus skips because only a client
+can focus a TextBox.
 
 ## CI
 
@@ -226,18 +230,78 @@ Without a local player (a server context), the color scheme cases skip.
 - `test` job: installs the Rojo release both harness `rokit.toml` files pin (checksum
   verified, the same way Lune is installed for the parity harness) and runs
   `bench:place` for both harnesses after the tests, so the bench places at least build.
-  Nothing executes Luau in Roblox.
+- `Roblox specs` workflow (`.github/workflows/roblox-specs.yaml`, on push to `main` and
+  dispatch): runs the specs in Roblox through Open Cloud, see below. Its `gate` job skips
+  the run with a notice when the secrets are missing, which is always the case in forks,
+  and there is no `pull_request` trigger.
 - `Bench` workflow (`.github/workflows/bench.yaml`, on push to `main` and dispatch, not
   gating): the full criterion, host and build-overhead benches, uploading
   `packages/compiler/target/criterion` and `artifacts/bench/*.json`.
 
+## Open Cloud specs
+
+`pnpm run bench:cloud` (`scripts/bench/open-cloud-specs.ts`) runs the specs of both bench
+places in Roblox, without Studio. For each harness it:
+
+1. Saves `apps/<harness>/out/bench.rbxl` as a new version of the test place:
+   `POST https://apis.roblox.com/universes/v1/{universeId}/places/{placeId}/versions?versionType=Saved`
+   with the file as an `application/octet-stream` body, which answers `{ "versionNumber": N }`.
+   `Saved` keeps it off the live place.
+2. Creates a Luau execution task against that version:
+   `POST https://apis.roblox.com/cloud/v2/universes/{universeId}/places/{placeId}/versions/{N}/luau-execution-session-tasks`
+   with `{ "script", "timeout": "300s" }`. The script is `scripts/bench/open-cloud-entry.luau`
+   with its `local REQUEST = ...` line replaced by `{ "id", "kind": "spec" }`; it requires
+   `StarterPlayer.StarterPlayerScripts.Bench.cloud` and returns the runner's report as one
+   JSON string.
+3. Polls `GET https://apis.roblox.com/cloud/v2/{task.path}` every 3 seconds until the state
+   is `COMPLETE`, `FAILED` or `CANCELLED`, then prints every page of `{task.path}/logs`.
+4. Fails when the task failed, the report is for another request id, the runner raised,
+   any spec failed, or no spec passed. Skips are listed with their reason and do not fail.
+
+Results go to `artifacts/bench/open-cloud-<harness>.json` and, in Actions, to the job
+summary. `--harness vide-harness` runs one place, `--specs "<name>,<name>"` picks specs and
+`--timeout 120s` shortens the task. Build the places first (`bench:place`, after a root
+build).
+
+The task is a fresh server loading that place version: no player, no LocalScript or Script
+running, no physics and no rendering, so it covers the env store, `selected:`, divide order
+and the group/peer marks, while `dark:` and group/peer focus skip. The mount and rerender
+benches are not run there: their frame metrics need `RenderStepped`, and numbers from a
+shared Roblox server would not compare with Studio. A task may run for 5 minutes and return
+4 MB, a place may have 10 tasks in flight, and an API key owner may create 5 tasks a minute;
+a run creates two, one after the other, and the workflow queues runs rather than overlapping
+them.
+
+### Setup
+
+1. Create an experience used for nothing else, for example "vela-rbxts CI", and keep it
+   private. Its start place is the test place; each run adds two saved versions to it.
+   From the Creator Dashboard's Creations page, **Copy Universe ID** on the experience, and
+   read the place id from the URL of its start place under **Places**.
+2. Create an API key at <https://create.roblox.com/dashboard/credentials> owned by an
+   account that can edit that experience (for a group experience, an account with that
+   role in the group). Add two API systems, each restricted to that experience:
+   - `universe-places` with **Write** (scope `universe-places:write`), for the upload.
+   - Luau execution sessions with **Write** (scope
+     `universe.place.luau-execution-session:write`), which also covers reading tasks and logs.
+
+   Leave the IP restriction off, since GitHub runners have no fixed address. A key unused
+   for 60 days expires, and an expiration date needs a rotation plan.
+3. Add three repository secrets under Settings, Secrets and variables, Actions:
+   `ROBLOX_API_KEY`, `ROBLOX_UNIVERSE_ID` and `ROBLOX_PLACE_ID`.
+4. Run the `Roblox specs` workflow from the Actions tab, or locally:
+
+   ```sh
+   PATH="$HOME/.cargo/bin:$PATH" pnpm build
+   pnpm --filter rbxts-harness run bench:place
+   pnpm --filter vide-harness run bench:place
+   ROBLOX_API_KEY=... ROBLOX_UNIVERSE_ID=... ROBLOX_PLACE_ID=... pnpm run bench:cloud
+   ```
+
 ## Not done yet
 
-- Roblox Open Cloud Luau Execution could run the specs in CI: upload the bench place to a
-  dedicated test place and post a task that requires the runner and returns its JSON. It
-  needs an API key and a universe and place id as secrets, which fork PRs do not get, and
-  it runs server-side, so nothing that needs rendering, input or a viewport can be
-  covered there.
+- The mount and rerender benches, `dark:` and group/peer focus still need a Studio
+  session: an Open Cloud task has no client to render, focus or carry a color scheme.
 - `run-in-roblox` could run the specs headlessly against a local Studio without the
   Connect click. Its 0.3.0 release is old and untested against current Studio on macOS,
   and it still needs a logged-in Studio, so it would stay local.
