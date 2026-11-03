@@ -91,7 +91,7 @@
 	"devDependencies": {
 		"@vela-rbxts/rbxtsc-host": "workspace:*",
 		"esbuild": "^0.28.1",
-		"@vscode/vsce": "^3.9.2",
+		"@vscode/vsce": "^4.1.0",
 		"@types/node": "^24.10.1",
 		"@types/vscode": "^1.91.0",
 		"typescript": "5.9.3"
