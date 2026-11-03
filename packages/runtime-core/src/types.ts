@@ -216,13 +216,18 @@ export type RuntimeScopeState = {
 	hovered: boolean;
 	pressed: boolean;
 	focused: boolean;
+	/// The watched attributes of each instance found, the group's own or one
+	/// record per marked peer, so an attribute variant matches if any does.
+	attributes?: readonly Readonly<Record<string, unknown>>[];
 };
 
 /// The marker names an element's `group-*` and `peer-*` variants read, `""`
-/// for the unnamed marker. Sorted, so two readings compare as written.
+/// for the unnamed marker, and the attributes they read off what they find.
+/// Sorted, so two readings compare as written.
 export type RuntimeScopeNeeds = {
 	groups: string[];
 	peers: string[];
+	attributes: string[];
 };
 
 export type RuntimeScopes = {

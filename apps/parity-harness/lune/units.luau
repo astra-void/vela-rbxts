@@ -162,9 +162,24 @@ local SIGNALS = {
 }
 
 local function fakeInstance(className: string, tags: { string }?): any
-	local self: any = { ClassName = className, Parent = nil, tags = tags or {}, children = {} }
+	local self: any = { ClassName = className, Parent = nil, tags = tags or {}, children = {}, attributes = {}, attributeSignals = {} }
 	for _, name in SIGNALS do
 		self[name] = fakeSignal()
+	end
+	function self:GetAttribute(name: string): any
+		return self.attributes[name]
+	end
+	function self:GetAttributeChangedSignal(name: string): any
+		local signal = self.attributeSignals[name]
+		if signal == nil then
+			signal = fakeSignal()
+			self.attributeSignals[name] = signal
+		end
+		return signal
+	end
+	function self:SetAttribute(name: string, value: any)
+		self.attributes[name] = value
+		self:GetAttributeChangedSignal(name):Fire()
 	end
 	function self:HasTag(tag: string): boolean
 		return table.find(self.tags, tag) ~= nil
@@ -264,7 +279,7 @@ do
 	local card = fakeInstance("Frame", { "VelaGroup" })
 	local label = fakeInstance("TextLabel")
 	local seen = {}
-	local stop = scope.watch(label, { groups = { "" }, peers = {} }, function(scopes)
+	local stop = scope.watch(label, { groups = { "" }, peers = {}, attributes = {} }, function(scopes)
 		table.insert(seen, scopes.groups[""].hovered)
 	end)
 	check("an idle group reports nothing", #seen == 0)
@@ -276,7 +291,7 @@ do
 
 	local other = fakeInstance("TextLabel")
 	parentTo(other, card)
-	local stopOther = scope.watch(other, { groups = { "" }, peers = {} }, function() end)
+	local stopOther = scope.watch(other, { groups = { "" }, peers = {}, attributes = {} }, function() end)
 	check("two readers share one observation", card.MouseEnter:Count() == 1, `{card.MouseEnter:Count()}`)
 	card.MouseEnter:Fire()
 	stop()
@@ -294,7 +309,7 @@ do
 	local hint = fakeInstance("TextLabel")
 	parentTo(hint, parent)
 	local focused = false
-	local stop = scope.watch(hint, { groups = {}, peers = { "field" } }, function(scopes)
+	local stop = scope.watch(hint, { groups = {}, peers = { "field" }, attributes = {} }, function(scopes)
 		focused = scopes.peers.field.focused
 	end)
 	parentTo(field, parent)
@@ -316,7 +331,7 @@ do
 	parentTo(hintBox, parent)
 	check("a margin box takes the element's slot", scope.slotOf(hint) == hintBox)
 	local focused = false
-	local stop = scope.watch(hint, { groups = {}, peers = { "field" } }, function(scopes)
+	local stop = scope.watch(hint, { groups = {}, peers = { "field" }, attributes = {} }, function(scopes)
 		focused = scopes.peers.field.focused
 	end)
 	parentTo(fieldBox, parent)
@@ -333,7 +348,7 @@ do
 	local label = fakeInstance("TextLabel")
 	parentTo(label, card)
 	local seen = {}
-	local stop = scope.watch(label, { groups = { "" }, peers = {} }, function(scopes)
+	local stop = scope.watch(label, { groups = { "" }, peers = {}, attributes = {} }, function(scopes)
 		table.insert(seen, scopes.groups[""].hovered)
 	end)
 	addTag(card, "VelaGroup")
@@ -354,7 +369,7 @@ do
 	parentTo(field, parent)
 	parentTo(hint, parent)
 	local focused = false
-	local stop = scope.watch(hint, { groups = {}, peers = { "field" } }, function(scopes)
+	local stop = scope.watch(hint, { groups = {}, peers = { "field" }, attributes = {} }, function(scopes)
 		focused = scopes.peers.field.focused
 	end)
 	addTag(field, "VelaPeer/field")
@@ -374,8 +389,8 @@ do
 	local secondLabel = fakeInstance("TextLabel")
 	parentTo(firstLabel, first)
 	parentTo(secondLabel, second)
-	local stopFirst = scope.watch(firstLabel, { groups = { "" }, peers = {} }, function() end)
-	local stopSecond = scope.watch(secondLabel, { groups = { "" }, peers = {} }, function() end)
+	local stopFirst = scope.watch(firstLabel, { groups = { "" }, peers = {}, attributes = {} }, function() end)
+	local stopSecond = scope.watch(secondLabel, { groups = { "" }, peers = {}, attributes = {} }, function() end)
 	check("readers of one tag share its subscription", tagSignal("added", "VelaGroup"):Count() == 1)
 	-- Tagged without the signal, so only a reader that was woken would bind it.
 	table.insert(second.tags, "VelaGroup")
@@ -387,6 +402,90 @@ do
 	stopSecond()
 	check("the last reader drops the subscription", tagSignal("added", "VelaGroup"):Count() == 0)
 	check("no tag stays followed", scope.followedTagCount() == 0)
+end
+
+local selectedTheme = { screens = {}, pluginVariants = { selected = { attribute = "Selected", equals = true } } }
+
+do
+	local variant = core.__VelaVariant
+	local card = fakeInstance("Frame", { "VelaGroup" })
+	local label = fakeInstance("TextLabel")
+	local other = fakeInstance("TextLabel")
+	card:SetAttribute("Selected", true)
+	parentTo(label, card)
+	parentTo(other, card)
+	local condition = variant.parseVariantPrefix("group-selected", selectedTheme)
+	local latest: any = nil
+	local needs = { groups = { "" }, peers = {}, attributes = { "Selected" } }
+	local stop = scope.watch(label, needs, function(scopes)
+		latest = scopes
+	end)
+	local function selected(): boolean
+		return latest ~= nil and variant.matchesRuntimeCondition(condition, { groups = latest.groups })
+	end
+	check("a group's attribute is read as it already stands", selected())
+	card:SetAttribute("Selected", false)
+	check("a group's attribute change is reported", not selected())
+	local stopOther = scope.watch(other, needs, function() end)
+	check("two readers share one attribute connection", card:GetAttributeChangedSignal("Selected"):Count() == 1)
+	check("the shared observer counts the held attribute", scope.watchedAttributeCount() == 1)
+	stop()
+	check("the attribute outlives one reader", card:GetAttributeChangedSignal("Selected"):Count() == 1)
+	stopOther()
+	check("the last reader releases the attribute", card:GetAttributeChangedSignal("Selected"):Count() == 0)
+	check("no attribute stays watched", scope.watchedAttributeCount() == 0)
+end
+
+do
+	local variant = core.__VelaVariant
+	local parent = fakeInstance("Frame")
+	local first = fakeInstance("Frame", { "VelaPeer/x" })
+	local second = fakeInstance("Frame", { "VelaPeer/x" })
+	local hint = fakeInstance("TextLabel")
+	for _, child in { first, second, hint } do
+		parentTo(child, parent)
+	end
+	local condition = variant.parseVariantPrefix("peer-attr-[State=open]/x", selectedTheme)
+	local latest: any = nil
+	local stop = scope.watch(hint, { groups = {}, peers = { "x" }, attributes = { "State" } }, function(scopes)
+		latest = scopes
+	end)
+	local function open(): boolean
+		return latest ~= nil and variant.matchesRuntimeCondition(condition, { peers = latest.peers })
+	end
+	check("no peer in the state reads as unmatched", not open())
+	second:SetAttribute("State", "open")
+	check("any peer carrying the attribute matches", open())
+	first:SetAttribute("State", "closed")
+	check("another peer's value does not mask it", open())
+	second:SetAttribute("State", "closed")
+	check("the match ends with the last peer leaving the state", not open())
+	stop()
+end
+
+do
+	local variant = core.__VelaVariant
+	local path = variant.parseVariantPrefix("group-attr-[Path=a/b]/card", selectedTheme)
+	check(
+		"group-attr keeps a slash inside its value",
+		path ~= nil and path.name == "card" and path.condition.kind == "attribute" and path.condition.value == "a/b"
+	)
+	check("a registered variant is read through a peer", variant.parseVariantPrefix("peer-selected/x", selectedTheme) ~= nil)
+	check("an unregistered name is not", variant.parseVariantPrefix("peer-checked", selectedTheme) == nil)
+	check("a breakpoint through a group stays unread", variant.parseVariantPrefix("group-md", { screens = { md = 768 }, pluginVariants = {} }) == nil)
+
+	local theme = core.__VelaEnv.normalizeTheme({
+		theme = { colors = {}, radius = {}, spacing = {}, fontFamily = {}, screens = {} },
+		plugins = { utilities = {}, variants = { selected = { attribute = "Selected", equals = true } } },
+	} :: any)
+	local needs = core.__VelaResolution.scopeNeeds(theme, {}, "group-selected:bg-red-500 peer-attr-[Open=true]/x:p-2 attr-[Own=1]:p-4")
+	check(
+		"scopeNeeds collects what group and peer read",
+		table.concat(needs.attributes, ",") == "Open,Selected",
+		table.concat(needs.attributes, ",")
+	)
+	local own = core.__VelaResolution.attributeNames(theme, {}, "group-selected:bg-red-500 attr-[Own=1]:p-4")
+	check("the element's own subscription leaves the group's out", table.concat(own, ",") == "Own", table.concat(own, ","))
 end
 
 do

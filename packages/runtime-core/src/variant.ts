@@ -48,6 +48,7 @@ export namespace __VelaVariant {
 			return parseRelationalVariant(
 				"group",
 				__VelaLua.after(prefix, GROUP_PREFIX),
+				theme,
 			);
 		}
 
@@ -55,6 +56,7 @@ export namespace __VelaVariant {
 			return parseRelationalVariant(
 				"peer",
 				__VelaLua.after(prefix, PEER_PREFIX),
+				theme,
 			);
 		}
 
@@ -93,15 +95,16 @@ export namespace __VelaVariant {
 	function parseRelationalVariant(
 		kind: "group" | "peer",
 		rest: string,
+		theme: RuntimeTheme,
 	): RuntimeCondition | undefined {
-		const slash = __VelaLua.indexOf(rest, "/");
+		const slash = markerNameSlash(rest);
 		const state = slash < 0 ? rest : __VelaLua.substring(rest, 0, slash);
 		const name = slash < 0 ? undefined : __VelaLua.substring(rest, slash + 1);
 		if (name !== undefined && !isMarkerName(name)) {
 			return undefined;
 		}
 
-		let condition: RuntimeCondition;
+		let condition: RuntimeCondition | undefined;
 		switch (state) {
 			case "hover":
 				condition = { kind: "hover" };
@@ -113,10 +116,45 @@ export namespace __VelaVariant {
 				condition = { kind: "focus" };
 				break;
 			default:
-				return undefined;
+				condition = parseRelationalAttribute(state, theme);
 		}
 
-		return { kind, name, condition };
+		return condition === undefined ? undefined : { kind, name, condition };
+	}
+
+	function parseRelationalAttribute(
+		state: string,
+		theme: RuntimeTheme,
+	): RuntimeCondition | undefined {
+		if (__VelaLua.startsWith(state, ATTRIBUTE_PREFIX)) {
+			return parseAttributeVariant(__VelaLua.after(state, ATTRIBUTE_PREFIX));
+		}
+
+		const registered = theme.pluginVariants[state];
+		return registered === undefined
+			? undefined
+			: {
+					kind: "attribute",
+					name: registered.attribute,
+					value: registered.equals,
+				};
+	}
+
+	/// The first `/` outside brackets, so `attr-[Path=a/b]/card` keeps its value.
+	function markerNameSlash(rest: string): number {
+		const length = __VelaLua.stringLength(rest);
+		let depth = 0;
+		for (let index = 0; index < length; index++) {
+			const char = __VelaLua.substring(rest, index, index + 1);
+			if (char === "[" || char === "(") {
+				depth += 1;
+			} else if (char === "]" || char === ")") {
+				depth = math.max(depth - 1, 0);
+			} else if (char === "/" && depth === 0) {
+				return index;
+			}
+		}
+		return -1;
 	}
 
 	/// The variant-name charset: a letter or digit, then letters, digits, `-`
@@ -278,23 +316,27 @@ export namespace __VelaVariant {
 		}
 	}
 
-	/// The group and peer marker names a condition reads, added to the sets.
+	/// The group and peer marker names a condition reads, and the attributes
+	/// it reads off them, added to the sets.
 	export function collectConditionScopes(
 		condition: RuntimeCondition,
 		groups: Set<string>,
 		peers: Set<string>,
+		attributes: Set<string>,
 	) {
 		if (condition.kind === "group") {
 			groups.add(condition.name ?? "");
+			collectConditionAttributes(condition.condition, attributes);
 			return;
 		}
 		if (condition.kind === "peer") {
 			peers.add(condition.name ?? "");
+			collectConditionAttributes(condition.condition, attributes);
 			return;
 		}
 		if (condition.kind === "all") {
 			for (const entry of condition.conditions) {
-				collectConditionScopes(entry, groups, peers);
+				collectConditionScopes(entry, groups, peers, attributes);
 			}
 		}
 	}
@@ -305,6 +347,7 @@ export namespace __VelaVariant {
 		theme: RuntimeTheme,
 		groups: Set<string>,
 		peers: Set<string>,
+		attributes: Set<string>,
 	) {
 		for (const token of tokens) {
 			const segments = splitVariantSegments(token);
@@ -313,7 +356,7 @@ export namespace __VelaVariant {
 			for (const segment of segments) {
 				const condition = parseVariantPrefix(segment, theme);
 				if (condition !== undefined) {
-					collectConditionScopes(condition, groups, peers);
+					collectConditionScopes(condition, groups, peers, attributes);
 				}
 			}
 		}
@@ -582,6 +625,10 @@ export namespace __VelaVariant {
 				return state.pressed;
 			case "focus":
 				return state.focused;
+			case "attribute":
+				return (state.attributes ?? []).some((values) =>
+					attributeMatches(values[condition.name], condition.value),
+				);
 			default:
 				return false;
 		}

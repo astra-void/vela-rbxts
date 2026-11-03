@@ -52,10 +52,22 @@ const ENVIRONMENTS = [
 		name: "scopes",
 		env: {
 			groups: {
-				"": { hovered: true, pressed: false, focused: false },
+				"": {
+					hovered: true,
+					pressed: false,
+					focused: false,
+					attributes: [{ State: "open" }],
+				},
 				card: { hovered: false, pressed: true, focused: false },
 			},
-			peers: { x: { hovered: false, pressed: false, focused: true } },
+			peers: {
+				x: {
+					hovered: false,
+					pressed: false,
+					focused: true,
+					attributes: [{ Tier: 1 }, { Tier: 2 }],
+				},
+			},
 		},
 	},
 ];
@@ -462,7 +474,13 @@ async function buildSuites() {
 				],
 			}),
 			filter: /brand|card|18|parity-/,
-			variants: ["open", "attr-[Tier=2]", "hover"],
+			variants: [
+				"open",
+				"attr-[Tier=2]",
+				"hover",
+				"group-open",
+				"peer-attr-[Tier=2]/x",
+			],
 		},
 	];
 

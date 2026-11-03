@@ -218,10 +218,18 @@ export namespace __VelaScope {
 		return tagReaders.size();
 	}
 
+	type AttributeHold = {
+		connection: RBXScriptConnection;
+		holders: number;
+	};
+
 	type Observed = {
 		state: RuntimeScopeState;
+		/// Replaced whole on a change, so readers compare it by identity.
+		values: Readonly<Record<string, unknown>>;
 		listeners: Set<() => void>;
 		connections: RBXScriptConnection[];
+		attributes: Map<string, AttributeHold>;
 	};
 
 	const observed = new Map<Instance, Observed>();
@@ -236,6 +244,63 @@ export namespace __VelaScope {
 		for (const connection of entry.connections) {
 			connection.Disconnect();
 		}
+		for (const [, hold] of entry.attributes) {
+			hold.connection.Disconnect();
+		}
+	}
+
+	function notify(entry: Observed) {
+		for (const each of [...entry.listeners]) {
+			each();
+		}
+	}
+
+	function writeValue(entry: Observed, name: string, value: unknown) {
+		const updated: Record<string, unknown> = {};
+		for (const [key, existing] of pairs(entry.values)) {
+			updated[key as string] = existing;
+		}
+		updated[name] = value;
+		entry.values = updated;
+	}
+
+	/// One connection per watched attribute however many readers name it, so a
+	/// group read by N elements for `Selected` connects that signal once.
+	function holdAttributes(
+		instance: Instance,
+		entry: Observed,
+		names: readonly string[],
+	) {
+		for (const name of names) {
+			const hold = entry.attributes.get(name);
+			if (hold !== undefined) {
+				hold.holders += 1;
+				continue;
+			}
+
+			entry.attributes.set(name, {
+				holders: 1,
+				connection: instance.GetAttributeChangedSignal(name).Connect(() => {
+					writeValue(entry, name, instance.GetAttribute(name));
+					notify(entry);
+				}),
+			});
+			writeValue(entry, name, instance.GetAttribute(name));
+		}
+	}
+
+	function releaseAttributes(entry: Observed, names: readonly string[]) {
+		for (const name of names) {
+			const hold = entry.attributes.get(name);
+			if (hold === undefined) {
+				continue;
+			}
+			hold.holders -= 1;
+			if (hold.holders === 0) {
+				hold.connection.Disconnect();
+				entry.attributes.delete(name);
+			}
+		}
 	}
 
 	/// One set of connections per observed instance however many elements read
@@ -243,27 +308,31 @@ export namespace __VelaScope {
 	export function observe(
 		instance: Instance,
 		listener: () => void,
+		attributes: readonly string[] = [],
 	): () => void {
 		let entry = observed.get(instance);
 		if (entry === undefined) {
 			const created: Observed = {
 				state: IDLE,
+				values: {},
 				listeners: new Set(),
 				connections: [],
+				attributes: new Map(),
 			};
 			entry = created;
 			observed.set(instance, created);
 
-			const write = (key: keyof RuntimeScopeState, value: boolean) => {
+			const write = (
+				key: "hovered" | "pressed" | "focused",
+				value: boolean,
+			) => {
 				if (created.state[key] === value) {
 					return;
 				}
 				const updated = { ...created.state };
 				updated[key] = value;
 				created.state = updated;
-				for (const each of [...created.listeners]) {
-					each();
-				}
+				notify(created);
 			};
 
 			if (instance.IsA("GuiObject")) {
@@ -305,11 +374,17 @@ export namespace __VelaScope {
 		const token = () => listener();
 		const held = entry;
 		held.listeners.add(token);
+		holdAttributes(instance, held, attributes);
 
 		return () => {
 			held.listeners.delete(token);
-			if (held.listeners.size() === 0 && observed.get(instance) === held) {
+			if (observed.get(instance) !== held) {
+				return;
+			}
+			if (held.listeners.size() === 0) {
 				release(instance);
+			} else {
+				releaseAttributes(held, attributes);
 			}
 		};
 	}
@@ -319,23 +394,62 @@ export namespace __VelaScope {
 		return observed.size();
 	}
 
+	/// Read-only, for benches and specs: how many attribute signals the
+	/// observed instances hold connected.
+	export function watchedAttributeCount(): number {
+		let count = 0;
+		for (const [, entry] of observed) {
+			count += entry.attributes.size();
+		}
+		return count;
+	}
+
 	export function stateOf(instance: Instance): RuntimeScopeState {
 		return observed.get(instance)?.state ?? IDLE;
 	}
 
 	/// Any marked sibling in the state counts, so several peers OR together.
-	function combine(instances: readonly Instance[]): RuntimeScopeState {
+	/// Attributes are kept per instance, since "any peer is `Selected`" cannot
+	/// be read off a merged record.
+	function combine(
+		instances: readonly Instance[],
+		readsAttributes: boolean,
+	): RuntimeScopeState {
 		let hovered = false;
 		let pressed = false;
 		let focused = false;
+		const attributes: Readonly<Record<string, unknown>>[] = [];
 		for (const instance of instances) {
 			const state = stateOf(instance);
 			hovered = hovered || state.hovered;
 			pressed = pressed || state.pressed;
 			focused = focused || state.focused;
+			if (readsAttributes) {
+				attributes.push(observed.get(instance)?.values ?? {});
+			}
 		}
 
-		return { hovered, pressed, focused };
+		return readsAttributes
+			? { hovered, pressed, focused, attributes }
+			: { hovered, pressed, focused };
+	}
+
+	function sameAttributes(
+		left: readonly Readonly<Record<string, unknown>>[] | undefined,
+		right: readonly Readonly<Record<string, unknown>>[] | undefined,
+	): boolean {
+		const a = left ?? [];
+		const b = right ?? [];
+		if (a.size() !== b.size()) {
+			return false;
+		}
+		for (let index = 0; index < a.size(); index++) {
+			if (a[index] !== b[index]) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	function sameState(
@@ -346,7 +460,8 @@ export namespace __VelaScope {
 		return (
 			left.hovered === latest.hovered &&
 			left.pressed === latest.pressed &&
-			left.focused === latest.focused
+			left.focused === latest.focused &&
+			sameAttributes(left.attributes, latest.attributes)
 		);
 	}
 
@@ -370,7 +485,7 @@ export namespace __VelaScope {
 	}
 
 	export function needsKey(needs: RuntimeScopeNeeds): string {
-		return `${__VelaLua.join(needs.groups, ",")}|${__VelaLua.join(needs.peers, ",")}`;
+		return `${__VelaLua.join(needs.groups, ",")}|${__VelaLua.join(needs.peers, ",")}|${__VelaLua.join(needs.attributes, ",")}`;
 	}
 
 	export function hasNeeds(needs: RuntimeScopeNeeds): boolean {
@@ -378,7 +493,7 @@ export namespace __VelaScope {
 	}
 
 	/// Finds what the element's `group-*` and `peer-*` read and reports their
-	/// states as they change. It follows the element moving, siblings coming
+	/// states and watched attributes as they change. It follows the element moving, siblings coming
 	/// and going and markers being added or removed, and stops on the returned
 	/// disposer or when the element is destroyed.
 	export function watch(
@@ -394,15 +509,19 @@ export namespace __VelaScope {
 		let last: RuntimeScopes | undefined;
 		let disposed = false;
 		const peerTags = needs.peers.map((name) => tagFor(PEER_TAG, name));
+		const readsAttributes = needs.attributes.size() > 0;
 
 		function read(): RuntimeScopes {
 			const scopes: RuntimeScopes = { groups: {}, peers: {} };
 			for (const name of needs.groups) {
 				const target = groups.get(name);
-				scopes.groups[name] = target === undefined ? IDLE : stateOf(target);
+				scopes.groups[name] = combine(
+					target === undefined ? [] : [target],
+					readsAttributes,
+				);
 			}
 			for (const name of needs.peers) {
-				scopes.peers[name] = combine(peers.get(name) ?? []);
+				scopes.peers[name] = combine(peers.get(name) ?? [], readsAttributes);
 			}
 
 			return scopes;
@@ -440,7 +559,7 @@ export namespace __VelaScope {
 				const target = findGroup(element, name);
 				if (target !== undefined) {
 					groups.set(name, target);
-					releases.push(observe(target, emit));
+					releases.push(observe(target, emit, needs.attributes));
 				}
 			}
 
@@ -467,7 +586,7 @@ export namespace __VelaScope {
 					const found = findPeers(element, name);
 					peers.set(name, found);
 					for (const peer of found) {
-						releases.push(observe(peer, emit));
+						releases.push(observe(peer, emit, needs.attributes));
 					}
 				}
 			}

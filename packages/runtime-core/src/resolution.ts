@@ -145,9 +145,15 @@ export namespace __VelaResolution {
 	): RuntimeScopeNeeds {
 		const groups = new Set<string>();
 		const peers = new Set<string>();
+		const attributes = new Set<string>();
 
 		for (const rule of runtimeRules) {
-			__VelaVariant.collectConditionScopes(rule.condition, groups, peers);
+			__VelaVariant.collectConditionScopes(
+				rule.condition,
+				groups,
+				peers,
+				attributes,
+			);
 		}
 
 		if (className !== undefined) {
@@ -156,10 +162,15 @@ export namespace __VelaResolution {
 				theme,
 				groups,
 				peers,
+				attributes,
 			);
 		}
 
-		return { groups: sortedNames(groups), peers: sortedNames(peers) };
+		return {
+			groups: sortedNames(groups),
+			peers: sortedNames(peers),
+			attributes: sortedNames(attributes),
+		};
 	}
 
 	function sortedNames(names: Set<string>): string[] {
