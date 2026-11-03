@@ -1,29 +1,8 @@
 use crate::api::{InlayHint, InlayHintsRequest, InlayHintsResponse};
 use crate::editor::{collect_class_name_contexts, tokenize_class_name_with_ranges};
 use crate::ir::model::{PropEntry, StyleIr};
+use crate::transform::conflicts::helper_class_name;
 use crate::transform::runtime::resolve_class_tokens;
-
-/// The Roblox class a helper tag names. The tags are the lowercase JSX ones the
-/// emit writes; a hint reads better with the name the API uses.
-pub(crate) fn helper_class_name(tag: &str) -> &'static str {
-    match tag {
-        "uiaspectratioconstraint" => "UIAspectRatioConstraint",
-        "uiblur" => "UIBlur",
-        "uicorner" => "UICorner",
-        "uiflexitem" => "UIFlexItem",
-        "uiinsetshadow" => "UIShadow (Inset)",
-        "uitextshadow" => "UIShadow (Mode = Text)",
-        "uigradient" => "UIGradient",
-        "uigridlayout" => "UIGridLayout",
-        "uilistlayout" => "UIListLayout",
-        "uipadding" => "UIPadding",
-        "uiscale" => "UIScale",
-        "uishadow" => "UIShadow",
-        "uisizeconstraint" => "UISizeConstraint",
-        "uistroke" => "UIStroke",
-        _ => "UI helper",
-    }
-}
 
 /// How long a hint may get before it stops being a summary. A `p-4` is one
 /// word; a plugin utility that expands to a dozen classes is not, and the whole
