@@ -241,6 +241,20 @@ export function createVelaRemScaler(config?: RuntimeRemConfig): VelaRemScaler {
 export namespace __VelaOpacity {
 	export const Context = __VelaReact.createContext(1);
 
+	/// The transparencies an element was written with. The static path leaves
+	/// those standing under a fade, and so does this one.
+	const owned = setmetatable(new Map<object, readonly string[]>(), {
+		__mode: "k",
+	});
+
+	export function own<T>(element: T, names: readonly string[]): T {
+		if (typeIs(element, "table")) {
+			owned.set(element, names);
+		}
+
+		return element;
+	}
+
 	type ProviderProps = { value: number; children?: defined };
 
 	/// Fades everything below it, the alpha the transformer knew multiplied by
@@ -346,8 +360,12 @@ export namespace __VelaOpacity {
 			return element;
 		}
 
+		const kept = owned.get(element);
 		const faded: Record<string, unknown> = {};
 		for (const name of names) {
+			if (kept?.includes(name)) {
+				continue;
+			}
 			const current = props[name];
 			faded[name] = __VelaOpacityCore.compose(
 				typeIs(current, "number") ? current : 0,
@@ -365,7 +383,12 @@ export namespace __VelaOpacity {
 			faded.children = applyAlpha(children, alpha);
 		}
 
-		return __VelaReact.cloneElement(element as never, faded as never);
+		const clone = __VelaReact.cloneElement(element as never, faded as never);
+		if (kept !== undefined) {
+			owned.set(clone, kept);
+		}
+
+		return clone;
 	}
 }
 
@@ -881,7 +904,7 @@ export function createVelaRuntimeHost(
 			// an untouched `TextTransparency` is opaque text.
 			if (hostTag !== undefined && ambientAlpha < 1) {
 				for (const name of __VelaOpacityCore.transparencyProps(hostTag)) {
-					if (resolution.props[name] !== undefined) {
+					if (resolution.props[name] !== undefined || ownProps.includes(name)) {
 						continue;
 					}
 

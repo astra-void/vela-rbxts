@@ -469,9 +469,12 @@ alpha. The fade ends at a `canvasgroup` on both paths — its `GroupTransparency
 already carries the subtree, so the runtime resets the context there rather than
 letting a consumer below apply it again.
 
-One thing the runtime cannot mirror: the static path leaves a transparency the author
-declared on the element alone, and a fade arriving through the context has no way to
-tell that prop from one Vela lowered, so it composes over both.
+A transparency the author wrote on the element is theirs on both paths. The static
+path leaves it alone, and a fade arriving through the context cannot tell it from one
+Vela lowered, so the transformer says which ones they are: an instance element is
+wrapped in `__VelaOpacity.own(element, names)`, which both consumers read before they
+fade what it built, and a runtime host is handed them as `__velaOwn`. A literal `1`
+composes to itself and is not recorded.
 
 Limitation: overlapping siblings would fade together under real compositing, but here
 each fades on its own, so the overlap ends up darker. The opt-in fix is `isolate` on a

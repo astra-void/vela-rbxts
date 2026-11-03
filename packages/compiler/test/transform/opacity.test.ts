@@ -396,3 +396,50 @@ test("warns on out-of-range opacity values", () => {
 		]),
 	);
 });
+
+// The static path leaves a transparency the author wrote alone under a fade, so
+// the runtime is told which ones they are before it fades what was built.
+test("an element's own transparency is recorded for the runtime fade", () => {
+	const result = transform(
+		"export function Card() { return <frame><frame BackgroundTransparency={0.2} /><textlabel TextTransparency={fade} BackgroundTransparency={1} /></frame>; }",
+	);
+	const code = emitted(result.code.replace(/\n\}\s*$/, ""));
+
+	expect(code).toContain(
+		'__VelaOpacity.own(<frame BackgroundTransparency={0.2}/>, [ "BackgroundTransparency" ])',
+	);
+	// A literal 1 composes to itself.
+	expect(code).toContain(
+		'__VelaOpacity.own(<textlabel TextTransparency={fade} BackgroundTransparency={1}/>, [ "TextTransparency" ])',
+	);
+	expect(result.code).toContain("import { __VelaOpacity");
+	expect(runtimeSource).toContain("if (kept?.includes(name))");
+});
+
+test("a fully transparent element needs no record", () => {
+	const result = transform("<frame BackgroundTransparency={1} />");
+
+	expect(result.code).not.toContain("__VelaOpacity.own");
+});
+
+// The host is handed the names it was written with as `__velaOwn` instead.
+test("a runtime host is not wrapped", () => {
+	const result = transform(
+		"<frame className={cls} BackgroundTransparency={0.2} />",
+	);
+
+	expect(result.needsRuntimeHost).toBe(true);
+	expect(result.code).not.toContain("__VelaOpacity.own");
+});
+
+test("a host with a static class is named the transparencies it declares", () => {
+	const result = transform(
+		'<textbutton className="hover:bg-slate-600" BackgroundTransparency={0.2} TextTransparency={1} />',
+	);
+
+	expect(result.needsRuntimeHost).toBe(true);
+	expect(result.code).toMatch(
+		/__velaOwn=\{\[\s*"BackgroundTransparency"\s*\]\}/,
+	);
+	expect(runtimeSource).toContain("ownProps.includes(name)");
+});

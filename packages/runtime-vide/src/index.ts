@@ -214,6 +214,20 @@ export namespace __VelaOpacity {
 	/// element is gone by the time this one runs, so what it built is marked.
 	const provided = setmetatable(new Map<Instance, true>(), { __mode: "k" });
 
+	/// The transparencies an element was written with. The static path leaves
+	/// those standing under a fade, and so does this one.
+	const owned = setmetatable(new Map<Instance, readonly string[]>(), {
+		__mode: "k",
+	});
+
+	export function own<T>(node: T, names: readonly string[]): T {
+		if (typeIs(node, "Instance")) {
+			owned.set(node, names);
+		}
+
+		return node;
+	}
+
 	type ProviderProps = { value: number; children: () => Vide.Node };
 
 	/// Multiplied here rather than at the context, where the inner value would
@@ -300,7 +314,11 @@ export namespace __VelaOpacity {
 			bases.set(node, base);
 		}
 
+		const kept = owned.get(node);
 		for (const name of __VelaOpacityCore.transparencyProps(tag)) {
+			if (kept?.includes(name)) {
+				continue;
+			}
 			let from = base?.get(name);
 			if (from === undefined) {
 				const current = target[name];
@@ -831,7 +849,7 @@ export function createVelaRuntimeHost(
 			// already met it in the derive.
 			if (hostTag !== undefined && ambientAlpha < 1) {
 				for (const name of __VelaOpacityCore.transparencyProps(hostTag)) {
-					if (current.props[name] !== undefined) {
+					if (current.props[name] !== undefined || ownProps.has(name)) {
 						continue;
 					}
 

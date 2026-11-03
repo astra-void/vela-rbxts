@@ -6,6 +6,7 @@ pub(crate) mod emit;
 pub(crate) mod jsx;
 pub(crate) mod module;
 pub(crate) mod opacity;
+pub(crate) mod own;
 pub(crate) mod rem;
 pub(crate) mod runtime;
 pub(crate) mod runtime_host;

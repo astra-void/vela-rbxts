@@ -29,8 +29,9 @@ export const withoutPreflight = {
 // read the declaration rather than the whole emit.
 export const emitted = (code: string) =>
 	code
-		.replace(/__VelaRem\.bind\(\{[^}]*\}\)/g, (binding) =>
-			binding.replace(/\s*\n\s*/g, " "),
+		.replace(
+			/__VelaRem\.bind\(\{[^}]*\}\)|__VelaOpacity\.own\([^[]*\[[^\]]*\]\)/g,
+			(call) => call.replace(/\s*\n\s*/g, " "),
 		)
 		.trimEnd()
 		.split("\n")

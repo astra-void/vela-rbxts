@@ -453,7 +453,6 @@ function StaticPropUnderFade() {
 		<frame
 			className={() => `w-40 h-6 ${probeClass()}`}
 			BackgroundColor3={Color3.fromRGB(251, 44, 54)}
-			BackgroundTransparency={0}
 		/>
 	);
 }
@@ -670,6 +669,33 @@ function RemInsideThunk(props: { active: () => boolean }) {
 	);
 }
 
+/// Faded from outside the file it is written in, so the fade arrives at
+/// runtime: `painted` composes to 0.5, while `declared` keeps the 0.2 its
+/// author wrote, as the static path keeps it.
+function DeclaredSwatches() {
+	return (
+		<frame
+			Name="DeclaredUnderFadeProbe"
+			className="flex flex-row gap-1 w-16 h-6"
+		>
+			<frame Name="painted" className="size-6 bg-slate-500" />
+			<frame
+				Name="declared"
+				className="size-6 bg-rose-500"
+				BackgroundTransparency={0.2}
+			/>
+		</frame>
+	);
+}
+
+function DeclaredUnderFade() {
+	return (
+		<Row label="declared under fade">
+			<DeclaredSwatches className="opacity-50" />
+		</Row>
+	);
+}
+
 export function App() {
 	const active = Vide.source(false);
 	// A template the collapser cannot read, so this one stays on the runtime
@@ -706,6 +732,7 @@ export function App() {
 				{LateArrivals({ active })}
 				{DivideOrdering({ active })}
 				{RemInsideThunk({ active })}
+				{DeclaredUnderFade()}
 			</frame>
 		</screengui>
 	);

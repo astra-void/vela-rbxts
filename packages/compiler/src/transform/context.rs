@@ -75,6 +75,7 @@ impl VisitMut for VelaTransformer {
         self.class_value_scopes.push();
         module.visit_mut_children_with(self);
         self.class_value_scopes.pop();
+        module.visit_mut_with(&mut crate::transform::own::OwnTransparency);
 
         let mut runtime_items = self.target.runtime_module_items(
             &self.config,
@@ -195,6 +196,215 @@ impl VisitMut for VelaTransformer {
     }
 
     fn visit_mut_jsx_element(&mut self, element: &mut JSXElement) {
+        let owned = crate::transform::own::owned_transparency(element);
+        self.lower_jsx_element(element);
+        if !owned.is_empty() && crate::transform::own::is_instance_element(&element.opening.name) {
+            crate::transform::own::mark(element, &owned);
+            self.opacity_helper_needed = true;
+            self.changed = true;
+        }
+    }
+}
+
+/// A `className` read before anything is lowered: the tokens that always
+/// apply, and the ones a branch or the runtime decides.
+struct ClassReading {
+    fixed: Vec<String>,
+    conditional: Vec<String>,
+}
+
+impl VelaTransformer {
+    fn read_class_value(&self, attrs: &[JSXAttrOrSpread]) -> Option<ClassReading> {
+        let value = attrs.iter().find_map(|attr| match attr {
+            JSXAttrOrSpread::JSXAttr(JSXAttr {
+                name: JSXAttrName::Ident(ident),
+                value,
+                ..
+            }) if ident.sym == "className" => value.as_ref(),
+            _ => None,
+        })?;
+
+        let (fixed, conditional): (Vec<String>, Vec<String>) = match value {
+            JSXAttrValue::Str(literal) => (
+                literal
+                    .value
+                    .to_string_lossy()
+                    .split_whitespace()
+                    .map(str::to_owned)
+                    .collect(),
+                Vec::new(),
+            ),
+            JSXAttrValue::JSXExprContainer(container) => {
+                let JSXExpr::Expr(expr) = &container.expr else {
+                    return None;
+                };
+                let expr: &Expr = self
+                    .target
+                    .class_value_is_deferred()
+                    .then(|| crate::swc::builders::deferred_body(expr))
+                    .flatten()
+                    .unwrap_or(expr);
+                let collapse = collapse_class_value_expr(expr, &self.class_value_scopes);
+                // A literal left inside the runtime's share is only read once it renders.
+                let mut leftover = LiteralTokens::default();
+                if let Some(dynamic) = &collapse.dynamic_expr {
+                    dynamic.visit_with(&mut leftover);
+                }
+                (
+                    collapse
+                        .static_tokens()
+                        .into_iter()
+                        .map(str::to_owned)
+                        .collect(),
+                    collapse
+                        .branches()
+                        .flat_map(|branch| branch.tokens.iter().cloned())
+                        .chain(leftover.tokens)
+                        .collect(),
+                )
+            }
+            _ => return None,
+        };
+
+        let expand = |tokens: Vec<String>| -> Vec<String> {
+            tokens
+                .iter()
+                .flat_map(|token| expand_class_token(token, &self.config))
+                .filter_map(|expanded| match expanded {
+                    ExpandedToken::Class { token, .. } => Some(token),
+                    ExpandedToken::Props { .. } => None,
+                })
+                .collect()
+        };
+
+        Some(ClassReading {
+            fixed: expand(fixed),
+            conditional: expand(conditional),
+        })
+    }
+
+    /// `isolate` asks for one composited layer, which Roblox only has as a
+    /// CanvasGroup. An instance keeps the class it was built as, so only a
+    /// static, unconditional token can swap the tag, and it does so before
+    /// anything below reads it.
+    fn isolate_element(&mut self, element: &mut JSXElement) {
+        let Some(reading) = self.read_class_value(&element.opening.attrs) else {
+            return;
+        };
+        if reading.conditional.iter().any(|token| token == "isolate") {
+            self.diagnostics
+                .push(isolate_not_static_diagnostic("isolate"));
+        }
+        if !reading.fixed.iter().any(|token| token == "isolate") {
+            return;
+        }
+
+        if is_component_element(&element.opening.name) {
+            self.diagnostics
+                .push(isolate_needs_frame_diagnostic(&element_display_name(
+                    &element.opening.name,
+                )));
+            return;
+        }
+        if !is_supported_host_element(&element.opening.name) {
+            return;
+        }
+
+        match element_tag_name(&element.opening.name).as_str() {
+            "frame" => {
+                let JSXElementName::Ident(ident) = &element.opening.name else {
+                    return;
+                };
+                let name =
+                    JSXElementName::Ident(Ident::new_no_ctxt("canvasgroup".into(), ident.span));
+                if let Some(closing) = element.closing.as_mut() {
+                    let span = match &closing.name {
+                        JSXElementName::Ident(ident) => ident.span,
+                        _ => DUMMY_SP,
+                    };
+                    closing.name =
+                        JSXElementName::Ident(Ident::new_no_ctxt("canvasgroup".into(), span));
+                }
+                element.opening.name = name;
+                self.changed = true;
+            }
+            "canvasgroup" => {}
+            tag => self.diagnostics.push(isolate_needs_frame_diagnostic(tag)),
+        }
+    }
+
+    /// A divided list ranks its children by the `LayoutOrder` it can read. Where
+    /// that is read off the element, an `order-*` only a render decides is not
+    /// there yet.
+    fn check_divided_children(&mut self, element: &JSXElement) {
+        if self.target.reads_built_layout_order() {
+            return;
+        }
+        let Some(reading) = self.read_class_value(&element.opening.attrs) else {
+            return;
+        };
+        if !reading.fixed.iter().any(|token| names_divide(token)) {
+            return;
+        }
+
+        for child in &element.children {
+            let JSXElementChild::JSXElement(child) = child else {
+                continue;
+            };
+            let Some(reading) = self.read_class_value(&child.opening.attrs) else {
+                continue;
+            };
+            let late = reading
+                .fixed
+                .iter()
+                .filter(|token| token.contains(':'))
+                .chain(reading.conditional.iter())
+                .find(|token| names_order(token));
+            if let Some(token) = late {
+                self.diagnostics
+                    .push(divide_unreadable_order_diagnostic(token));
+            }
+        }
+    }
+
+    /// Separators are list items, so they need a UIListLayout to place them and
+    /// turn into cells under a UIGridLayout.
+    fn check_divide_layout(&mut self, element: &JSXElement, style: &StyleIr) {
+        let Some(divide) = &style.divide else {
+            return;
+        };
+
+        let helper_tags = style.base.helpers.iter().map(|helper| helper.tag).chain(
+            style
+                .runtime_rules
+                .iter()
+                .flat_map(|rule| rule.effects.helpers.iter().map(|helper| helper.tag)),
+        );
+        let child_tags: Vec<String> = element
+            .children
+            .iter()
+            .filter_map(|child| match child {
+                JSXElementChild::JSXElement(child) => {
+                    Some(element_display_name(&child.opening.name))
+                }
+                _ => None,
+            })
+            .collect();
+        let tags: Vec<&str> = helper_tags
+            .chain(child_tags.iter().map(String::as_str))
+            .collect();
+
+        let token = format!("divide-{}", divide.axis);
+        if tags.contains(&"uigridlayout") {
+            self.diagnostics.push(divide_with_grid_diagnostic(&token));
+        } else if !tags.contains(&"uilistlayout") && !style.runtime_class_value {
+            self.diagnostics
+                .push(divide_without_list_layout_diagnostic(&token));
+        }
+    }
+
+    /// The alpha this element hands to everything nested inside it.
+    fn lower_jsx_element(&mut self, element: &mut JSXElement) {
         self.isolate_element(element);
         let is_component = is_component_element(&element.opening.name);
         let is_host = is_supported_host_element(&element.opening.name);
@@ -491,15 +701,22 @@ impl VisitMut for VelaTransformer {
             );
             // What the host resolves at render time cannot be checked against
             // the element's own props here, so it is told which ones to keep.
-            if lowered.style_ir.runtime_class_value {
-                let own = own_prop_names(&declared);
-                if !own.is_empty() {
-                    attrs.push(create_prop_attr(PropEntry {
-                        name: "__velaOwn".into(),
-                        value: serde_json::to_string(&own)
-                            .expect("own prop names must serialize to JSON"),
-                    }));
-                }
+            // A static class was already checked against them, so only the
+            // transparencies matter there: the host's fade leaves those standing.
+            let own = if lowered.style_ir.runtime_class_value {
+                own_prop_names(&declared)
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect()
+            } else {
+                crate::transform::own::declared_transparency(&attrs)
+            };
+            if !own.is_empty() {
+                attrs.push(create_prop_attr(PropEntry {
+                    name: "__velaOwn".into(),
+                    value: serde_json::to_string(&own)
+                        .expect("own prop names must serialize to JSON"),
+                }));
             }
             if !rem_props.is_empty() {
                 attrs.push(create_prop_attr(PropEntry {
@@ -647,206 +864,7 @@ impl VisitMut for VelaTransformer {
 
         self.provide_component_opacity(element, component_provider_alpha);
     }
-}
 
-/// A `className` read before anything is lowered: the tokens that always
-/// apply, and the ones a branch or the runtime decides.
-struct ClassReading {
-    fixed: Vec<String>,
-    conditional: Vec<String>,
-}
-
-impl VelaTransformer {
-    fn read_class_value(&self, attrs: &[JSXAttrOrSpread]) -> Option<ClassReading> {
-        let value = attrs.iter().find_map(|attr| match attr {
-            JSXAttrOrSpread::JSXAttr(JSXAttr {
-                name: JSXAttrName::Ident(ident),
-                value,
-                ..
-            }) if ident.sym == "className" => value.as_ref(),
-            _ => None,
-        })?;
-
-        let (fixed, conditional): (Vec<String>, Vec<String>) = match value {
-            JSXAttrValue::Str(literal) => (
-                literal
-                    .value
-                    .to_string_lossy()
-                    .split_whitespace()
-                    .map(str::to_owned)
-                    .collect(),
-                Vec::new(),
-            ),
-            JSXAttrValue::JSXExprContainer(container) => {
-                let JSXExpr::Expr(expr) = &container.expr else {
-                    return None;
-                };
-                let expr: &Expr = self
-                    .target
-                    .class_value_is_deferred()
-                    .then(|| crate::swc::builders::deferred_body(expr))
-                    .flatten()
-                    .unwrap_or(expr);
-                let collapse = collapse_class_value_expr(expr, &self.class_value_scopes);
-                // A literal left inside the runtime's share is only read once it renders.
-                let mut leftover = LiteralTokens::default();
-                if let Some(dynamic) = &collapse.dynamic_expr {
-                    dynamic.visit_with(&mut leftover);
-                }
-                (
-                    collapse
-                        .static_tokens()
-                        .into_iter()
-                        .map(str::to_owned)
-                        .collect(),
-                    collapse
-                        .branches()
-                        .flat_map(|branch| branch.tokens.iter().cloned())
-                        .chain(leftover.tokens)
-                        .collect(),
-                )
-            }
-            _ => return None,
-        };
-
-        let expand = |tokens: Vec<String>| -> Vec<String> {
-            tokens
-                .iter()
-                .flat_map(|token| expand_class_token(token, &self.config))
-                .filter_map(|expanded| match expanded {
-                    ExpandedToken::Class { token, .. } => Some(token),
-                    ExpandedToken::Props { .. } => None,
-                })
-                .collect()
-        };
-
-        Some(ClassReading {
-            fixed: expand(fixed),
-            conditional: expand(conditional),
-        })
-    }
-
-    /// `isolate` asks for one composited layer, which Roblox only has as a
-    /// CanvasGroup. An instance keeps the class it was built as, so only a
-    /// static, unconditional token can swap the tag, and it does so before
-    /// anything below reads it.
-    fn isolate_element(&mut self, element: &mut JSXElement) {
-        let Some(reading) = self.read_class_value(&element.opening.attrs) else {
-            return;
-        };
-        if reading.conditional.iter().any(|token| token == "isolate") {
-            self.diagnostics
-                .push(isolate_not_static_diagnostic("isolate"));
-        }
-        if !reading.fixed.iter().any(|token| token == "isolate") {
-            return;
-        }
-
-        if is_component_element(&element.opening.name) {
-            self.diagnostics
-                .push(isolate_needs_frame_diagnostic(&element_display_name(
-                    &element.opening.name,
-                )));
-            return;
-        }
-        if !is_supported_host_element(&element.opening.name) {
-            return;
-        }
-
-        match element_tag_name(&element.opening.name).as_str() {
-            "frame" => {
-                let JSXElementName::Ident(ident) = &element.opening.name else {
-                    return;
-                };
-                let name =
-                    JSXElementName::Ident(Ident::new_no_ctxt("canvasgroup".into(), ident.span));
-                if let Some(closing) = element.closing.as_mut() {
-                    let span = match &closing.name {
-                        JSXElementName::Ident(ident) => ident.span,
-                        _ => DUMMY_SP,
-                    };
-                    closing.name =
-                        JSXElementName::Ident(Ident::new_no_ctxt("canvasgroup".into(), span));
-                }
-                element.opening.name = name;
-                self.changed = true;
-            }
-            "canvasgroup" => {}
-            tag => self.diagnostics.push(isolate_needs_frame_diagnostic(tag)),
-        }
-    }
-
-    /// A divided list ranks its children by the `LayoutOrder` it can read. Where
-    /// that is read off the element, an `order-*` only a render decides is not
-    /// there yet.
-    fn check_divided_children(&mut self, element: &JSXElement) {
-        if self.target.reads_built_layout_order() {
-            return;
-        }
-        let Some(reading) = self.read_class_value(&element.opening.attrs) else {
-            return;
-        };
-        if !reading.fixed.iter().any(|token| names_divide(token)) {
-            return;
-        }
-
-        for child in &element.children {
-            let JSXElementChild::JSXElement(child) = child else {
-                continue;
-            };
-            let Some(reading) = self.read_class_value(&child.opening.attrs) else {
-                continue;
-            };
-            let late = reading
-                .fixed
-                .iter()
-                .filter(|token| token.contains(':'))
-                .chain(reading.conditional.iter())
-                .find(|token| names_order(token));
-            if let Some(token) = late {
-                self.diagnostics
-                    .push(divide_unreadable_order_diagnostic(token));
-            }
-        }
-    }
-
-    /// Separators are list items, so they need a UIListLayout to place them and
-    /// turn into cells under a UIGridLayout.
-    fn check_divide_layout(&mut self, element: &JSXElement, style: &StyleIr) {
-        let Some(divide) = &style.divide else {
-            return;
-        };
-
-        let helper_tags = style.base.helpers.iter().map(|helper| helper.tag).chain(
-            style
-                .runtime_rules
-                .iter()
-                .flat_map(|rule| rule.effects.helpers.iter().map(|helper| helper.tag)),
-        );
-        let child_tags: Vec<String> = element
-            .children
-            .iter()
-            .filter_map(|child| match child {
-                JSXElementChild::JSXElement(child) => {
-                    Some(element_display_name(&child.opening.name))
-                }
-                _ => None,
-            })
-            .collect();
-        let tags: Vec<&str> = helper_tags
-            .chain(child_tags.iter().map(String::as_str))
-            .collect();
-
-        let token = format!("divide-{}", divide.axis);
-        if tags.contains(&"uigridlayout") {
-            self.diagnostics.push(divide_with_grid_diagnostic(&token));
-        } else if !tags.contains(&"uilistlayout") && !style.runtime_class_value {
-            self.diagnostics
-                .push(divide_without_list_layout_diagnostic(&token));
-        }
-    }
-
-    /// The alpha this element hands to everything nested inside it.
     fn subtree_opacity_alpha(&self, element: &JSXElement, element_tag: Option<&str>) -> f64 {
         // A CanvasGroup composites its subtree in one pass, so its own
         // `GroupTransparency` already carries the fade for everything below and
