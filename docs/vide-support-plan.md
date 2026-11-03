@@ -400,8 +400,6 @@ unspaced.
   handed its props once rather than written to, so they have to be derivables.
   A host element has no such limit.
 - A margin that only an unreadable source names, per above.
-- `@rbxts/vela-runtime-core` and `@rbxts/vela-runtime-vide` are new npm packages and
-  need their own OIDC trusted publishers configured before the next release.
 
 **Not a limit, contrary to the earlier note.** `className` inside `<Show>` /
 `<For>` / `<Index>` / `<Switch>` *is* analyzed: the transformer visits nested
