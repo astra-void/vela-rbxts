@@ -9,6 +9,8 @@ Versions are released in lockstep across every workspace package.
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-03
+
 ### Added
 
 - **A `vela.css` config source.** A `@theme` block declares tokens in the units a designer already has them in, so `--color-brand-500: #3b82f6` and `--spacing-4: 16px` become `Color3.fromRGB(59, 130, 246)` and `new UDim(0, 16)` instead of being retyped as roblox-ts expressions; `.btn { @apply bg-brand-500 px-4 }` and `.panel { BackgroundTransparency: 0.5 }` register the same plugin utilities `addUtilities` does; `@custom-variant selected (Selected = true)` registers the same attribute-backed variant `addVariant` does; and `@import "./tokens.css"` folds a sibling in as a preset of the file that named it, cycles and all reported where they are written. A stylesheet only extends, never replaces, so it resolves on top of a `vela.config.ts` for a project that keeps structure in TypeScript and tokens in CSS, and a project that wants nothing else needs no config file at all. Because the parser produces the same config input `defineConfig` takes, the compiler and the language server read a class defined in CSS exactly as they read one from a plugin, with no second path to keep in step. What is deliberately absent is everything the cascade would be needed for: Roblox has no specificity, no inheritance and no selectors, so combinators, pseudo-classes, `@media`, and CSS properties such as `display` are diagnosed and pointed at the vela equivalent rather than accepted into an emit that could not honour them.
@@ -439,7 +441,8 @@ Initial npm publish of the `vela-rbxts` toolchain.
 - Runtime-aware variants: `sm:`, `md:`, `lg:`, `portrait:`, `landscape:`, `touch:`, `mouse:`, `gamepad:`.
 - Artifact-first release pipeline (`plan` → `build` → `pack` → `verify` → `publish`) with a cross-platform CI matrix.
 
-[Unreleased]: https://github.com/astra-void/vela-rbxts/compare/v0.13.1...HEAD
+[Unreleased]: https://github.com/astra-void/vela-rbxts/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/astra-void/vela-rbxts/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/astra-void/vela-rbxts/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/astra-void/vela-rbxts/compare/v0.12.8...v0.13.0
 [0.12.8]: https://github.com/astra-void/vela-rbxts/compare/v0.12.7...v0.12.8
