@@ -7,6 +7,7 @@ import {
 } from "./diagnostics.js";
 import { getHostFileEligibility } from "./filter.js";
 import { resolveProjectConfigInfo } from "./project-config.js";
+import { checkRuntimeInstall } from "./runtime-install.js";
 import type {
 	HostCompiler,
 	HostCompilerResult,
@@ -77,15 +78,24 @@ export function transformSourceForHost(
 		const compilerResult = normalizeCompilerResult(
 			compiler.transform(request.sourceText, compilerOptions),
 		);
-		const fatal = compilerResult.diagnostics.some(isErrorDiagnostic);
+		const diagnostics = mapCompilerDiagnosticsToHostDiagnostics(
+			compilerResult.diagnostics,
+			options.mapDiagnostic,
+		);
+		const runtimeInstall = compilerResult.changed
+			? checkRuntimeInstall(request.fileName, compilerResult.code)
+			: undefined;
+		if (runtimeInstall) {
+			diagnostics.push(runtimeInstall);
+		}
+		const fatal =
+			compilerResult.diagnostics.some(isErrorDiagnostic) ||
+			runtimeInstall !== undefined;
 
 		return {
 			fileName: request.fileName,
 			sourceText: compilerResult.code,
-			diagnostics: mapCompilerDiagnosticsToHostDiagnostics(
-				compilerResult.diagnostics,
-				options.mapDiagnostic,
-			),
+			diagnostics,
 			changed: compilerResult.changed,
 			skipped: false,
 			fatal,

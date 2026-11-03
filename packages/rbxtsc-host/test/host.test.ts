@@ -829,3 +829,129 @@ test("fails the build with a located message when a stylesheet is wrong", () => 
 		/vela\.css:2:2 .*not a vela token/,
 	);
 });
+
+const hostVersion = (
+	JSON.parse(
+		fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"),
+	) as { version: string }
+).version;
+
+function writeRbxtsPackage(
+	root: string,
+	name: string,
+	dependencies: Record<string, string> = {},
+	version = hostVersion,
+) {
+	const directory = path.join(root, "node_modules", "@rbxts", name);
+	fs.mkdirSync(directory, { recursive: true });
+	fs.writeFileSync(
+		path.join(directory, "package.json"),
+		JSON.stringify({ name: `@rbxts/${name}`, version, dependencies }),
+	);
+}
+
+function transformImportingRuntime(
+	root: string,
+	module = "@rbxts/vela-runtime",
+) {
+	fs.writeFileSync(path.join(root, "package.json"), "{}");
+	vi.mocked(transform).mockReturnValueOnce({
+		code: `import { createVelaRemScaler } from "${module}";\n${mockTransformedCode}`,
+		diagnostics: [],
+		changed: true,
+		ir: [],
+		needsRuntimeHost: false,
+	});
+
+	return transformSourceForHost({
+		fileName: path.join(root, "src", "client", "App.tsx"),
+		sourceText: sourceFile.sourceText,
+	});
+}
+
+// pnpm's default linker: the host runtime was added by hand, its core was not.
+test("fails a file whose runtime cannot load from the project's node_modules", () => {
+	const project = createProject();
+	writeRbxtsPackage(project.root, "services");
+	writeRbxtsPackage(project.root, "vela-runtime", {
+		"@rbxts/services": "^1.6.0",
+		"@rbxts/vela-runtime-core": hostVersion,
+	});
+
+	const result = transformImportingRuntime(project.root);
+
+	expect(result.fatal).toBe(true);
+	expect(result.diagnostics).toEqual([
+		expect.objectContaining({
+			source: "host",
+			level: "error",
+			code: "runtime-not-installed",
+			message: expect.stringContaining(
+				"@rbxts/vela-runtime-core (required by @rbxts/vela-runtime)",
+			),
+		}),
+	]);
+	expect(result.diagnostics[0].message).toContain("publicHoistPattern");
+});
+
+test("names the host runtime itself when none of it was installed", () => {
+	const project = createProject();
+	writeRbxtsPackage(project.root, "vide");
+
+	const result = transformImportingRuntime(
+		project.root,
+		"@rbxts/vela-runtime-vide",
+	);
+
+	expect(result.fatal).toBe(true);
+	expect(result.diagnostics[0].message).toMatch(
+		/has no @rbxts\/vela-runtime-vide\. /,
+	);
+});
+
+test("accepts a runtime whose whole @rbxts tree sits in the project's node_modules", () => {
+	const project = createProject();
+	writeRbxtsPackage(project.root, "services");
+	writeRbxtsPackage(project.root, "vela-runtime-core", {
+		"@rbxts/services": "^1.6.0",
+	});
+	writeRbxtsPackage(project.root, "vela-runtime-vide", {
+		"@rbxts/services": "^1.6.0",
+		"@rbxts/vela-runtime-core": hostVersion,
+	});
+
+	const result = transformImportingRuntime(
+		project.root,
+		"@rbxts/vela-runtime-vide",
+	);
+
+	expect(result.fatal).toBe(false);
+	expect(result.diagnostics).toEqual([]);
+});
+
+test("fails a runtime installed at another version than the compiler emits for", () => {
+	const project = createProject();
+	writeRbxtsPackage(project.root, "vela-runtime-core", {}, "0.0.1");
+	writeRbxtsPackage(project.root, "vela-runtime", {
+		"@rbxts/vela-runtime-core": "0.0.1",
+	});
+
+	const result = transformImportingRuntime(project.root);
+
+	expect(result.fatal).toBe(true);
+	expect(result.diagnostics[0].message).toContain(
+		`@rbxts/vela-runtime-core@0.0.1 in ${path.join(project.root, "node_modules", "@rbxts")} is not the version this compiler emits for (${hostVersion})`,
+	);
+});
+
+test("does not check a file whose output never imports the runtime", () => {
+	const project = createProject();
+	fs.writeFileSync(path.join(project.root, "package.json"), "{}");
+
+	const result = transformSourceForHost({
+		fileName: project.sourceFile,
+		sourceText: sourceFile.sourceText,
+	});
+
+	expect(result.fatal).toBe(false);
+});
