@@ -436,7 +436,8 @@ export function createDiagnosticRemapper(
 			drain(false);
 		},
 		idle() {
-			drain(true);
+			// An unterminated line may be half a header, so it waits for its newline.
+			finishPending();
 		},
 		end() {
 			drain(true);
@@ -472,6 +473,19 @@ export function pipeRemapped(
 	source.setEncoding("utf8");
 
 	return new Promise((resolve) => {
+		let settled = false;
+		const settle = () => {
+			if (timer !== undefined) {
+				clearTimeout(timer);
+			}
+			if (settled) {
+				return;
+			}
+			settled = true;
+			remapper.end();
+			resolve();
+		};
+
 		source.on("data", (chunk: string) => {
 			remapper.write(chunk);
 			if (timer !== undefined) {
@@ -479,13 +493,9 @@ export function pipeRemapped(
 			}
 			timer = setTimeout(() => remapper.idle(), IDLE_MS);
 		});
-		source.on("end", () => {
-			if (timer !== undefined) {
-				clearTimeout(timer);
-			}
-			remapper.end();
-			resolve();
-		});
+		source.on("end", settle);
+		source.on("error", settle);
+		source.on("close", settle);
 	});
 }
 

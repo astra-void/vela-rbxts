@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 import { clearProjectConfigCache } from "@vela-rbxts/rbxtsc-host";
 import ts from "typescript";
 import { afterEach, expect, test } from "vitest";
@@ -9,7 +10,12 @@ import { afterEach, expect, test } from "vitest";
 import { createBuilder } from "../src/cli/builder";
 import { listFilesRecursive } from "../src/cli/files";
 import type { CliOptions } from "../src/cli/options";
-import { createSourceMapIndex, remapDiagnosticText } from "../src/cli/remap";
+import {
+	createDiagnosticRemapper,
+	createSourceMapIndex,
+	pipeRemapped,
+	remapDiagnosticText,
+} from "../src/cli/remap";
 
 const PANEL = `import React from "@rbxts/react";
 
@@ -259,4 +265,40 @@ test("a file the compiler leaves alone is written as authored, with no map", () 
 			path.join(options.projectRoot, ".vela", "maps", "Label.tsx.map"),
 		),
 	).toBe(false);
+});
+
+test("a header split across an idle pause is still remapped as one line", () => {
+	const options = createProject({ "src/Panel.tsx": PANEL });
+	createBuilder(options).buildAll();
+	const index = indexFor(options);
+	const generated = checkGenerated(options, "Panel.tsx");
+
+	let output = "";
+	const remapper = createDiagnosticRemapper(index, (text) => {
+		output += text;
+	});
+	const cut = generated.indexOf(":") + 3;
+	remapper.write(generated.slice(0, cut));
+	remapper.idle();
+	remapper.write(generated.slice(cut));
+	remapper.end();
+
+	expect(output).toBe(remapDiagnosticText(generated, index));
+});
+
+test("settles when the source stream fails instead of hanging", async () => {
+	const options = createProject({ "src/Panel.tsx": PANEL });
+	const source = new PassThrough();
+	const target = new PassThrough();
+	let output = "";
+	target.on("data", (chunk) => {
+		output += chunk;
+	});
+
+	const piped = pipeRemapped(source, target, indexFor(options));
+	source.write("partial");
+	source.destroy(new Error("broken pipe"));
+	await piped;
+
+	expect(output).toBe("partial");
 });
