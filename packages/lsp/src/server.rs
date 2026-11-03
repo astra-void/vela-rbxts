@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use serde::Deserialize;
 use tokio::sync::RwLock;
-use tower_lsp::jsonrpc::Result;
-use tower_lsp::lsp_types::{
+use tower_lsp_server::jsonrpc::Result;
+use tower_lsp_server::ls_types::{
     CodeAction, CodeActionKind, CodeActionOptions, CodeActionOrCommand, CodeActionParams,
     CodeActionProviderCapability, CodeActionResponse, Color, ColorInformation, ColorPresentation,
     ColorPresentationParams, ColorProviderCapability, CompletionItem, CompletionItemKind,
@@ -18,9 +18,9 @@ use tower_lsp::lsp_types::{
     InitializeParams, InitializeResult, InitializedParams, InlayHint as LspInlayHint,
     InlayHintKind, InlayHintLabel, InlayHintParams, MarkupContent, MarkupKind, NumberOrString,
     OneOf, Position, PositionEncodingKind, Range, ServerCapabilities, ServerInfo,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url, WorkspaceEdit,
+    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri, WorkspaceEdit,
 };
-use tower_lsp::{Client, LanguageServer};
+use tower_lsp_server::{Client, LanguageServer};
 use vela_rbxts_compiler::{
     ClassTokenSpan, CompletionRequest, DiagnosticsRequest, DocumentColor as CompilerDocumentColor,
     DocumentColorsRequest, EditorDiagnostic as CompilerDiagnostic, EditorOptions, HoverRequest,
@@ -31,6 +31,7 @@ use vela_rbxts_compiler::{
 use crate::documents::Document;
 use crate::quickfix::rank_suggestions;
 use crate::state::{ConfigEntry, ServerState};
+use crate::translate::file_uri_to_path;
 
 const SOURCE_NAME: &str = "vela-rbxts";
 const DIAGNOSTICS_DEBOUNCE: Duration = Duration::from_millis(200);
@@ -106,7 +107,7 @@ impl RbxtsLanguageServer {
         }
     }
 
-    async fn document_with_options(&self, uri: &Url) -> Option<(Document, EditorOptions)> {
+    async fn document_with_options(&self, uri: &Uri) -> Option<(Document, EditorOptions)> {
         let state = self.state.read().await;
         let document = state.document_cloned(uri)?;
         let options = state.editor_options(&document);
@@ -120,7 +121,7 @@ impl RbxtsLanguageServer {
 
     // Coalesces rapid edits: only the most recent document version survives the
     // debounce window and reaches the compiler.
-    fn schedule_diagnostics(&self, uri: Url, version: i32) {
+    fn schedule_diagnostics(&self, uri: Uri, version: i32) {
         let client = self.client.clone();
         let state = self.state.clone();
 
@@ -167,7 +168,6 @@ impl RbxtsLanguageServer {
     }
 }
 
-#[tower_lsp::async_trait]
 impl LanguageServer for RbxtsLanguageServer {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         let options: InitializationOptions = params
@@ -175,13 +175,14 @@ impl LanguageServer for RbxtsLanguageServer {
             .and_then(|value| serde_json::from_value(value).ok())
             .unwrap_or_default();
 
+        #[allow(deprecated)]
         let root_uri = params.root_uri.or_else(|| {
             params
                 .workspace_folders
                 .and_then(|folders| folders.into_iter().next().map(|folder| folder.uri))
         });
         let project_root = root_uri
-            .and_then(|uri| uri.to_file_path().ok())
+            .and_then(|uri| file_uri_to_path(&uri))
             .or_else(|| options.workspace_root.as_ref().map(PathBuf::from));
 
         {
@@ -202,7 +203,7 @@ impl LanguageServer for RbxtsLanguageServer {
 
         self.client
             .log_message(
-                tower_lsp::lsp_types::MessageType::INFO,
+                tower_lsp_server::ls_types::MessageType::INFO,
                 "vela-rbxts LSP initialized",
             )
             .await;
@@ -244,13 +245,14 @@ impl LanguageServer for RbxtsLanguageServer {
                 inlay_hint_provider: Some(OneOf::Left(true)),
                 ..Default::default()
             },
+            ..Default::default()
         })
     }
 
     async fn initialized(&self, _: InitializedParams) {
         self.client
             .log_message(
-                tower_lsp::lsp_types::MessageType::INFO,
+                tower_lsp_server::ls_types::MessageType::INFO,
                 "vela-rbxts LSP ready",
             )
             .await;
@@ -300,7 +302,7 @@ impl LanguageServer for RbxtsLanguageServer {
             label: InlayHintLabel::String(format!(" \u{2192} {}", hint.label)),
             kind: Some(InlayHintKind::TYPE),
             text_edits: None,
-            tooltip: Some(tower_lsp::lsp_types::InlayHintTooltip::MarkupContent(
+            tooltip: Some(tower_lsp_server::ls_types::InlayHintTooltip::MarkupContent(
                 MarkupContent {
                     kind: MarkupKind::Markdown,
                     value: format!("`{}` \u{2192} {}", hint.token, hint.tooltip),
@@ -815,7 +817,7 @@ const OVERRIDDEN_CLASS_CODE: &str = "overridden-class";
 const EXPLICIT_PROP_CODE: &str = "explicit-prop-overrides-class";
 
 fn quickfix_actions(
-    uri: &Url,
+    uri: &Uri,
     document: &Document,
     options: &EditorOptions,
     diagnostic: &Diagnostic,
@@ -875,7 +877,7 @@ fn diagnostic_token(diagnostic: &Diagnostic) -> Option<String> {
 }
 
 fn replace_action(
-    uri: &Url,
+    uri: &Uri,
     diagnostic: &Diagnostic,
     suggestion: &str,
     preferred: bool,
@@ -896,7 +898,7 @@ fn replace_action(
     }
 }
 
-fn remove_action(uri: &Url, diagnostic: &Diagnostic, token: &str) -> CodeAction {
+fn remove_action(uri: &Uri, diagnostic: &Diagnostic, token: &str) -> CodeAction {
     CodeAction {
         title: format!("Remove `{token}`"),
         kind: Some(CodeActionKind::QUICKFIX),
@@ -919,7 +921,7 @@ fn sort_action_kind() -> CodeActionKind {
 }
 
 fn sort_action(
-    uri: &Url,
+    uri: &Uri,
     document: &Document,
     options: &vela_rbxts_compiler::EditorOptions,
 ) -> Option<CodeAction> {
@@ -948,7 +950,7 @@ fn sort_action(
     })
 }
 
-fn document_edit(uri: &Url, edits: Vec<TextEdit>) -> WorkspaceEdit {
+fn document_edit(uri: &Uri, edits: Vec<TextEdit>) -> WorkspaceEdit {
     let mut changes = HashMap::new();
     changes.insert(uri.clone(), edits);
     WorkspaceEdit {
@@ -980,11 +982,11 @@ fn compiler_completion_item_to_lsp(
     let (detail, documentation) = match &item.color {
         Some(color) => (
             color.clone(),
-            tower_lsp::lsp_types::Documentation::String(color.clone()),
+            tower_lsp_server::ls_types::Documentation::String(color.clone()),
         ),
         None => (
             category.clone(),
-            tower_lsp::lsp_types::Documentation::MarkupContent(MarkupContent {
+            tower_lsp_server::ls_types::Documentation::MarkupContent(MarkupContent {
                 kind: MarkupKind::Markdown,
                 value: documentation,
             }),
@@ -1210,7 +1212,7 @@ mod tests {
 
     #[test]
     fn builds_replace_and_remove_edits_over_the_token_range() {
-        let uri = Url::parse("file:///ws/App.tsx").unwrap();
+        let uri = "file:///ws/App.tsx".parse::<Uri>().unwrap();
         let diagnostic = sample_diagnostic(Some("bg-surfac"));
 
         let replace = replace_action(&uri, &diagnostic, "bg-surface", true);
@@ -1228,7 +1230,7 @@ mod tests {
 
     #[test]
     fn a_class_shadowed_by_a_declared_prop_gets_no_quickfix() {
-        let uri = Url::parse("file:///App.tsx").unwrap();
+        let uri = "file:///App.tsx".parse::<Uri>().unwrap();
         let source = "export const App = () => <frame className=\"bg-slate-700\" BackgroundColor3={color} />;";
         let document = Document::new(uri.clone(), source.to_owned(), Some(1));
         let options = EditorOptions {
@@ -1254,7 +1256,7 @@ mod tests {
 
     #[test]
     fn marks_an_overridden_class_unnecessary_and_only_offers_its_removal() {
-        let uri = Url::parse("file:///ws/App.tsx").unwrap();
+        let uri = "file:///ws/App.tsx".parse::<Uri>().unwrap();
         let source = "export const App = () => <frame className=\"px-2 p-4 bg-surfac\" />;";
         let document = Document::new(uri.clone(), source.to_owned(), Some(1));
         let options = EditorOptions {
@@ -1339,7 +1341,7 @@ mod tests {
     fn highlights_every_occurrence_of_the_same_token() {
         let source = "export const App = () => (<>\n  <frame className=\"bg-slate-700 px-4\" />\n  <frame className=\"px-4 bg-slate-700\" />\n</>);";
         let document = Document::new(
-            Url::parse("file:///ws/App.tsx").unwrap(),
+            "file:///ws/App.tsx".parse::<Uri>().unwrap(),
             source.to_owned(),
             Some(1),
         );

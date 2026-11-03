@@ -1,6 +1,7 @@
+use std::borrow::Cow;
 use std::path::PathBuf;
 
-use tower_lsp::lsp_types::{Position, Range, Url};
+use tower_lsp_server::ls_types::{Position, Range, Uri};
 
 #[cfg(test)]
 use vela_rbxts_compiler::{
@@ -130,8 +131,11 @@ impl Utf16Index {
     }
 }
 
-pub fn file_uri_to_path(uri: &Url) -> Option<PathBuf> {
-    uri.to_file_path().ok()
+pub fn file_uri_to_path(uri: &Uri) -> Option<PathBuf> {
+    if !uri.scheme().as_str().eq_ignore_ascii_case("file") {
+        return None;
+    }
+    uri.to_file_path().map(Cow::into_owned)
 }
 
 #[cfg(test)]
@@ -423,9 +427,18 @@ mod tests {
 
     #[test]
     fn resolves_file_uris_to_paths() {
-        let uri = Url::parse("file:///Users/returnf4lse/My%20Project/src/App.tsx").unwrap();
+        let uri = "file:///Users/returnf4lse/My%20Project/src/App.tsx"
+            .parse::<Uri>()
+            .unwrap();
         let path = file_uri_to_path(&uri).unwrap();
 
         assert!(path.ends_with("My Project/src/App.tsx"));
+    }
+
+    #[test]
+    fn leaves_unsaved_documents_without_a_path() {
+        let uri = "untitled:Untitled-1".parse::<Uri>().unwrap();
+
+        assert_eq!(file_uri_to_path(&uri), None);
     }
 }

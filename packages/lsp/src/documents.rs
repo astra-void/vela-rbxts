@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 
-use tower_lsp::lsp_types::{Position, Range, TextDocumentContentChangeEvent, Url};
+use tower_lsp_server::ls_types::{Position, Range, TextDocumentContentChangeEvent, Uri};
 
 use crate::translate::{Utf16Index, file_uri_to_path};
 use vela_rbxts_compiler::EditorOptions;
 
 #[derive(Clone, Debug)]
 pub struct Document {
-    pub uri: Url,
+    pub uri: Uri,
     pub version: Option<i32>,
     pub text: String,
     pub file_path: Option<PathBuf>,
@@ -15,7 +15,7 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn new(uri: Url, text: String, version: Option<i32>) -> Self {
+    pub fn new(uri: Uri, text: String, version: Option<i32>) -> Self {
         let file_path = file_uri_to_path(&uri);
         let index = Utf16Index::new(&text);
 
@@ -87,7 +87,7 @@ mod tests {
 
     fn document(text: &str) -> Document {
         Document::new(
-            Url::parse("file:///ws/App.tsx").unwrap(),
+            "file:///ws/App.tsx".parse::<Uri>().unwrap(),
             text.to_owned(),
             Some(1),
         )

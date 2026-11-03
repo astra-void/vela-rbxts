@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use tower_lsp::lsp_types::{TextDocumentContentChangeEvent, Url};
+use tower_lsp_server::ls_types::{TextDocumentContentChangeEvent, Uri};
 use vela_rbxts_compiler::EditorOptions;
 
 use crate::documents::Document;
@@ -19,7 +19,7 @@ pub struct ConfigEntry {
 pub struct ServerState {
     project_root: Option<PathBuf>,
     configs: Vec<ConfigEntry>,
-    documents: HashMap<Url, Document>,
+    documents: HashMap<Uri, Document>,
     inlay_hints_enabled: bool,
 }
 
@@ -61,7 +61,7 @@ impl ServerState {
         document.editor_options(self.project_root.as_deref(), config_json)
     }
 
-    pub fn upsert_document(&mut self, uri: Url, text: String, version: Option<i32>) -> Document {
+    pub fn upsert_document(&mut self, uri: Uri, text: String, version: Option<i32>) -> Document {
         let document = Document::new(uri.clone(), text, version);
         self.documents.insert(uri, document.clone());
         document
@@ -69,7 +69,7 @@ impl ServerState {
 
     pub fn apply_document_changes(
         &mut self,
-        uri: &Url,
+        uri: &Uri,
         changes: &[TextDocumentContentChangeEvent],
         version: Option<i32>,
     ) -> bool {
@@ -80,16 +80,16 @@ impl ServerState {
         true
     }
 
-    pub fn remove_document(&mut self, uri: &Url) -> Option<Document> {
+    pub fn remove_document(&mut self, uri: &Uri) -> Option<Document> {
         self.documents.remove(uri)
     }
 
     #[cfg(test)]
-    pub fn document(&self, uri: &Url) -> Option<&Document> {
+    pub fn document(&self, uri: &Uri) -> Option<&Document> {
         self.documents.get(uri)
     }
 
-    pub fn document_cloned(&self, uri: &Url) -> Option<Document> {
+    pub fn document_cloned(&self, uri: &Uri) -> Option<Document> {
         self.documents.get(uri).cloned()
     }
 
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn stores_updates_and_removes_documents() {
-        let uri = Url::parse("file:///workspace/App.tsx").unwrap();
+        let uri = "file:///workspace/App.tsx".parse::<Uri>().unwrap();
         let mut state = ServerState::new();
 
         let inserted = state.upsert_document(uri.clone(), "className=\"bg-\"".to_owned(), Some(1));
