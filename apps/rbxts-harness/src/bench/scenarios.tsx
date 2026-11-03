@@ -130,6 +130,31 @@ export const relationalTree = () => (
 	</frame>
 );
 
+/// A named group read for a registered attribute and the same one inline, and
+/// two unnamed peers beside an element reading an attribute off either.
+export const relationalAttributeTree = () => (
+	<frame key="relationalAttributes" className="flex-col gap-2 w-40">
+		<frame key="group" className="group/card w-40 h-8">
+			<frame
+				key="member"
+				className="bg-slate-700 group-selected/card:bg-rose-500 w-10 h-4"
+			/>
+			<frame
+				key="twin"
+				className="bg-slate-700 group-attr-[Selected=true]/card:bg-rose-500 w-10 h-4"
+			/>
+		</frame>
+		<frame key="pair" className="flex-col w-40">
+			<frame key="first" className="peer w-40 h-4" />
+			<frame key="second" className="peer w-40 h-4" />
+			<frame
+				key="hint"
+				className="bg-slate-700 peer-attr-[State=open]:bg-rose-500 w-10 h-4"
+			/>
+		</frame>
+	</frame>
+);
+
 export type Mounted = {
 	roots: ReactRoblox.Root[];
 	containers: Frame[];

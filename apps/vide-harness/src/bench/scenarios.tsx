@@ -136,6 +136,31 @@ export const relationalTree = () => (
 	</frame>
 );
 
+/// A named group read for a registered attribute and the same one inline, and
+/// two unnamed peers beside an element reading an attribute off either.
+export const relationalAttributeTree = () => (
+	<frame Name="relationalAttributes" className="flex-col gap-2 w-40">
+		<frame Name="group" className="group/card w-40 h-8">
+			<frame
+				Name="member"
+				className="bg-slate-700 group-selected/card:bg-rose-500 w-10 h-4"
+			/>
+			<frame
+				Name="twin"
+				className="bg-slate-700 group-attr-[Selected=true]/card:bg-rose-500 w-10 h-4"
+			/>
+		</frame>
+		<frame Name="pair" className="flex-col w-40">
+			<frame Name="first" className="peer w-40 h-4" />
+			<frame Name="second" className="peer w-40 h-4" />
+			<frame
+				Name="hint"
+				className="bg-slate-700 peer-attr-[State=open]:bg-rose-500 w-10 h-4"
+			/>
+		</frame>
+	</frame>
+);
+
 export type Mounted = {
 	cleanups: (() => void)[];
 	containers: Frame[];

@@ -5,6 +5,7 @@ import { App, SurfaceMount } from "./App";
 import { MarginTweenProbe } from "./MarginTween";
 import { DivideGapProbe } from "./DivideGapProbe";
 import { Probe } from "./Probe";
+import { RelationalAttributeProbe } from "./RelationalAttributeProbe";
 
 const localPlayer = Players.LocalPlayer;
 if (!localPlayer) {
@@ -33,5 +34,6 @@ root.render(
 		<Probe />
 		<MarginTweenProbe />
 		<DivideGapProbe gap="gap-4" />
+		<RelationalAttributeProbe />
 	</>,
 );

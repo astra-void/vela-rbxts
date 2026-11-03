@@ -126,6 +126,10 @@ export namespace VelaBench {
 		return __VelaScope.followedTagCount();
 	}
 
+	export function watchedAttributeCount(): number {
+		return __VelaScope.watchedAttributeCount();
+	}
+
 	/// Wall time until `done` holds, polled once per frame.
 	export function waitUntil(
 		metrics: Metrics,

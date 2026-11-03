@@ -3,6 +3,7 @@ import Vide from "@rbxts/vide";
 import { App } from "./App";
 import { MarginTweenProbe } from "./MarginTween";
 import { DivideGapProbe } from "./DivideGapProbe";
+import { RelationalAttributeProbe } from "./RelationalAttributeProbe";
 
 const localPlayer = Players.LocalPlayer;
 if (!localPlayer) {
@@ -17,3 +18,4 @@ if (!playerGuiInstance.IsA("PlayerGui")) {
 Vide.mount(() => App(), playerGuiInstance);
 Vide.mount(() => MarginTweenProbe(), playerGuiInstance);
 Vide.mount(() => DivideGapProbe({ gap: "gap-4" }), playerGuiInstance);
+Vide.mount(() => RelationalAttributeProbe(), playerGuiInstance);

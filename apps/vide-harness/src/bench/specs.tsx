@@ -8,6 +8,7 @@ import {
 	hostCount,
 	mount,
 	ROSE_500,
+	relationalAttributeTree,
 	relationalTree,
 	runtimeItems,
 	SLATE_100,
@@ -326,6 +327,91 @@ export const specs: VelaBench.Spec[] = [
 			} finally {
 				unmountTree();
 			}
+
+			return metrics;
+		},
+	},
+	{
+		name: "group/peer: attribute variants follow the marked instance",
+		run: (container) => {
+			const baseline = VelaBench.observedScopeCount();
+			const attributeBaseline = VelaBench.watchedAttributeCount();
+			const cleanup = Vide.mount(() => relationalAttributeTree(), container);
+			const metrics: VelaBench.Metrics = {};
+			try {
+				VelaBench.waitUntil(
+					metrics,
+					"mount",
+					() =>
+						container
+							.FindFirstChild("relationalAttributes")
+							?.FindFirstChild("pair")
+							?.FindFirstChild("hint") !== undefined,
+				);
+				VelaBench.settle();
+				const tree = container.FindFirstChild(
+					"relationalAttributes",
+				) as Instance;
+				const group = tree.FindFirstChild("group") as Frame;
+				const member = group.FindFirstChild("member") as Frame;
+				const twin = group.FindFirstChild("twin") as Frame;
+				const pair = tree.FindFirstChild("pair") as Instance;
+				const first = pair.FindFirstChild("first") as Frame;
+				const second = pair.FindFirstChild("second") as Frame;
+				const hint = pair.FindFirstChild("hint") as Frame;
+				VelaBench.assertEqual(
+					VelaBench.observedScopeCount() - baseline,
+					3,
+					"observed scopes",
+				);
+				// Two readers of the group's `Selected` share one connection.
+				VelaBench.assertEqual(
+					VelaBench.watchedAttributeCount() - attributeBaseline,
+					3,
+					"watched attributes",
+				);
+
+				group.SetAttribute("Selected", true);
+				VelaBench.waitUntil(
+					metrics,
+					"groupSelected",
+					() => colored(ROSE_500)(member) && colored(ROSE_500)(twin),
+				);
+				group.SetAttribute("Selected", false);
+				VelaBench.waitUntil(
+					metrics,
+					"groupDeselected",
+					() => colored(SLATE_700)(member) && colored(SLATE_700)(twin),
+				);
+
+				second.SetAttribute("State", "open");
+				VelaBench.waitUntil(metrics, "peerOpen", () => colored(ROSE_500)(hint));
+				first.SetAttribute("State", "closed");
+				VelaBench.settle();
+				VelaBench.assertEqual(
+					colored(ROSE_500)(hint),
+					true,
+					"any open peer matches",
+				);
+				second.SetAttribute("State", "closed");
+				VelaBench.waitUntil(metrics, "peerClosed", () =>
+					colored(SLATE_700)(hint),
+				);
+			} finally {
+				cleanup();
+			}
+
+			VelaBench.settle();
+			VelaBench.assertEqual(
+				VelaBench.observedScopeCount(),
+				baseline,
+				"observed scopes after unmount",
+			);
+			VelaBench.assertEqual(
+				VelaBench.watchedAttributeCount(),
+				attributeBaseline,
+				"watched attributes after unmount",
+			);
 
 			return metrics;
 		},
