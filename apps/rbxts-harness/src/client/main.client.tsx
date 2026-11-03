@@ -2,8 +2,8 @@ import React from "@rbxts/react";
 import ReactRoblox from "@rbxts/react-roblox";
 import { Players } from "@rbxts/services";
 import { App, SurfaceMount } from "./App";
-import { MarginTweenProbe } from "./MarginTween";
 import { DivideGapProbe } from "./DivideGapProbe";
+import { MarginTweenProbe } from "./MarginTween";
 import { Probe } from "./Probe";
 import { RelationalAttributeProbe } from "./RelationalAttributeProbe";
 

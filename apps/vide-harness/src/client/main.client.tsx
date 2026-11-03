@@ -1,8 +1,8 @@
 import { Players } from "@rbxts/services";
 import Vide from "@rbxts/vide";
 import { App } from "./App";
-import { MarginTweenProbe } from "./MarginTween";
 import { DivideGapProbe } from "./DivideGapProbe";
+import { MarginTweenProbe } from "./MarginTween";
 import { RelationalAttributeProbe } from "./RelationalAttributeProbe";
 
 const localPlayer = Players.LocalPlayer;

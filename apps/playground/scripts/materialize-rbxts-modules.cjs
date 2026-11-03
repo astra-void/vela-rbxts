@@ -52,26 +52,29 @@ if (
 	);
 }
 
-// The runtime is a workspace package, so pnpm links it under the dependent
-// rather than hoisting it to the root scope the copy above reads. Its version
-// stands still while its build changes, so this one is refreshed every run.
-const runtimeRoot = path.join(projectRoot, "..", "..", "packages", "runtime");
-const runtimeTarget = path.join(targetDir, "vela-runtime");
-const runtimeBuild = path.join(runtimeRoot, "out", "init.luau");
+// The runtime packages are workspace packages, so pnpm links them under the
+// dependent rather than hoisting them to the root scope the copy above reads.
+// Their versions stand still while their builds change, so these are refreshed
+// every run. The host runtime loads the core itself, so both have to be here.
+for (const name of ["runtime-core", "runtime"]) {
+	const sourceRoot = path.join(projectRoot, "..", "..", "packages", name);
+	const target = path.join(targetDir, `vela-${name}`);
+	const build = path.join(sourceRoot, "out", "init.luau");
 
-if (!fs.existsSync(runtimeBuild)) {
-	console.error(
-		`materialize-rbxts-modules: missing ${runtimeBuild}; build @rbxts/vela-runtime first.`,
-	);
-	process.exit(1);
-}
+	if (!fs.existsSync(build)) {
+		console.error(
+			`materialize-rbxts-modules: missing ${build}; build @rbxts/vela-${name} first.`,
+		);
+		process.exit(1);
+	}
 
-fs.rmSync(runtimeTarget, { recursive: true, force: true });
-fs.mkdirSync(runtimeTarget, { recursive: true });
+	fs.rmSync(target, { recursive: true, force: true });
+	fs.mkdirSync(target, { recursive: true });
 
-for (const entry of ["out", "default.project.json", "package.json"]) {
-	fs.cpSync(path.join(runtimeRoot, entry), path.join(runtimeTarget, entry), {
-		recursive: true,
-		dereference: true,
-	});
+	for (const entry of ["out", "default.project.json", "package.json"]) {
+		fs.cpSync(path.join(sourceRoot, entry), path.join(target, entry), {
+			recursive: true,
+			dereference: true,
+		});
+	}
 }
