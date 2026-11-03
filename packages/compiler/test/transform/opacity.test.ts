@@ -443,3 +443,12 @@ test("a host with a static class is named the transparencies it declares", () =>
 	);
 	expect(runtimeSource).toContain("ownProps.includes(name)");
 });
+
+test("a transparency preflight lowered is not named as the author's", () => {
+	const result = transform(
+		'<frame className="flex divide-x-2"><frame /></frame>',
+	);
+
+	expect(result.needsRuntimeHost).toBe(true);
+	expect(result.code).not.toContain("__velaOwn");
+});

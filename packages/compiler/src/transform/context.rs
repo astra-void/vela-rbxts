@@ -642,6 +642,7 @@ impl VelaTransformer {
         let runtime_margin = lowered.runtime_margin;
         let declared = declared_prop_names(&lowered.preserved_attrs);
         let mut attrs = lowered.preserved_attrs;
+        let declared_transparency = crate::transform::own::declared_transparency(&attrs);
         if let Some(runtime_class_name) = lowered.runtime_class_name {
             attrs.push(JSXAttrOrSpread::JSXAttr(runtime_class_name));
         }
@@ -717,7 +718,7 @@ impl VelaTransformer {
                     .map(str::to_owned)
                     .collect()
             } else {
-                crate::transform::own::declared_transparency(&attrs)
+                declared_transparency
             };
             if !own.is_empty() {
                 attrs.push(create_prop_attr(PropEntry {
