@@ -1,4 +1,4 @@
-# Vela LSP
+# Vela IntelliSense
 
 Editor support for [vela-rbxts](https://github.com/astra-void/vela-rbxts), the
 Tailwind-style `className` layer for roblox-ts. The extension launches the

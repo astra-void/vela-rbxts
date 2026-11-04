@@ -3,8 +3,8 @@
 	"version": "0.14.0",
 	"private": true,
 	"type": "commonjs",
-	"displayName": "Vela LSP",
-	"description": "VS Code extension that launches the standalone Vela RBXTS Rust LSP.",
+	"displayName": "Vela IntelliSense",
+	"description": "Completions, hover, diagnostics, and color previews for vela-rbxts classNames in roblox-ts.",
 	"license": "MIT",
 	"author": "astra-void",
 	"keywords": [
@@ -15,6 +15,8 @@
 		"tailwindcss",
 		"vela",
 		"classname",
+		"intellisense",
+		"autocomplete",
 		"lsp",
 		"language-server"
 	],
