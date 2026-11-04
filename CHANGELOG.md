@@ -9,6 +9,8 @@ Versions are released in lockstep across every workspace package.
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-04
+
 ### Added
 
 - **Editor features reach class lists outside the `className` attribute.** A `const` string a `className` names, as in `const base = "px-4 bg-slate-700"; <frame className={cn(base, active && "p-2")} />`, is completed, hovered, checked and sorted where it is declared. The editor mirrors the scope the compiler resolves consts in, so it reads exactly the consts that lower: not a `let`, not one declared after the class value, not one inside another function. A const several elements name is read once, against the host they share. A new `classFunctions` editor option (`velaRbxts.classFunctions` in VS Code, `initializationOptions.classFunctions` or `workspace/didChangeConfiguration` elsewhere) lists helpers whose arguments are class lists wherever they are called, `tw` tagged templates included. A string value is a class list, an object key is one only where its value is a condition, as in `clsx`, and in a cva-style map `defaultVariants` and the variant names in `compoundVariants` are skipped.
@@ -454,7 +456,8 @@ Initial npm publish of the `vela-rbxts` toolchain.
 - Runtime-aware variants: `sm:`, `md:`, `lg:`, `portrait:`, `landscape:`, `touch:`, `mouse:`, `gamepad:`.
 - Artifact-first release pipeline (`plan` → `build` → `pack` → `verify` → `publish`) with a cross-platform CI matrix.
 
-[Unreleased]: https://github.com/astra-void/vela-rbxts/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/astra-void/vela-rbxts/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/astra-void/vela-rbxts/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/astra-void/vela-rbxts/compare/v0.13.1...v0.14.0
 [0.13.1]: https://github.com/astra-void/vela-rbxts/compare/v0.13.0...v0.13.1
 [0.13.0]: https://github.com/astra-void/vela-rbxts/compare/v0.12.8...v0.13.0
