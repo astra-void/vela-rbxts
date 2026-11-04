@@ -164,6 +164,8 @@ pub struct EditorDiagnostic {
     pub message: String,
     pub token: Option<String>,
     pub range: Option<EditorRange>,
+    /// The text that fixes the token, when there is exactly one.
+    pub replacement: Option<String>,
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), napi(object))]

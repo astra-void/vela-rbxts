@@ -283,6 +283,28 @@ fn condition_key(condition: &RuntimeCondition) -> String {
     parts.into_iter().collect::<Vec<_>>().join("&")
 }
 
+/// The first candidate that lowers exactly as `token` does on this host.
+pub(crate) fn equivalent_class(
+    token: &str,
+    candidates: &[String],
+    config: &TailwindConfig,
+    element_tag: Option<&str>,
+) -> Option<String> {
+    let resolver = Resolver {
+        config,
+        element_tag,
+        variants: VariantRegistry::new(config),
+    };
+    let target = resolver.canon(&[token]);
+    if target == resolver.canon(&[]) {
+        return None;
+    }
+    candidates
+        .iter()
+        .find(|candidate| resolver.canon(&[candidate.as_str()]) == target)
+        .cloned()
+}
+
 struct Resolver<'a> {
     config: &'a TailwindConfig,
     element_tag: Option<&'a str>,

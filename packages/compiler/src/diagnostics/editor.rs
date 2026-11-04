@@ -21,6 +21,7 @@ pub(crate) fn host_utility_diagnostic(
         message: format!("Utility \"{token}\" is not valid on Roblox `{element_tag}` elements."),
         token: Some(token.to_owned()),
         range: Some(range),
+        replacement: None,
     })
 }
 
@@ -34,5 +35,6 @@ pub(crate) fn compiler_to_editor_diagnostic(
         message: diagnostic.message,
         token: diagnostic.token,
         range,
+        replacement: None,
     }
 }

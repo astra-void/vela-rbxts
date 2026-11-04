@@ -2,7 +2,9 @@ use crate::api::{DiagnosticsRequest, DiagnosticsResponse, EditorDiagnostic};
 use crate::config::model::TailwindConfig;
 use crate::diagnostics::compiler::explicit_prop_overrides_class_diagnostic;
 use crate::diagnostics::editor::{compiler_to_editor_diagnostic, host_utility_diagnostic};
-use crate::editor::conflicts::overridden_classes;
+use crate::editor::ClassToken;
+use crate::editor::completions::named_utilities;
+use crate::editor::conflicts::{equivalent_class, overridden_classes};
 use crate::editor::{collect_class_name_contexts, tokenize_class_name_with_ranges};
 use crate::semantic::analyze::analyze_class_token;
 use crate::semantic::utility::{
@@ -10,6 +12,7 @@ use crate::semantic::utility::{
     position_completion_keys, radius_completion_keys, size_completion_keys,
     spacing_completion_keys,
 };
+use crate::semantic::variant::utility_of;
 
 pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsResponse {
     let config = crate::editor::parse_editor_config(request.options.as_ref());
@@ -64,6 +67,13 @@ pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsRe
                 ));
             }
 
+            if compiler_diagnostics.is_empty()
+                && let Some(diagnostic) =
+                    canonical_class_diagnostic(token, &config, context.element_tag.as_deref())
+            {
+                diagnostics.push(diagnostic);
+            }
+
             diagnostics.extend(
                 compiler_diagnostics
                     .into_iter()
@@ -86,11 +96,47 @@ pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsRe
                 message: overridden.message,
                 token: Some(token.text.clone()),
                 range: Some(token.range.clone()),
+                replacement: None,
             });
         }
     }
 
     DiagnosticsResponse { diagnostics }
+}
+
+/// An arbitrary value that lowers exactly as a named class does drifts from
+/// the theme: a later theme change moves the named class and leaves it behind.
+fn canonical_class_diagnostic(
+    token: &ClassToken,
+    config: &TailwindConfig,
+    element_tag: Option<&str>,
+) -> Option<EditorDiagnostic> {
+    let utility = utility_of(&token.text);
+    let open = utility.find("-[")?;
+    if !utility.ends_with(']') {
+        return None;
+    }
+    let variants = &token.text[..token.text.len() - utility.len()];
+
+    let mut candidates = named_utilities(config, element_tag, &utility[..=open]);
+    candidates.sort_by(|left, right| left.len().cmp(&right.len()).then_with(|| left.cmp(right)));
+    let candidates: Vec<String> = candidates
+        .into_iter()
+        .map(|candidate| format!("{variants}{candidate}"))
+        .collect();
+    let named = equivalent_class(&token.text, &candidates, config, element_tag)?;
+
+    Some(EditorDiagnostic {
+        level: "info".to_owned(),
+        code: "canonical-class".to_owned(),
+        message: format!(
+            "`{}` lowers exactly as `{named}`; the named class follows the theme.",
+            token.text
+        ),
+        token: Some(token.text.clone()),
+        range: Some(token.range.clone()),
+        replacement: Some(named),
+    })
 }
 
 /// What the build drops from this class because the element declares it too.

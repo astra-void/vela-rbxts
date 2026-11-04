@@ -1072,6 +1072,17 @@ The check resolves the class list with the compiler's own resolver, once with ea
 
 It is an editor lint. `vela build`, `vela watch` and the rbxtsc transformer never report it, so a build stays quiet about classes it lowers correctly.
 
+### Canonical Classes
+
+An arbitrary value that lowers exactly as a named class gets a `canonical-class` hint and a quickfix to the named form, so the class list keeps following the theme:
+
+```tsx
+<frame className="hover:w-[16px] h-[100%] px-[18px]" />
+//                ↑ "hover:w-[16px]" lowers exactly as "hover:w-4"; "h-[100%]" as "h-full".
+```
+
+Equivalence is decided by the compiler's resolver, as for overridden classes, on the element's host and with the variants kept, so a theme's own step counts (`px-[18px]` points at `px-card` when the spacing scale names `card` as 18 pixels), and a value with no named twin, such as `w-[17px]`, is left alone. It is an `info` diagnostic; set `"canonical-class": "ignore"` in `lint` to turn it off.
+
 ### Inlay Hints
 
 Off by default. Turned on, the editor shows what each class lowers to, after the class:

@@ -402,6 +402,25 @@ fn color_swatch(config: &TailwindConfig, color_key: &str) -> Option<String> {
     Some(format!("#{red:02x}{green:02x}{blue:02x}"))
 }
 
+/// Every named class under `prefix` the host takes, for comparing an arbitrary value against.
+pub(crate) fn named_utilities(
+    config: &TailwindConfig,
+    element_tag: Option<&str>,
+    prefix: &str,
+) -> Vec<String> {
+    let plugin = plugin_utility_candidates(config)
+        .into_iter()
+        .map(|item| item.label);
+    let base = base_utility_candidates(config)
+        .into_iter()
+        .filter(|base| is_utility_allowed_on_host(element_tag, &base.utility_kind))
+        .map(|base| base.item.label);
+    plugin
+        .chain(base)
+        .filter(|label| label.starts_with(prefix) && !label.contains('[') && !label.ends_with('-'))
+        .collect()
+}
+
 fn plugin_utility_candidates(config: &TailwindConfig) -> Vec<CompletionItem> {
     config
         .plugins

@@ -854,6 +854,9 @@ const OVERRIDDEN_CLASS_CODE: &str = "overridden-class";
 /// means to keep, so neither is offered.
 const EXPLICIT_PROP_CODE: &str = "explicit-prop-overrides-class";
 
+/// The class works as written, so the named form is the only fix worth offering.
+const CANONICAL_CLASS_CODE: &str = "canonical-class";
+
 fn quickfix_actions(
     uri: &Uri,
     document: &Document,
@@ -877,6 +880,11 @@ fn quickfix_actions(
     }
     if code == Some(EXPLICIT_PROP_CODE) {
         return Vec::new();
+    }
+    if code == Some(CANONICAL_CLASS_CODE) {
+        return diagnostic_replacement(diagnostic)
+            .map(|replacement| vec![replace_action(uri, diagnostic, &replacement, true)])
+            .unwrap_or_default();
     }
 
     // Asked at the utility rather than at the token start: a position inside
@@ -903,6 +911,15 @@ fn quickfix_actions(
         .collect();
     actions.push(remove_action(uri, diagnostic, &token));
     actions
+}
+
+fn diagnostic_replacement(diagnostic: &Diagnostic) -> Option<String> {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("replacement"))
+        .and_then(|replacement| replacement.as_str())
+        .map(|replacement| replacement.to_owned())
 }
 
 fn diagnostic_token(diagnostic: &Diagnostic) -> Option<String> {
@@ -1070,7 +1087,10 @@ fn compiler_diagnostic_to_lsp(document: &Document, diagnostic: CompilerDiagnosti
     let data = diagnostic
         .token
         .as_ref()
-        .map(|token| serde_json::json!({ "token": token }));
+        .map(|token| match &diagnostic.replacement {
+            Some(replacement) => serde_json::json!({ "token": token, "replacement": replacement }),
+            None => serde_json::json!({ "token": token }),
+        });
     let tags = (diagnostic.code == OVERRIDDEN_CLASS_CODE).then(|| vec![DiagnosticTag::UNNECESSARY]);
 
     Diagnostic {
@@ -1264,6 +1284,40 @@ mod tests {
         let edits = &remove.edit.unwrap().changes.unwrap()[&uri];
         assert_eq!(edits[0].new_text, "");
         assert_eq!(edits[0].range, diagnostic.range);
+    }
+
+    #[test]
+    fn an_arbitrary_value_with_a_named_twin_offers_only_the_named_class() {
+        let uri = "file:///App.tsx".parse::<Uri>().unwrap();
+        let source = "export const App = () => <frame className=\"hover:w-[16px]\" />;";
+        let document = Document::new(uri.clone(), source.to_owned(), Some(1));
+        let options = EditorOptions {
+            config_json: None,
+            file_name: None,
+            project_root: None,
+            class_functions: None,
+        };
+        let diagnostic = get_diagnostics(DiagnosticsRequest {
+            source: source.to_owned(),
+            options: Some(options.clone()),
+        })
+        .diagnostics
+        .into_iter()
+        .map(|diagnostic| compiler_diagnostic_to_lsp(&document, diagnostic))
+        .find(|diagnostic| {
+            diagnostic.code == Some(NumberOrString::String(CANONICAL_CLASS_CODE.to_owned()))
+        })
+        .expect("w-[16px] lowers exactly as w-4");
+
+        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::INFORMATION));
+        let actions = quickfix_actions(&uri, &document, &options, &diagnostic);
+        assert_eq!(
+            actions
+                .iter()
+                .map(|action| action.title.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Replace with `hover:w-4`"]
+        );
     }
 
     #[test]

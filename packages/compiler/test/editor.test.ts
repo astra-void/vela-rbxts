@@ -548,6 +548,51 @@ test("completes inside a configured helper outside JSX", () => {
 	);
 });
 
+test("suggests the named class an arbitrary value lowers exactly as", () => {
+	const source =
+		'<frame className="hover:w-[16px] h-[100%] w-[17px] p-[8px]" />';
+	const diagnostics = getDiagnostics({ source }).diagnostics;
+
+	expect(
+		diagnostics.map(
+			(diagnostic: { code: string; token?: string; replacement?: string }) => [
+				diagnostic.code,
+				diagnostic.token,
+				diagnostic.replacement,
+			],
+		),
+	).toEqual([
+		["canonical-class", "hover:w-[16px]", "hover:w-4"],
+		["canonical-class", "h-[100%]", "h-full"],
+		["canonical-class", "p-[8px]", "p-2"],
+	]);
+	expect(diagnostics[0]).toMatchObject({
+		level: "info",
+		range: {
+			start: source.indexOf("hover:w-[16px]"),
+			end: source.indexOf("hover:w-[16px]") + "hover:w-[16px]".length,
+		},
+	});
+});
+
+test("a theme's own step is the named class an arbitrary value is pointed at", () => {
+	const config = defineConfig({
+		theme: { extend: { spacing: { card: "new UDim(0, 18)" } } },
+	});
+
+	expect(
+		getDiagnostics({
+			source: '<frame className="px-[18px]" />',
+			options: { configJson: JSON.stringify(config) },
+		}).diagnostics,
+	).toEqual([
+		expect.objectContaining({
+			code: "canonical-class",
+			replacement: "px-card",
+		}),
+	]);
+});
+
 test("a file that does not parse still reads only the class text", () => {
 	const source = `<frame className={\`p-4 \${flag ? "rotate-17" : ""}\`} />\nconst broken = ;`;
 	const start = source.indexOf("rotate-17");
