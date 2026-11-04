@@ -75,6 +75,26 @@
 					"default": [],
 					"markdownDescription": "Helpers whose string arguments are class lists wherever they are called, such as `[\"cn\", \"cva\"]`. Inside `className` every call is already read; this extends completions, hover and diagnostics to calls outside it, including `tw` tagged templates and cva-style variant maps."
 				},
+				"velaRbxts.validate": {
+					"type": "boolean",
+					"default": true,
+					"description": "Publish vela-rbxts diagnostics. Completions, hover and colors keep working when this is off."
+				},
+				"velaRbxts.lint": {
+					"type": "object",
+					"default": {},
+					"additionalProperties": {
+						"type": "string",
+						"enum": [
+							"error",
+							"warning",
+							"info",
+							"hint",
+							"ignore"
+						]
+					},
+					"markdownDescription": "Severity per diagnostic code, replacing the default one, for example `{ \"overridden-class\": \"ignore\", \"unknown-theme-key\": \"error\" }`. The code is shown beside every vela-rbxts diagnostic."
+				},
 				"velaRbxts.inlayHints.enabled": {
 					"type": "boolean",
 					"default": false,

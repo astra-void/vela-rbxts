@@ -73,7 +73,9 @@ export async function activate(
 			// The server reads this one live, so it costs no restart.
 			if (
 				event.affectsConfiguration("velaRbxts.inlayHints") ||
-				event.affectsConfiguration("velaRbxts.classFunctions")
+				event.affectsConfiguration("velaRbxts.classFunctions") ||
+				event.affectsConfiguration("velaRbxts.validate") ||
+				event.affectsConfiguration("velaRbxts.lint")
 			) {
 				void pushSettings();
 			}
@@ -168,6 +170,8 @@ async function startClient(
 			configs,
 			inlayHints: areInlayHintsEnabled(),
 			classFunctions: classFunctions(),
+			validate: isValidationEnabled(),
+			lint: lintLevels(),
 		},
 		outputChannel,
 		outputChannelName: OUTPUT_CHANNEL_NAME,
@@ -427,6 +431,25 @@ function classFunctions(): string[] {
 		: [];
 }
 
+function isValidationEnabled(): boolean {
+	return vscode.workspace
+		.getConfiguration("velaRbxts")
+		.get<boolean>("validate", true);
+}
+
+function lintLevels(): Record<string, string> {
+	const levels = vscode.workspace
+		.getConfiguration("velaRbxts")
+		.get<unknown>("lint", {});
+	return levels && typeof levels === "object" && !Array.isArray(levels)
+		? Object.fromEntries(
+				Object.entries(levels).filter(
+					(entry): entry is [string, string] => typeof entry[1] === "string",
+				),
+			)
+		: {};
+}
+
 async function pushSettings(): Promise<void> {
 	if (!client) {
 		return;
@@ -438,6 +461,8 @@ async function pushSettings(): Promise<void> {
 				velaRbxts: {
 					inlayHints: { enabled: areInlayHintsEnabled() },
 					classFunctions: classFunctions(),
+					validate: isValidationEnabled(),
+					lint: lintLevels(),
 				},
 			},
 		});

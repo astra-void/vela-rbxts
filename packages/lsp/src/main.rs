@@ -1,5 +1,6 @@
 mod documents;
 mod quickfix;
+mod rules;
 mod server;
 mod state;
 mod translate;

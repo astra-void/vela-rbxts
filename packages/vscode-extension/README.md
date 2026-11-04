@@ -45,6 +45,8 @@ changes to the server, so custom theme keys complete and validate live.
 | `velaRbxts.lsp.serverPath` | `""` | Optional path to a standalone `vela-rbxts-lsp` executable. When empty, the bundled `@vela-rbxts/lsp` wrapper resolves the platform binary. |
 | `velaRbxts.lsp.trace.server` | `off` | LSP trace level (`off`, `messages`, `verbose`) for debugging. |
 | `velaRbxts.classFunctions` | `[]` | Helpers whose string arguments are class lists wherever they are called (for example `["cn", "cva"]`). Calls inside `className` are always read; this covers the ones outside it, `tw` tagged templates, and cva-style variant maps (`defaultVariants` and the variant names in `compoundVariants` are skipped). |
+| `velaRbxts.validate` | `true` | Publish diagnostics. Turning it off keeps completions, hover, and colors. |
+| `velaRbxts.lint` | `{}` | Severity per diagnostic code (`error`, `warning`, `info`, `hint`, or `ignore`), replacing the default, for example `{ "overridden-class": "ignore" }`. The code is shown beside each diagnostic. |
 | `velaRbxts.inlayHints.enabled` | `false` | Show what each class lowers to (the Roblox properties and helper instances) inline after the class. |
 
 Output lands in the **vela-rbxts-lsp** output channel.

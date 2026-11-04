@@ -658,6 +658,52 @@ async function main() {
 		"a configured helper should be checked as soon as the setting arrives",
 	);
 
+	const lintMark = notifications.length;
+	notify("workspace/didChangeConfiguration", {
+		settings: {
+			velaRbxts: {
+				lint: {
+					"unsupported-utility-family": "ignore",
+					"unsupported-rotation-value": "error",
+				},
+			},
+		},
+	});
+	const lintedDiagnostics = await waitForNextDiagnostics(
+		helpersFixture.uri,
+		lintMark,
+	);
+	check(
+		!diagnosticFor(lintedDiagnostics, "blorb-2"),
+		"a code set to ignore should not be published",
+	);
+	check(
+		diagnosticFor(lintedDiagnostics, "rotate-17")?.severity === 1,
+		"a code's level should replace its default severity",
+	);
+
+	const validateMark = notifications.length;
+	notify("workspace/didChangeConfiguration", {
+		settings: { velaRbxts: { validate: false } },
+	});
+	check(
+		(await waitForNextDiagnostics(helpersFixture.uri, validateMark)).length ===
+			0,
+		"turning validation off should clear the published diagnostics",
+	);
+
+	const resetMark = notifications.length;
+	notify("workspace/didChangeConfiguration", {
+		settings: { velaRbxts: { validate: true, lint: {} } },
+	});
+	check(
+		diagnosticFor(
+			await waitForNextDiagnostics(helpersFixture.uri, resetMark),
+			"blorb-2",
+		),
+		"clearing the levels should restore the default diagnostics",
+	);
+
 	const bracketsFixture = openFixture("Brackets.tsx");
 	const bracketDiagnostics = await waitForDiagnostics(bracketsFixture.uri);
 	check(

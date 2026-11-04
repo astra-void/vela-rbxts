@@ -8,6 +8,7 @@ use tower_lsp_server::ls_types::{TextDocumentContentChangeEvent, Uri};
 use vela_rbxts_compiler::EditorOptions;
 
 use crate::documents::Document;
+use crate::rules::DiagnosticRules;
 
 #[derive(Clone, Debug)]
 pub struct ConfigEntry {
@@ -22,6 +23,7 @@ pub struct ServerState {
     documents: HashMap<Uri, Document>,
     inlay_hints_enabled: bool,
     class_functions: Vec<String>,
+    diagnostic_rules: DiagnosticRules,
 }
 
 impl ServerState {
@@ -39,6 +41,26 @@ impl ServerState {
 
     pub fn inlay_hints_enabled(&self) -> bool {
         self.inlay_hints_enabled
+    }
+
+    /// Returns whether the rules changed, which is when open documents need re-publishing.
+    pub fn update_diagnostic_rules(
+        &mut self,
+        validate: Option<bool>,
+        lint: Option<&HashMap<String, serde_json::Value>>,
+    ) -> bool {
+        let previous = self.diagnostic_rules.clone();
+        if let Some(validate) = validate {
+            self.diagnostic_rules.set_validate(validate);
+        }
+        if let Some(lint) = lint {
+            self.diagnostic_rules.set_levels(lint);
+        }
+        self.diagnostic_rules != previous
+    }
+
+    pub fn diagnostic_rules(&self) -> DiagnosticRules {
+        self.diagnostic_rules.clone()
     }
 
     /// Returns whether the list changed, which is when open documents need re-checking.

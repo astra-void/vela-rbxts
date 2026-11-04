@@ -30,6 +30,7 @@ use vela_rbxts_compiler::{
 
 use crate::documents::Document;
 use crate::quickfix::rank_suggestions;
+use crate::rules::DiagnosticRules;
 use crate::state::{ConfigEntry, ServerState};
 use crate::translate::file_uri_to_path;
 
@@ -48,6 +49,10 @@ struct InitializationOptions {
     inlay_hints: Option<bool>,
     #[serde(default)]
     class_functions: Option<Vec<String>>,
+    #[serde(default)]
+    validate: Option<bool>,
+    #[serde(default)]
+    lint: Option<HashMap<String, serde_json::Value>>,
 }
 
 /// What a `workspace/didChangeConfiguration` may carry. Only the settings this
@@ -67,6 +72,10 @@ struct VelaSettings {
     inlay_hints: Option<InlayHintSettings>,
     #[serde(default)]
     class_functions: Option<Vec<String>>,
+    #[serde(default)]
+    validate: Option<bool>,
+    #[serde(default)]
+    lint: Option<HashMap<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -119,8 +128,11 @@ impl RbxtsLanguageServer {
     }
 
     async fn publish_now(&self, document: &Document) {
-        let options = self.state.read().await.editor_options(document);
-        publish_diagnostics(&self.client, document, options).await;
+        let (options, rules) = {
+            let state = self.state.read().await;
+            (state.editor_options(document), state.diagnostic_rules())
+        };
+        publish_diagnostics(&self.client, document, options, &rules).await;
     }
 
     // Coalesces rapid edits: only the most recent document version survives the
@@ -132,7 +144,7 @@ impl RbxtsLanguageServer {
         tokio::spawn(async move {
             tokio::time::sleep(DIAGNOSTICS_DEBOUNCE).await;
 
-            let (document, options) = {
+            let (document, options, rules) = {
                 let guard = state.read().await;
                 let Some(document) = guard.document_cloned(&uri) else {
                     return;
@@ -141,10 +153,10 @@ impl RbxtsLanguageServer {
                     return;
                 }
                 let options = guard.editor_options(&document);
-                (document, options)
+                (document, options, guard.diagnostic_rules())
             };
 
-            publish_diagnostics(&client, &document, options).await;
+            publish_diagnostics(&client, &document, options, &rules).await;
         });
     }
 
@@ -206,6 +218,7 @@ impl LanguageServer for RbxtsLanguageServer {
             if let Some(functions) = options.class_functions {
                 state.set_class_functions(functions);
             }
+            state.update_diagnostic_rules(options.validate, options.lint.as_ref());
         }
 
         self.client
@@ -282,11 +295,16 @@ impl LanguageServer for RbxtsLanguageServer {
             self.state.write().await.set_inlay_hints_enabled(enabled);
         }
 
-        if let Some(functions) = vela.class_functions {
-            let changed = self.state.write().await.set_class_functions(functions);
-            if changed {
-                self.refresh_all_diagnostics().await;
-            }
+        let refresh = {
+            let mut state = self.state.write().await;
+            let functions_changed = vela
+                .class_functions
+                .is_some_and(|functions| state.set_class_functions(functions));
+            let rules_changed = state.update_diagnostic_rules(vela.validate, vela.lint.as_ref());
+            functions_changed || rules_changed
+        };
+        if refresh {
+            self.refresh_all_diagnostics().await;
         }
     }
 
@@ -557,7 +575,12 @@ impl LanguageServer for RbxtsLanguageServer {
     }
 }
 
-async fn publish_diagnostics(client: &Client, document: &Document, options: EditorOptions) {
+async fn publish_diagnostics(
+    client: &Client,
+    document: &Document,
+    options: EditorOptions,
+    rules: &DiagnosticRules,
+) {
     let response = get_diagnostics(DiagnosticsRequest {
         source: document.text.clone(),
         options: Some(options),
@@ -568,6 +591,7 @@ async fn publish_diagnostics(client: &Client, document: &Document, options: Edit
         .into_iter()
         .map(|diagnostic| compiler_diagnostic_to_lsp(document, diagnostic))
         .collect();
+    let diagnostics = rules.apply(diagnostics);
 
     client
         .publish_diagnostics(document.uri.clone(), diagnostics, document.version)
