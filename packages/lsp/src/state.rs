@@ -21,6 +21,7 @@ pub struct ServerState {
     configs: Vec<ConfigEntry>,
     documents: HashMap<Uri, Document>,
     inlay_hints_enabled: bool,
+    class_functions: Vec<String>,
 }
 
 impl ServerState {
@@ -38,6 +39,13 @@ impl ServerState {
 
     pub fn inlay_hints_enabled(&self) -> bool {
         self.inlay_hints_enabled
+    }
+
+    /// Returns whether the list changed, which is when open documents need re-checking.
+    pub fn set_class_functions(&mut self, functions: Vec<String>) -> bool {
+        let changed = self.class_functions != functions;
+        self.class_functions = functions;
+        changed
     }
 
     pub fn set_configs(&mut self, mut configs: Vec<ConfigEntry>) {
@@ -58,7 +66,11 @@ impl ServerState {
 
     pub fn editor_options(&self, document: &Document) -> EditorOptions {
         let config_json = self.config_json_for(document.file_path.as_deref());
-        document.editor_options(self.project_root.as_deref(), config_json)
+        let mut options = document.editor_options(self.project_root.as_deref(), config_json);
+        if !self.class_functions.is_empty() {
+            options.class_functions = Some(self.class_functions.clone());
+        }
+        options
     }
 
     pub fn upsert_document(&mut self, uri: Uri, text: String, version: Option<i32>) -> Document {
@@ -154,5 +166,20 @@ mod tests {
             None
         );
         assert_eq!(state.config_json_for(None), None);
+    }
+
+    #[test]
+    fn hands_the_class_functions_to_every_document() {
+        let uri = "file:///ws/App.tsx".parse::<Uri>().unwrap();
+        let mut state = ServerState::new();
+        let document = state.upsert_document(uri, String::new(), Some(1));
+        assert_eq!(state.editor_options(&document).class_functions, None);
+
+        assert!(state.set_class_functions(vec!["tw".to_owned()]));
+        assert!(!state.set_class_functions(vec!["tw".to_owned()]));
+        assert_eq!(
+            state.editor_options(&document).class_functions,
+            Some(vec!["tw".to_owned()])
+        );
     }
 }

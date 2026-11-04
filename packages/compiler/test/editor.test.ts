@@ -408,6 +408,146 @@ test("reads class values through the shapes they are written in", () => {
 	}
 });
 
+test("reads a const string a class value names at its declaration", () => {
+	for (const use of [
+		"<frame className={base} />",
+		'<frame className={cn(base, flag && "p-2")} />',
+		"<frame className={`${base} p-2`} />",
+		"<frame className={() => base} />",
+	]) {
+		const source = `const base = "p-4 rotate-17";\n${use}`;
+		const start = source.indexOf("rotate-17");
+		expect(getDiagnostics({ source }).diagnostics).toEqual([
+			expect.objectContaining({
+				code: "unsupported-rotation-value",
+				token: "rotate-17",
+				range: { start, end: start + "rotate-17".length },
+			}),
+		]);
+	}
+});
+
+test("a const no class value names, or one the transform cannot read, stays unchecked", () => {
+	for (const source of [
+		'const base = "rotate-17";\n<frame className="p-4" />',
+		'let base = "rotate-17";\n<frame className={base} />',
+		'<frame className={base} />\nconst base = "rotate-17";',
+		'function f() { const base = "rotate-17"; }\n<frame className={base} />',
+	]) {
+		expect(getDiagnostics({ source }).diagnostics).toEqual([]);
+	}
+});
+
+test("an inner const shadows the outer one a class value names", () => {
+	const source =
+		'const base = "rotate-17";\nfunction App() { const base = "p-4 blorb-2"; return <frame className={base} />; }';
+
+	expect(getDiagnostics({ source }).diagnostics).toEqual([
+		expect.objectContaining({ token: "blorb-2" }),
+	]);
+});
+
+test("a const several class values name is checked once, against what they share", () => {
+	const source =
+		'const shared = "rotate-17 text-red-500";\n<frame className={shared} />;\n<textlabel className={shared} />;\n<frame className={`${shared}`} />;';
+
+	expect(getDiagnostics({ source }).diagnostics).toEqual([
+		expect.objectContaining({ token: "rotate-17" }),
+	]);
+});
+
+test("completes, hovers and sorts inside a const a class value names", () => {
+	const source =
+		'const base = `bg-slate-700 p-4 bg-`;\n<frame className="z-10 rounded-md" />;\n<frame className={base} />;';
+	const completions = getCompletions({
+		source,
+		position: positionAfter(source, "p-4 bg-"),
+	});
+	expect(completions.isInClassNameContext).toBe(true);
+	expect(completions.items).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ label: "bg-slate-700" }),
+		]),
+	);
+
+	const hover = getHover({
+		source,
+		position: positionAfter(source, "p-4") - 1,
+	});
+	expect(hover.contents?.display).toContain("p-4");
+
+	const sorted = sortClassNames({
+		source:
+			'const base = "bg-slate-700 p-4";\n<frame className="rounded-md z-10" />;\n<frame className={base} />;',
+	});
+	expect(sorted.edits.map((edit: { text: string }) => edit.text)).toEqual([
+		"p-4 bg-slate-700",
+		"z-10 rounded-md",
+	]);
+});
+
+test("reads the class lists of configured helpers wherever they are called", () => {
+	const options = { classFunctions: ["tw", "cva"] };
+	for (const source of [
+		'const button = tw("p-4 rotate-17");',
+		'const button = styles.tw("p-4", flag && "rotate-17");',
+		"const button = tw`p-4 rotate-17`;",
+		'const button = tw({ "rotate-17": active, "p-4": true });',
+		'const base = "rotate-17";\nconst button = tw(base);',
+	]) {
+		const start = source.indexOf("rotate-17");
+		expect(getDiagnostics({ source }).diagnostics).toEqual([]);
+		expect(getDiagnostics({ source, options }).diagnostics).toEqual([
+			expect.objectContaining({
+				code: "unsupported-rotation-value",
+				token: "rotate-17",
+				range: { start, end: start + "rotate-17".length },
+			}),
+		]);
+	}
+});
+
+test("reads a cva-style variant map for classes, not variant names", () => {
+	const source = `const button = cva("p-4", {
+	variants: { size: { sm: "rotate-17", lg: "p-8" }, on: { true: "bg-slate-700" } },
+	compoundVariants: [{ size: "sm", on: true, class: "blorb-2" }],
+	defaultVariants: { size: "sm" },
+});`;
+
+	expect(
+		getDiagnostics({
+			source,
+			options: { classFunctions: ["cva"] },
+		}).diagnostics.map((diagnostic: { token?: string }) => diagnostic.token),
+	).toEqual(["rotate-17", "blorb-2"]);
+});
+
+test("a configured helper inside className is read once", () => {
+	const source = '<frame className={tw("p-4 rotate-17")} />';
+
+	expect(
+		getDiagnostics({ source, options: { classFunctions: ["tw"] } }).diagnostics,
+	).toEqual([expect.objectContaining({ token: "rotate-17" })]);
+});
+
+test("completes inside a configured helper outside JSX", () => {
+	const source = 'const button = tw("p-4 bg-");';
+	const position = positionAfter(source, "bg-");
+
+	expect(getCompletions({ source, position }).isInClassNameContext).toBe(false);
+	const completions = getCompletions({
+		source,
+		position,
+		options: { classFunctions: ["tw"] },
+	});
+	expect(completions.isInClassNameContext).toBe(true);
+	expect(completions.items).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ label: "bg-slate-700" }),
+		]),
+	);
+});
+
 test("a file that does not parse still reads only the class text", () => {
 	const source = `<frame className={\`p-4 \${flag ? "rotate-17" : ""}\`} />\nconst broken = ;`;
 	const start = source.indexOf("rotate-17");

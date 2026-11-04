@@ -46,6 +46,8 @@ struct InitializationOptions {
     configs: Vec<ConfigPayload>,
     #[serde(default)]
     inlay_hints: Option<bool>,
+    #[serde(default)]
+    class_functions: Option<Vec<String>>,
 }
 
 /// What a `workspace/didChangeConfiguration` may carry. Only the settings this
@@ -63,6 +65,8 @@ struct SettingsPayload {
 struct VelaSettings {
     #[serde(default)]
     inlay_hints: Option<InlayHintSettings>,
+    #[serde(default)]
+    class_functions: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -199,6 +203,9 @@ impl LanguageServer for RbxtsLanguageServer {
             if let Some(enabled) = options.inlay_hints {
                 state.set_inlay_hints_enabled(enabled);
             }
+            if let Some(functions) = options.class_functions {
+                state.set_class_functions(functions);
+            }
         }
 
         self.client
@@ -267,12 +274,19 @@ impl LanguageServer for RbxtsLanguageServer {
             return;
         };
 
-        if let Some(enabled) = settings
-            .vela_rbxts
-            .and_then(|vela| vela.inlay_hints)
-            .and_then(|hints| hints.enabled)
-        {
+        let Some(vela) = settings.vela_rbxts else {
+            return;
+        };
+
+        if let Some(enabled) = vela.inlay_hints.and_then(|hints| hints.enabled) {
             self.state.write().await.set_inlay_hints_enabled(enabled);
+        }
+
+        if let Some(functions) = vela.class_functions {
+            let changed = self.state.write().await.set_class_functions(functions);
+            if changed {
+                self.refresh_all_diagnostics().await;
+            }
         }
     }
 
@@ -480,12 +494,12 @@ impl LanguageServer for RbxtsLanguageServer {
     ) -> Result<Option<Vec<DocumentHighlight>>> {
         let uri = params.text_document_position_params.text_document.uri;
         let position = params.text_document_position_params.position;
-        let Some(document) = self.state.read().await.document_cloned(&uri) else {
+        let Some((document, options)) = self.document_with_options(&uri).await else {
             return Ok(None);
         };
 
         let offset = document.position_to_offset(position);
-        let tokens = get_class_tokens(&document.text);
+        let tokens = get_class_tokens(&document.text, Some(&options));
 
         Ok(same_token_highlights(&document, &tokens, offset))
     }
@@ -1237,6 +1251,7 @@ mod tests {
             config_json: None,
             file_name: None,
             project_root: None,
+            class_functions: None,
         };
         let diagnostic = get_diagnostics(DiagnosticsRequest {
             source: source.to_owned(),
@@ -1263,6 +1278,7 @@ mod tests {
             config_json: None,
             file_name: None,
             project_root: None,
+            class_functions: None,
         };
         let diagnostics: Vec<Diagnostic> = get_diagnostics(DiagnosticsRequest {
             source: source.to_owned(),
@@ -1345,7 +1361,7 @@ mod tests {
             source.to_owned(),
             Some(1),
         );
-        let tokens = get_class_tokens(source);
+        let tokens = get_class_tokens(source, None);
         let line = source.lines().nth(1).unwrap();
         let offset = document.position_to_offset(Position::new(
             1,

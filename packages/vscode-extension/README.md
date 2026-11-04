@@ -6,7 +6,8 @@ standalone Rust language server and wires it to TypeScript and TSX files.
 
 ## Features
 
-Inside a `className` (and nowhere else) you get:
+Inside a `className`, a `const` string a `className` names, and the arguments of
+the helpers listed in `velaRbxts.classFunctions`, you get:
 
 - Completions with theme color swatches, fuzzy-ranked and variant-aware,
   including the breakpoints and state variants your own config defines, and the
@@ -43,6 +44,7 @@ changes to the server, so custom theme keys complete and validate live.
 | `velaRbxts.lsp.enabled` | `true` | Enable the LSP integration for TypeScript and TSX files. |
 | `velaRbxts.lsp.serverPath` | `""` | Optional path to a standalone `vela-rbxts-lsp` executable. When empty, the bundled `@vela-rbxts/lsp` wrapper resolves the platform binary. |
 | `velaRbxts.lsp.trace.server` | `off` | LSP trace level (`off`, `messages`, `verbose`) for debugging. |
+| `velaRbxts.classFunctions` | `[]` | Helpers whose string arguments are class lists wherever they are called (for example `["cn", "cva"]`). Calls inside `className` are always read; this covers the ones outside it, `tw` tagged templates, and cva-style variant maps (`defaultVariants` and the variant names in `compoundVariants` are skipped). |
 | `velaRbxts.inlayHints.enabled` | `false` | Show what each class lowers to (the Roblox properties and helper instances) inline after the class. |
 
 Output lands in the **vela-rbxts-lsp** output channel.

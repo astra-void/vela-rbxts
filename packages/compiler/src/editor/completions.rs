@@ -67,7 +67,11 @@ impl CompletionSpec {
 
 pub(crate) fn get_completions_impl(request: CompletionRequest) -> CompletionResponse {
     let config = crate::editor::parse_editor_config(request.options.as_ref());
-    let Some(context) = class_name_context_at_position(&request.source, request.position) else {
+    let Some(context) = class_name_context_at_position(
+        &request.source,
+        request.position,
+        crate::editor::class_functions(request.options.as_ref()),
+    ) else {
         return CompletionResponse {
             is_in_class_name_context: false,
             items: Vec::new(),

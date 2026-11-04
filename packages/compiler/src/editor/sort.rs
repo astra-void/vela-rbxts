@@ -10,7 +10,10 @@ pub(crate) fn sort_class_names_impl(request: SortClassNamesRequest) -> SortClass
     let variants = VariantRegistry::new(&config);
     let mut edits = Vec::new();
 
-    for context in collect_class_name_contexts(&request.source) {
+    for context in collect_class_name_contexts(
+        &request.source,
+        crate::editor::class_functions(request.options.as_ref()),
+    ) {
         let tokens = tokenize_class_name_with_ranges(&context.value, context.value_range.start);
         if tokens.len() < 2 {
             continue;

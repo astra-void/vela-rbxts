@@ -14,7 +14,10 @@ use crate::semantic::utility::{
 pub(crate) fn get_diagnostics_impl(request: DiagnosticsRequest) -> DiagnosticsResponse {
     let config = crate::editor::parse_editor_config(request.options.as_ref());
     let variants = crate::semantic::variant::VariantRegistry::new(&config);
-    let contexts = collect_class_name_contexts(&request.source);
+    let contexts = collect_class_name_contexts(
+        &request.source,
+        crate::editor::class_functions(request.options.as_ref()),
+    );
     let mut diagnostics = Vec::new();
 
     for context in contexts {

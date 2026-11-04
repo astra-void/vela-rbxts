@@ -36,7 +36,11 @@ use crate::transform::opacity::opacity_transparency_props;
 
 pub(crate) fn get_hover_impl(request: HoverRequest) -> HoverResponse {
     let config = crate::editor::parse_editor_config(request.options.as_ref());
-    let Some(context) = class_name_context_at_position(&request.source, request.position) else {
+    let Some(context) = class_name_context_at_position(
+        &request.source,
+        request.position,
+        crate::editor::class_functions(request.options.as_ref()),
+    ) else {
         return HoverResponse {
             contents: None,
             range: None,

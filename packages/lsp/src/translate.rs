@@ -340,6 +340,7 @@ mod tests {
             config_json: None,
             file_name: Some("App.tsx".to_owned()),
             project_root: None,
+            class_functions: None,
         });
 
         let hover_offset = index.position_to_offset(Position::new(1, hover_column));
@@ -383,6 +384,7 @@ mod tests {
             config_json: None,
             file_name: Some("App.tsx".to_owned()),
             project_root: None,
+            class_functions: None,
         });
 
         let response = get_document_colors(DocumentColorsRequest {

@@ -632,6 +632,32 @@ async function main() {
 		"a BOM should not shift hover ranges",
 	);
 
+	const helpersFixture = openFixture("Helpers.tsx");
+	const helperDiagnostics = await waitForDiagnostics(helpersFixture.uri);
+	const constDiagnostic = diagnosticFor(helperDiagnostics, "blorb-2");
+	check(
+		constDiagnostic &&
+			sliceRange(helpersFixture.text, constDiagnostic.range) === "blorb-2",
+		"a const a className names should be checked where it is declared",
+	);
+	check(
+		!diagnosticFor(helperDiagnostics, "rotate-17"),
+		"a helper outside className should be left alone until it is configured",
+	);
+	const helpersMark = notifications.length;
+	notify("workspace/didChangeConfiguration", {
+		settings: { velaRbxts: { classFunctions: ["tw"] } },
+	});
+	const configuredHelperDiagnostics = await waitForNextDiagnostics(
+		helpersFixture.uri,
+		helpersMark,
+	);
+	check(
+		diagnosticFor(configuredHelperDiagnostics, "rotate-17")?.code ===
+			"unsupported-rotation-value",
+		"a configured helper should be checked as soon as the setting arrives",
+	);
+
 	const bracketsFixture = openFixture("Brackets.tsx");
 	const bracketDiagnostics = await waitForDiagnostics(bracketsFixture.uri);
 	check(

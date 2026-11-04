@@ -67,6 +67,14 @@
 					"default": true,
 					"description": "Enable the standalone vela-rbxts Rust LSP integration for TypeScript and TSX files."
 				},
+				"velaRbxts.classFunctions": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"markdownDescription": "Helpers whose string arguments are class lists wherever they are called, such as `[\"cn\", \"cva\"]`. Inside `className` every call is already read; this extends completions, hover and diagnostics to calls outside it, including `tw` tagged templates and cva-style variant maps."
+				},
 				"velaRbxts.inlayHints.enabled": {
 					"type": "boolean",
 					"default": false,

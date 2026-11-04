@@ -23,11 +23,11 @@ pub use api::{
     SortClassNamesRequest, SortClassNamesResponse, TransformOptions, TransformResult,
 };
 
-/// All class tokens in `className` attributes of supported host elements,
-/// with UTF-16 source ranges. Rust-only; used by the LSP for highlights.
+/// All class tokens the editor features read, with UTF-16 source ranges.
+/// Rust-only; used by the LSP for highlights.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn get_class_tokens(source: &str) -> Vec<ClassTokenSpan> {
-    editor::collect_class_tokens(source)
+pub fn get_class_tokens(source: &str, options: Option<&EditorOptions>) -> Vec<ClassTokenSpan> {
+    editor::collect_class_tokens(source, editor::class_functions(options))
         .into_iter()
         .map(|token| ClassTokenSpan {
             text: token.text,

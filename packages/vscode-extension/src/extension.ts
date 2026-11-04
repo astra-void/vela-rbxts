@@ -71,8 +71,11 @@ export async function activate(
 	context.subscriptions.push(
 		vscode.workspace.onDidChangeConfiguration((event) => {
 			// The server reads this one live, so it costs no restart.
-			if (event.affectsConfiguration("velaRbxts.inlayHints")) {
-				void pushInlayHintSetting();
+			if (
+				event.affectsConfiguration("velaRbxts.inlayHints") ||
+				event.affectsConfiguration("velaRbxts.classFunctions")
+			) {
+				void pushSettings();
 			}
 
 			if (!event.affectsConfiguration("velaRbxts.lsp")) {
@@ -164,6 +167,7 @@ async function startClient(
 			workspaceRoot,
 			configs,
 			inlayHints: areInlayHintsEnabled(),
+			classFunctions: classFunctions(),
 		},
 		outputChannel,
 		outputChannelName: OUTPUT_CHANNEL_NAME,
@@ -414,7 +418,16 @@ function areInlayHintsEnabled(): boolean {
 		.get<boolean>("enabled", false);
 }
 
-async function pushInlayHintSetting(): Promise<void> {
+function classFunctions(): string[] {
+	const functions = vscode.workspace
+		.getConfiguration("velaRbxts")
+		.get<unknown>("classFunctions", []);
+	return Array.isArray(functions)
+		? functions.filter((name): name is string => typeof name === "string")
+		: [];
+}
+
+async function pushSettings(): Promise<void> {
 	if (!client) {
 		return;
 	}
@@ -422,11 +435,14 @@ async function pushInlayHintSetting(): Promise<void> {
 	try {
 		await client.sendNotification("workspace/didChangeConfiguration", {
 			settings: {
-				velaRbxts: { inlayHints: { enabled: areInlayHintsEnabled() } },
+				velaRbxts: {
+					inlayHints: { enabled: areInlayHintsEnabled() },
+					classFunctions: classFunctions(),
+				},
 			},
 		});
 	} catch (error) {
-		log(`Failed to push the inlay hint setting: ${formatError(error)}`);
+		log(`Failed to push settings: ${formatError(error)}`);
 	}
 }
 

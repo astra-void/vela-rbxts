@@ -43,6 +43,8 @@ pub struct EditorOptions {
     pub config_json: Option<String>,
     pub file_name: Option<String>,
     pub project_root: Option<String>,
+    /// Helpers whose string arguments are class lists wherever they are called.
+    pub class_functions: Option<Vec<String>>,
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), napi(object))]

@@ -1051,7 +1051,9 @@ Install **Vela IntelliSense** (`astra-void.vela-rbxts-lsp`) for VS Code, or poin
 
 The standalone Rust LSP lives in `packages/lsp`. It reuses the native compiler as the semantic engine and only handles transport, document state, and protocol translation, so what the editor tells you about a class is what the compiler would do with it.
 
-It provides completions inside a `className` (and nowhere else), hover, push diagnostics, document colors and color presentations, quickfix code actions, class sorting, document highlight, and optional inlay hints. It does not provide go-to-definition, references, rename, formatting, semantic tokens, or signature help.
+It provides completions inside a `className` (and in a `const` string one names, or the arguments of a helper listed in the client's `classFunctions`), hover, push diagnostics, document colors and color presentations, quickfix code actions, class sorting, document highlight, and optional inlay hints. It does not provide go-to-definition, references, rename, formatting, semantic tokens, or signature help.
+
+A class list does not have to sit in the attribute. A `const` string a `className` names is checked where it is declared, against what every element that names it shares, which is the same const the compiler lowers. A helper called outside `className`, such as `const button = cva("px-4", { variants: … })`, is read once its name is in `classFunctions` (`velaRbxts.classFunctions` in VS Code, `initializationOptions.classFunctions` or `workspace/didChangeConfiguration` elsewhere): a string value is a class list, an object key is one only where its value is a condition, as in `clsx`, and `defaultVariants` and the variant names in `compoundVariants` are skipped.
 
 Everything a project configures is part of that vocabulary: a breakpoint you defined completes as `tablet:` and `max-tablet:`, a variant a plugin registered completes with the attribute it reads, and `attr-[` completes to the inline form, plus every attribute your config already names, written out. Completing a variant inside a chain rewrites that segment alone, so the utility behind it survives.
 

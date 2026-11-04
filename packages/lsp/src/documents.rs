@@ -77,6 +77,7 @@ impl Document {
                 .as_ref()
                 .map(|path| path.to_string_lossy().into_owned()),
             project_root: project_root.map(|path| path.to_string_lossy().into_owned()),
+            class_functions: None,
         }
     }
 }

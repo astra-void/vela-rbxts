@@ -13,7 +13,10 @@ pub(crate) fn get_document_colors_impl(request: DocumentColorsRequest) -> Docume
     let variants = crate::semantic::variant::VariantRegistry::new(&config);
     let mut colors = Vec::new();
 
-    for context in collect_class_name_contexts(&request.source) {
+    for context in collect_class_name_contexts(
+        &request.source,
+        crate::editor::class_functions(request.options.as_ref()),
+    ) {
         let tokens = tokenize_class_name_with_ranges(&context.value, context.value_range.start);
 
         for token in tokens {

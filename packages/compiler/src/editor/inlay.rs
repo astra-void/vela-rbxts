@@ -16,7 +16,10 @@ pub(crate) fn get_inlay_hints_impl(request: InlayHintsRequest) -> InlayHintsResp
     let config = crate::editor::parse_editor_config(request.options.as_ref());
     let mut hints = Vec::new();
 
-    for context in collect_class_name_contexts(&request.source) {
+    for context in collect_class_name_contexts(
+        &request.source,
+        crate::editor::class_functions(request.options.as_ref()),
+    ) {
         for token in tokenize_class_name_with_ranges(&context.value, context.value_range.start) {
             if context.splices_into(&token) {
                 continue;
