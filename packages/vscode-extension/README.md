@@ -51,6 +51,26 @@ changes to the server, so custom theme keys complete and validate live.
 
 Output lands in the **vela-rbxts-lsp** output channel.
 
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| **Vela: Restart Language Server** | Stops and restarts the server, re-reading every `vela.config`. Use it after pointing `velaRbxts.lsp.serverPath` at a new build. |
+| **Vela: Show Output** | Opens the **vela-rbxts-lsp** output channel. |
+| **Vela: Sort Classes** | Sorts the classes in the active file, the same `source.sortVelaClasses` action you can run on save. |
+
+To sort on save instead:
+
+```json
+{
+  "editor.codeActionsOnSave": {
+    "source.sortVelaClasses": "explicit"
+  }
+}
+```
+
+For CI or a pre-commit hook, `vela sort --check` applies the same order from the command line.
+
 ## Not Provided
 
 Go-to-definition, references, rename, formatting, semantic tokens, and

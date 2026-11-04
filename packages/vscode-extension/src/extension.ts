@@ -91,7 +91,45 @@ export async function activate(
 		}),
 	);
 
+	context.subscriptions.push(
+		vscode.commands.registerCommand("velaRbxts.restartServer", () =>
+			runLifecycleTask(async () => {
+				log("Restarting the language client on request.");
+				clearProjectConfigCache();
+				await syncClientState(context, watcher);
+			}),
+		),
+		vscode.commands.registerCommand("velaRbxts.showOutput", () => {
+			outputChannel?.show();
+		}),
+		vscode.commands.registerCommand("velaRbxts.sortClasses", sortClasses),
+	);
+
 	await runLifecycleTask(() => syncClientState(context, watcher));
+}
+
+async function sortClasses(): Promise<void> {
+	const editor = vscode.window.activeTextEditor;
+	if (
+		!editor ||
+		!["typescript", "typescriptreact"].includes(editor.document.languageId)
+	) {
+		void vscode.window.showInformationMessage(
+			"Open a TypeScript or TSX file to sort its vela classes.",
+		);
+		return;
+	}
+	if (!client) {
+		void vscode.window.showWarningMessage(
+			"The vela-rbxts language server is not running.",
+		);
+		return;
+	}
+
+	await vscode.commands.executeCommand("editor.action.sourceAction", {
+		kind: "source.sortVelaClasses",
+		apply: "first",
+	});
 }
 
 export async function deactivate(): Promise<void> {

@@ -44,6 +44,31 @@
 		"onLanguage:typescriptreact"
 	],
 	"contributes": {
+		"commands": [
+			{
+				"command": "velaRbxts.restartServer",
+				"title": "Restart Language Server",
+				"category": "Vela"
+			},
+			{
+				"command": "velaRbxts.showOutput",
+				"title": "Show Output",
+				"category": "Vela"
+			},
+			{
+				"command": "velaRbxts.sortClasses",
+				"title": "Sort Classes",
+				"category": "Vela"
+			}
+		],
+		"menus": {
+			"commandPalette": [
+				{
+					"command": "velaRbxts.sortClasses",
+					"when": "editorLangId == typescript || editorLangId == typescriptreact"
+				}
+			]
+		},
 		"configuration": {
 			"title": "vela-rbxts",
 			"properties": {
