@@ -9,6 +9,19 @@ Versions are released in lockstep across every workspace package.
 
 ## [Unreleased]
 
+### Added
+
+- **Editor features reach class lists outside the `className` attribute.** A `const` string a `className` names, as in `const base = "px-4 bg-slate-700"; <frame className={cn(base, active && "p-2")} />`, is completed, hovered, checked and sorted where it is declared. The editor mirrors the scope the compiler resolves consts in, so it reads exactly the consts that lower: not a `let`, not one declared after the class value, not one inside another function. A const several elements name is read once, against the host they share. A new `classFunctions` editor option (`velaRbxts.classFunctions` in VS Code, `initializationOptions.classFunctions` or `workspace/didChangeConfiguration` elsewhere) lists helpers whose arguments are class lists wherever they are called, `tw` tagged templates included. A string value is a class list, an object key is one only where its value is a condition, as in `clsx`, and in a cva-style map `defaultVariants` and the variant names in `compoundVariants` are skipped.
+- **Diagnostic levels per code, and a switch for all of them.** The language server reads `lint`, a map from a diagnostic code to `error`, `warning`, `info`, `hint` or `ignore` that replaces the default level, and `validate`, which stops publishing diagnostics while completions, hover and colors keep working. Both arrive through `initializationOptions` or under `velaRbxts` in `workspace/didChangeConfiguration`, open documents are re-published when either changes, and a level the server does not know is dropped rather than discarding the settings sent with it. VS Code exposes them as `velaRbxts.lint` and `velaRbxts.validate`.
+- **An arbitrary value is pointed at the named class it equals.** `w-[16px]`, `h-[100%]` and `text-[14px]` lower exactly as `w-4`, `h-full` and `text-sm`, and now carry a `canonical-class` info diagnostic with a quickfix to the named form, so the class list keeps following the theme. Equivalence is decided by the resolver the overridden-class check uses, on the element's host and with the variants kept, so a theme's own step counts: `px-[18px]` points at `px-card` when the spacing scale names `card` as 18 pixels. `EditorDiagnostic` gains an optional `replacement`, which the language server carries in the diagnostic's data.
+- **`vela sort` and `vela sort --check`.** The editor's class sort now runs from the command line over every `.tsx` file under `--src`, or the files and directories named, reading the nearest `vela.config` the way a build does, so the result is what the `source.sortVelaClasses` action writes. `--check` lists the files that would change and exits 1 without writing, for CI and pre-commit hooks, and `--class-functions cn,cva` sorts the same helpers as the editor's `classFunctions`. `@vela-rbxts/rbxtsc-host` exports the `sortSourceForHost` it is built on.
+- **VS Code commands.** **Vela: Restart Language Server** restarts the server and re-reads every `vela.config` without reloading the window, **Vela: Show Output** opens the server's output channel, and **Vela: Sort Classes** sorts the active TypeScript or TSX file.
+
+### Changed
+
+- **The VS Code extension is now called Vela IntelliSense.** Only the display name, description and keywords change: the marketplace ID `astra-void.vela-rbxts-lsp`, the `velaRbxts.lsp.*` settings and the `@vela-rbxts/lsp` server package keep their names, so installs and settings carry over.
+- `get_class_tokens`, the Rust-only token API the language server highlights with, takes the editor options as a second argument, so highlights cover the class lists `classFunctions` adds.
+
 ## [0.14.0] - 2026-11-03
 
 ### Added
