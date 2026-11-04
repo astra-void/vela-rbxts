@@ -179,6 +179,15 @@ Re-run it by hand whenever only the Marketplace step needs another attempt:
 gh workflow run publish-vscode.yaml --ref v0.5.1 -f release_tag=v0.5.1 -f dry_run=false
 ```
 
+When the Marketplace rejects something in the extension itself, such as a display name too close
+to an existing extension's, the fix cannot go into a tag npm already published from. Land it on
+`main` and package from there with `source_ref`, keeping `release_tag` on the release so the LSP
+binaries still come from its npm version:
+
+```bash
+gh workflow run publish-vscode.yaml --ref main -f release_tag=v0.15.0 -f source_ref=main -f dry_run=false
+```
+
 ## VSIX Dependency On LSP
 
 `pnpm release:vsix` requires LSP artifacts in `artifacts/lsp`, from either `release:build` or
@@ -251,6 +260,8 @@ For `workflow_dispatch` on `.github/workflows/publish-vscode.yaml`:
 
 - `release_tag`: required; the tag to package the extension from. Its npm packages must already
   be published.
+- `source_ref`: optional commit or branch to package the extension from instead of the tag; the
+  LSP binaries are still fetched for `release_tag`'s version.
 - `vsix_version`: optional `major.minor.patch` override for the staged VSIX manifest version.
 - `vsix_build_number`: optional same-day counter (1-999); empty resolves the next free one from
   the Marketplace.

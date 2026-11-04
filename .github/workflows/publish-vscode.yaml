@@ -9,6 +9,10 @@ on:
         description: "Release tag to package the extension from (example: v0.1.0)"
         required: true
         type: string
+      source_ref:
+        description: "Commit or branch to package the extension from when it must differ from the tag, such as a Marketplace-only fix; empty uses release_tag"
+        required: false
+        type: string
       vsix_version:
         description: Optional Marketplace VSIX version override
         required: false
@@ -38,10 +42,11 @@ jobs:
     name: publish vscode extension
     runs-on: ubuntu-24.04
     steps:
+      # The LSP binaries still come from release_tag's npm version below.
       - name: Checkout release tag
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.release_tag }}
+          ref: ${{ inputs.source_ref || inputs.release_tag }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v6
