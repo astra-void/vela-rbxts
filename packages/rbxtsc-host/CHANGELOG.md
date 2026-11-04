@@ -1,5 +1,19 @@
 # @vela-rbxts/rbxtsc-host
 
+## 0.15.0
+
+### Minor Changes
+
+- faf4ce7: Add `vela sort [paths...]`, which applies the editor's class sort to every `.tsx` file under `--src` or the paths given, and `vela sort --check`, which lists the files that would change and exits 1 without writing, for CI and pre-commit hooks. `--class-functions cn,cva` sorts the same helpers as the editor's `classFunctions`. `@vela-rbxts/rbxtsc-host` exports the `sortSourceForHost` it is built on.
+
+### Patch Changes
+
+- Updated dependencies [9eb6c01]
+- Updated dependencies [5b2e9ac]
+  - @vela-rbxts/compiler@0.15.0
+  - @vela-rbxts/config@0.15.0
+  - @vela-rbxts/ir@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes

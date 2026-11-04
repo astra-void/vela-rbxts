@@ -1,5 +1,12 @@
 # @vela-rbxts/core
 
+## 0.15.0
+
+### Patch Changes
+
+- @vela-rbxts/config@0.15.0
+- @vela-rbxts/ir@0.15.0
+
 ## 0.14.0
 
 ### Patch Changes

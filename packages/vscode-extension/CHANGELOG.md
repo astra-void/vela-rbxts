@@ -1,5 +1,21 @@
 # vela-rbxts-lsp
 
+## 0.15.0
+
+### Minor Changes
+
+- 8391d72: Diagnostics can be tuned per code. The LSP reads `lint`, a map from a diagnostic code to `error`, `warning`, `info`, `hint` or `ignore` that replaces the default severity, and `validate`, which stops publishing diagnostics while completions, hover and colors keep working. Both arrive through `initializationOptions` or under `velaRbxts` in `workspace/didChangeConfiguration`, and open documents are re-published when they change. VS Code exposes them as `velaRbxts.lint` and `velaRbxts.validate`.
+- 5b2e9ac: Editor features now reach class lists outside the `className` attribute. A `const` string that a `className` names is completed, hovered, checked and sorted where it is declared, against what every element naming it shares, matching the const the compiler lowers. A new `classFunctions` editor option (`velaRbxts.classFunctions` in VS Code, `initializationOptions.classFunctions` or `workspace/didChangeConfiguration` elsewhere) lists helpers whose arguments are read wherever they are called, including tagged templates and cva-style variant maps, where `defaultVariants` and the variant names in `compoundVariants` are skipped. `get_class_tokens` takes the editor options as a second argument.
+- c0d0e92: The VS Code extension contributes three commands: **Vela: Restart Language Server**, which restarts the server and re-reads every `vela.config` without reloading the window, **Vela: Show Output**, and **Vela: Sort Classes**, which runs `source.sortVelaClasses` on the active TypeScript or TSX file.
+
+### Patch Changes
+
+- 3110adf: Rename the VS Code extension's display name from Vela LSP to Vela IntelliSense. The marketplace ID `astra-void.vela-rbxts-lsp`, the `velaRbxts.lsp.*` settings and the `@vela-rbxts/lsp` server package keep their names, so existing installs and settings carry over.
+- Updated dependencies [9eb6c01]
+- Updated dependencies [8391d72]
+- Updated dependencies [5b2e9ac]
+  - @vela-rbxts/lsp@0.15.0
+
 ## 0.14.0
 
 ### Patch Changes
