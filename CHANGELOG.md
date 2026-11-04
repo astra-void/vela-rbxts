@@ -21,7 +21,7 @@ Versions are released in lockstep across every workspace package.
 
 ### Changed
 
-- **The VS Code extension is now called Vela IntelliSense.** Only the display name, description and keywords change: the marketplace ID `astra-void.vela-rbxts-lsp`, the `velaRbxts.lsp.*` settings and the `@vela-rbxts/lsp` server package keep their names, so installs and settings carry over.
+- **The VS Code extension is now called Vela Roblox IntelliSense.** Only the display name, description and keywords change: the marketplace ID `astra-void.vela-rbxts-lsp`, the `velaRbxts.lsp.*` settings and the `@vela-rbxts/lsp` server package keep their names, so installs and settings carry over.
 - `get_class_tokens`, the Rust-only token API the language server highlights with, takes the editor options as a second argument, so highlights cover the class lists `classFunctions` adds.
 
 ## [0.14.0] - 2026-11-03

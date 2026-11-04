@@ -10,7 +10,7 @@
 
 ### Patch Changes
 
-- 3110adf: Rename the VS Code extension's display name from Vela LSP to Vela IntelliSense. The marketplace ID `astra-void.vela-rbxts-lsp`, the `velaRbxts.lsp.*` settings and the `@vela-rbxts/lsp` server package keep their names, so existing installs and settings carry over.
+- 3110adf: Rename the VS Code extension's display name from Vela LSP to Vela Roblox IntelliSense. The marketplace ID `astra-void.vela-rbxts-lsp`, the `velaRbxts.lsp.*` settings and the `@vela-rbxts/lsp` server package keep their names, so existing installs and settings carry over.
 - Updated dependencies [9eb6c01]
 - Updated dependencies [8391d72]
 - Updated dependencies [5b2e9ac]

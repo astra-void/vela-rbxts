@@ -3,7 +3,7 @@
 	"version": "0.15.0",
 	"private": true,
 	"type": "commonjs",
-	"displayName": "Vela IntelliSense",
+	"displayName": "Vela Roblox IntelliSense",
 	"description": "Completions, hover, diagnostics, and color previews for vela-rbxts classNames in roblox-ts.",
 	"license": "MIT",
 	"author": "astra-void",

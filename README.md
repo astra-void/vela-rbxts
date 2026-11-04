@@ -1047,7 +1047,7 @@ Only `.tsx` files are eligible, and declaration files are always skipped. By def
 
 ## Editor Integration
 
-Install **Vela IntelliSense** (`astra-void.vela-rbxts-lsp`) for VS Code, or point any other editor at `npx --package @vela-rbxts/lsp vela-rbxts-lsp` over stdio. The server does not read the config file itself — the client supplies it through `initializationOptions.configs`, which is what the VS Code extension does as it watches `**/vela.config.{ts,json}`.
+Install **Vela Roblox IntelliSense** (`astra-void.vela-rbxts-lsp`) for VS Code, or point any other editor at `npx --package @vela-rbxts/lsp vela-rbxts-lsp` over stdio. The server does not read the config file itself — the client supplies it through `initializationOptions.configs`, which is what the VS Code extension does as it watches `**/vela.config.{ts,json}`.
 
 The standalone Rust LSP lives in `packages/lsp`. It reuses the native compiler as the semantic engine and only handles transport, document state, and protocol translation, so what the editor tells you about a class is what the compiler would do with it.
 
