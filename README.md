@@ -1116,6 +1116,13 @@ The `source.sortVelaClasses` action rewrites every `className` in the file into 
 
 Sorting does not change what an element renders, apart from the one case at the end of this paragraph. Utilities that can write the same Roblox property — `gap-*` with `space-*`, `border-*`/`ring-*`/`outline-*`, `w-*`/`h-*`/`size-*`, `opacity-*` with a `bg-*/N` modifier — sort as one group, so the one you wrote last stays last. A variant chain sorts by the conditions it names rather than by how it is spelled, so `hover:md:bg-red-500 md:hover:bg-blue-500` keeps its order and the same class wins, and a chain always sorts after a shorter chain it extends, so `dark:hover:bg-slate-700` stays behind `dark:bg-slate-800`. One case is left to you: two different variants that rank alike and can hold at once, such as `hover:` and `focus:`, still sort into their own bands, and the compiler applies such a pair in the order it is written, so where both hold the class that sorts later wins.
 
+Outside the editor, `vela sort` applies the same sort to every `.tsx` file under `src`, or under the files and directories you name, and `vela sort --check` lists the files it would change and exits 1 without writing, for CI or a pre-commit hook. Both read the nearest `vela.config` the way a build does, so the result is byte for byte what the action writes. Pass `--class-functions cn,cva` to sort the helpers the editor's `classFunctions` names.
+
+```bash
+vela sort
+vela sort --check src/client
+```
+
 Variant prefixes sort in a fixed order, narrow to broad: min-width breakpoints ascending, then max-width breakpoints widest-first, then orientation, input mode, your own state variants (registered ones before inline `attr-[…]`), then `hover:`/`active:`/`focus:`, then `group-*` and `peer-*` (each in the order the same state takes on the element), then `dark:`. The `group` and `peer` markers sort to the front, since they write no property. The order the v0.12 variants already sorted into is unchanged, because the new kinds slot into bands of their own and moving one past another would change which rule wins where both apply.
 
 Prebuilt binaries cover darwin arm64 and x64, linux x64 gnu and musl, linux arm64 gnu, and win32 x64. Linux arm64 musl and Windows on ARM have no binary on any channel and need a build from source.

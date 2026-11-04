@@ -15,6 +15,11 @@ export {
 	resolveProjectConfigInfo,
 } from "./project-config.js";
 export {
+	type HostSortResult,
+	type SortSourceForHostOptions,
+	sortSourceForHost,
+} from "./sort.js";
+export {
 	type TransformSourceForHostOptions,
 	transformSourceForHost,
 } from "./transform.js";

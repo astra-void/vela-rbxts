@@ -7,7 +7,7 @@ export const MANIFEST_FILE = path.join(VELA_DIR, "build-manifest.json");
 // Outside the generated tree, which rbxtsc copies into out/ file by file.
 export const MAPS_DIR = path.join(VELA_DIR, "maps");
 
-export type CliCommand = "build" | "watch" | "remap" | "rbxtsc";
+export type CliCommand = "build" | "watch" | "remap" | "rbxtsc" | "sort";
 
 export type CliOptions = {
 	command: CliCommand;
@@ -18,6 +18,11 @@ export type CliOptions = {
 	quiet: boolean;
 	/** What `vela rbxtsc` hands to rbxtsc untouched. */
 	forwardedArgs?: string[];
+	/** `vela sort`: the files and directories to sort, `--src` when empty. */
+	paths?: string[];
+	/** `vela sort --check`: report unsorted files instead of writing them. */
+	check?: boolean;
+	classFunctions?: string[];
 };
 
 export type ParsedCliArgs =
@@ -26,7 +31,13 @@ export type ParsedCliArgs =
 	| { kind: "version" }
 	| { kind: "error"; message: string };
 
-const VALUE_FLAGS = new Set(["--project", "-p", "--src", "--out"]);
+const VALUE_FLAGS = new Set([
+	"--project",
+	"-p",
+	"--src",
+	"--out",
+	"--class-functions",
+]);
 
 export function parseCliArgs(
 	argv: readonly string[],
@@ -38,6 +49,9 @@ export function parseCliArgs(
 	let outArgument: string | undefined;
 	let clean = false;
 	let quiet = false;
+	let check = false;
+	let classFunctions: string[] | undefined;
+	const paths: string[] = [];
 	let forwardedArgs: string[] | undefined;
 
 	for (let index = 0; index < argv.length; index += 1) {
@@ -58,6 +72,11 @@ export function parseCliArgs(
 
 		if (argument === "--quiet" || argument === "-q") {
 			quiet = true;
+			continue;
+		}
+
+		if (argument === "--check") {
+			check = true;
 			continue;
 		}
 
@@ -85,10 +104,20 @@ export function parseCliArgs(
 				projectArgument = value;
 			} else if (flag === "--src") {
 				srcArgument = value;
+			} else if (flag === "--class-functions") {
+				classFunctions = value
+					.split(",")
+					.map((name) => name.trim())
+					.filter((name) => name !== "");
 			} else {
 				outArgument = value;
 			}
 
+			continue;
+		}
+
+		if (command === "sort") {
+			paths.push(path.resolve(cwd, argument));
 			continue;
 		}
 
@@ -103,7 +132,12 @@ export function parseCliArgs(
 			break;
 		}
 
-		if (argument !== "build" && argument !== "watch" && argument !== "remap") {
+		if (
+			argument !== "build" &&
+			argument !== "watch" &&
+			argument !== "remap" &&
+			argument !== "sort"
+		) {
 			return { kind: "error", message: `Unknown command "${argument}".` };
 		}
 
@@ -112,6 +146,11 @@ export function parseCliArgs(
 
 	if (command === undefined) {
 		return { kind: "help" };
+	}
+
+	if (command !== "sort" && (check || classFunctions !== undefined)) {
+		const flag = check ? "--check" : "--class-functions";
+		return { kind: "error", message: `Option "${flag}" only applies to sort.` };
 	}
 
 	const projectRoot = path.resolve(cwd, projectArgument ?? ".");
@@ -133,6 +172,9 @@ export function parseCliArgs(
 			clean,
 			quiet,
 			...(forwardedArgs === undefined ? {} : { forwardedArgs }),
+			...(command === "sort"
+				? { paths, check, classFunctions: classFunctions ?? [] }
+				: {}),
 		},
 	};
 }

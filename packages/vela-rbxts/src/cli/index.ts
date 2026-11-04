@@ -5,6 +5,7 @@ import { DEFAULT_OUT_DIR, DEFAULT_SRC_DIR, parseCliArgs } from "./options.js";
 import { runRbxtsc } from "./rbxtsc.js";
 import { runRemap } from "./remap.js";
 import { runBuild, runWatch } from "./run.js";
+import { runSort } from "./sort.js";
 
 const HELP_TEXT = `vela — lower Tailwind-style className usage ahead of rbxtsc.
 
@@ -12,6 +13,9 @@ Usage
   vela build [options]    Transform the source tree once.
   vela watch [options]    Transform, then re-transform on change.
   vela remap [options]    Rewrite rbxtsc output on stdin to point at --src.
+  vela sort [paths...] [options]
+                          Sort the classes in each class list, as the editor's
+                          sort action does. Default path: --src.
   vela [options] rbxtsc [args...]
                           Run the project's rbxtsc with its output remapped.
                           Everything after "rbxtsc" is passed to it.
@@ -21,6 +25,10 @@ Options
       --src <dir>         Source tree to read. Default: ${DEFAULT_SRC_DIR}
       --out <dir>         Generated tree to write. Default: ${DEFAULT_OUT_DIR}
       --clean             Delete the generated tree before building.
+      --check             sort: list unsorted files and exit 1, writing nothing.
+      --class-functions <names>
+                          sort: comma-separated helpers whose arguments are
+                          class lists, as the editor's classFunctions.
   -q, --quiet             Print diagnostics only.
   -h, --help              Show this message.
   -v, --version           Print the vela-rbxts version.
@@ -67,6 +75,8 @@ async function main(): Promise<number> {
 			return runRemap(options);
 		case "rbxtsc":
 			return runRbxtsc(options);
+		case "sort":
+			return runSort(options);
 		default:
 			return runBuild(options);
 	}

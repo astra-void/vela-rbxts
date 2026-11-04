@@ -26,7 +26,7 @@ const defaultCompiler: HostCompiler = {
 /// object itself, so a config that was re-resolved is serialized again.
 const configJsonCache = new WeakMap<TailwindConfig, string>();
 
-function configJsonFor(config: TailwindConfig): string {
+export function configJsonFor(config: TailwindConfig): string {
 	const cached = configJsonCache.get(config);
 	if (cached !== undefined) {
 		return cached;

@@ -124,3 +124,27 @@ test("refuses an output tree that would collide with the sources", () => {
 		kind: "error",
 	});
 });
+
+test("reads sort paths, --check, and --class-functions", () => {
+	expect(
+		parseCliArgs(
+			["sort", "src/ui", "src/App.tsx", "--check", "--class-functions=cn, cva"],
+			CWD,
+		),
+	).toMatchObject({
+		kind: "run",
+		options: {
+			command: "sort",
+			paths: [path.join(CWD, "src/ui"), path.join(CWD, "src/App.tsx")],
+			check: true,
+			classFunctions: ["cn", "cva"],
+		},
+	});
+});
+
+test("rejects the sort options on other commands", () => {
+	expect(parseCliArgs(["build", "--check"], CWD)).toMatchObject({
+		kind: "error",
+	});
+	expect(parseCliArgs(["build", "src"], CWD)).toMatchObject({ kind: "error" });
+});
